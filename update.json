@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "latest_version": "1.0.0",
+  "minimum_supported_version": "1.0.0",
+  "android": {
+    "build": 1,
+    "minimum_build": 1,
+    "url": "https://github.com/NousResearch/hermes-agent/releases"
+  },
+  "ios": {
+    "build": 1,
+    "minimum_build": 1,
+    "url": "https://github.com/NousResearch/hermes-agent/releases"
+  },
+  "release_notes_url": "https://github.com/NousResearch/hermes-agent/releases",
+  "message": "A newer Hermes Mobile version is required to remain compatible with the Hermes gateway."
+}

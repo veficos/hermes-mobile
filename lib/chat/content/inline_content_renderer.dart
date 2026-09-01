@@ -1,0 +1,235 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:markdown/markdown.dart' as md;
+import 'package:provider/provider.dart';
+
+import '../../core/message_preview_targets.dart';
+import '../../core/stores/plugin_contribution_store.dart';
+import '../../l10n/l10n.dart';
+import '../../theme/hermes_tokens.dart';
+import '../../widgets/h/hermes_markdown.dart';
+import '../../widgets/message_preview_attachments.dart';
+import '../../widgets/web_preview.dart' show openChatLink;
+import '../content/embed_registry.dart';
+import 'code_block.dart';
+import 'expandable_block.dart';
+import 'inline_content.dart';
+import 'markdown_alert.dart';
+import 'math_view.dart';
+import 'preview_file_card.dart';
+import 'pretty_links.dart';
+import 'reference_chips.dart';
+import 'resizable_markdown_table.dart';
+import 'zoomable_markdown_image.dart';
+
+/// How long a single text node may be before it is collapsed behind a
+/// "show more" toggle (desktop `HugeTextFallback` / `ExpandableBlock`).
+const _longTextChars = 12000;
+
+class InlineContentRenderer extends StatelessWidget {
+  final String text;
+  final EmbedRegistry? embeds;
+  final bool selectable;
+  const InlineContentRenderer({
+    super.key,
+    required this.text,
+    this.embeds,
+    this.selectable = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // L1: pull `@image:` / `@url:` / `@file:` refs out of the body — they
+    // render as chips below, not as raw `@image:/path` text.
+    final refs = extractMessageReferences(text);
+    final body = refs.isEmpty ? text : stripMessageReferences(text);
+    final nodes = parseInlineContent(body);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final node in nodes)
+          _RenderNode(node: node, selectable: selectable),
+        if (refs.isNotEmpty) MessageReferenceChips(references: refs),
+      ],
+    );
+  }
+}
+
+/// One timeline node, wrapped so a synchronous render failure (pathological
+/// markdown, a malformed math expression) degrades to plain selectable text
+/// instead of taking the whole message down (desktop `ErrorBoundary` →
+/// `HugeTextFallback`).
+class _RenderNode extends StatelessWidget {
+  final InlineContentNode node;
+  final bool selectable;
+  const _RenderNode({required this.node, required this.selectable});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      return switch (node) {
+        InlineCodeNode(:final code, :final language) => codeBlockOrArtifact(
+          code,
+          language,
+        ),
+        InlineDirectiveNode(:final name, :final value) => Chip(
+          avatar: const Icon(Icons.tune, size: 15),
+          label: Text('$name: $value'),
+        ),
+        InlinePreviewNode(:final target) => _PreviewNode(target: target),
+        InlineAlertNode(:final type, :final body) => MarkdownAlertBox(
+          type: type,
+          body: body,
+          selectable: selectable,
+        ),
+        InlineMathNode(:final tex) => MathBlockView(tex: tex),
+        InlinePreviewFileNode(:final file, :final initialHeight) =>
+          PreviewFileCard(file: file, initialHeight: initialHeight),
+        InlinePluginDirectiveNode(
+          :final name,
+          :final attributes,
+          :final source,
+        ) =>
+          _PluginDirectiveCard(
+            name: name,
+            attributes: attributes,
+            source: source,
+          ),
+        InlineRichNode(:final segments) => MathInlineRun(
+          segments: segments,
+          selectable: selectable,
+        ),
+        InlineTextNode(:final text) => _TextNode(
+          text: text,
+          selectable: selectable,
+        ),
+      };
+    } catch (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'hermes inline content renderer',
+        ),
+      );
+      return SelectableText(switch (node) {
+        InlineTextNode(:final text) => text,
+        InlineCodeNode(:final code) => code,
+        InlineAlertNode(:final body) => body,
+        InlineMathNode(:final tex) => tex,
+        _ => node.toString(),
+      }, style: HermesType.messageBody);
+    }
+  }
+}
+
+class _PluginDirectiveCard extends StatelessWidget {
+  final String name;
+  final Map<String, String> attributes;
+  final String source;
+  const _PluginDirectiveCard({
+    required this.name,
+    required this.attributes,
+    required this.source,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    PluginContributionStore? store;
+    try {
+      store = context.read<PluginContributionStore>();
+    } on ProviderNotFoundException {
+      return SelectableText(source);
+    }
+    final matches = store
+        .forArea(MobileContributionArea.transcript)
+        .where((item) => item.id == name)
+        .toList(growable: false);
+    if (matches.isEmpty) return SelectableText(source);
+    final contribution = matches.first;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.extension_outlined),
+        title: Text(contribution.title),
+        subtitle: Text(
+          contribution.description.isNotEmpty
+              ? contribution.description
+              : attributes.entries
+                    .map((e) => '${e.key}: ${e.value}')
+                    .join(' · '),
+        ),
+        trailing: const Icon(Icons.play_arrow),
+        onTap: () async {
+          try {
+            final action = Map<String, dynamic>.from(contribution.action);
+            final params =
+                (action['params'] as Map?)?.cast<String, dynamic>() ?? const {};
+            action['params'] = {
+              ...params,
+              'directive': name,
+              'attributes': attributes,
+            };
+            final adapted = MobilePluginContribution(
+              id: contribution.id,
+              pluginId: contribution.pluginId,
+              area: contribution.area,
+              title: contribution.title,
+              description: contribution.description,
+              icon: contribution.icon,
+              order: contribution.order,
+              action: action,
+              platforms: contribution.platforms,
+              owner: contribution.owner,
+            );
+            await store!.invoke(adapted);
+          } catch (error) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(context.l10n.pluginsOperationFailed('$error')),
+                ),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _TextNode extends StatelessWidget {
+  final String text;
+  final bool selectable;
+  const _TextNode({required this.text, required this.selectable});
+
+  Widget _markdown(BuildContext context, String data) => MarkdownBody(
+    data: prettifyBareLinks(upgradeImageLinks(data)),
+    selectable: selectable,
+    styleSheet: hermesMarkdownStyle(context, compact: true),
+    extensionSet: md.ExtensionSet.gitHubFlavored,
+    builders: {'table': ResizableMarkdownTableBuilder()},
+    sizedImageBuilder: hermesMarkdownImageBuilder,
+    onTapLink: (_, href, _) {
+      if (href != null && href.isNotEmpty) openChatLink(context, href);
+    },
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.length <= _longTextChars) return _markdown(context, text);
+    // G1: a very long block is collapsed behind "show more" so it can't
+    // dominate the transcript / stall layout.
+    return ExpandableBlock(
+      collapsedHeight: 320,
+      child: _markdown(context, text),
+    );
+  }
+}
+
+class _PreviewNode extends StatelessWidget {
+  final MessagePreviewTarget target;
+  const _PreviewNode({required this.target});
+  @override
+  Widget build(BuildContext context) =>
+      MessagePreviewAttachments(text: target.value);
+}

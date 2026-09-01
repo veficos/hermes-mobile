@@ -1,0 +1,33 @@
+{
+  "total": 56,
+  "files": {
+    "lib/chat/content/inline_content_renderer.dart": 1,
+    "lib/screens/agent_screen.dart": 1,
+    "lib/screens/app_shell.dart": 1,
+    "lib/screens/billing_screen.dart": 1,
+    "lib/screens/chat_screen.dart": 4,
+    "lib/screens/cloud_discovery_screen.dart": 1,
+    "lib/screens/config_center_screen.dart": 2,
+    "lib/screens/config_screen.dart": 1,
+    "lib/screens/connect_screen.dart": 8,
+    "lib/screens/cron_screen.dart": 1,
+    "lib/screens/git_screen.dart": 3,
+    "lib/screens/home_screen.dart": 1,
+    "lib/screens/mcp_logs_screen.dart": 2,
+    "lib/screens/mcp_screen.dart": 3,
+    "lib/screens/memory_screen.dart": 2,
+    "lib/screens/profiles_screen.dart": 1,
+    "lib/screens/request_sheet.dart": 1,
+    "lib/screens/session_list_screen.dart": 1,
+    "lib/screens/webhooks_screen.dart": 4,
+    "lib/widgets/kanban_task_detail_sheet.dart": 2,
+    "lib/widgets/message_bubble.dart": 6,
+    "lib/widgets/pet_overlay.dart": 2,
+    "lib/widgets/right_sidebar/git_review_panel.dart": 1,
+    "lib/widgets/right_sidebar/right_sidebar.dart": 1,
+    "lib/widgets/session/session_detail_panel.dart": 1,
+    "lib/widgets/session/session_row_actions.dart": 2,
+    "lib/widgets/terminal/terminal_workspace.dart": 1,
+    "lib/widgets/web_preview.dart": 1
+  }
+}

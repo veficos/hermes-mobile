@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:">
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; overflow: auto; }
+    #diagram { box-sizing: border-box; min-height: 1px; padding: 12px; }
+    #diagram svg { display: block; width: auto; height: auto; max-width: 100%; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <div id="diagram"></div>
+  <script src="mermaid.min.js"></script>
+  <script>
+    (function () {
+      var root = document.getElementById('diagram');
+      var generation = 0;
+
+      function answer(payload) {
+        try { MermaidBridge.postMessage(JSON.stringify(payload)); } catch (_) {}
+      }
+
+      function reportSize(current) {
+        requestAnimationFrame(function () {
+          if (current !== generation) return;
+          var svg = root.querySelector('svg');
+          var rect = svg ? svg.getBoundingClientRect() : root.getBoundingClientRect();
+          answer({
+            type: 'rendered',
+            height: Math.ceil(Math.max(root.scrollHeight, rect.height + 24)),
+            width: Math.ceil(Math.max(root.scrollWidth, rect.width + 24))
+          });
+        });
+      }
+
+      window.renderMermaid = async function (source, dark) {
+        var current = ++generation;
+        root.replaceChildren();
+        try {
+          mermaid.initialize({
+            fontFamily: 'system-ui, sans-serif',
+            securityLevel: 'strict',
+            startOnLoad: false,
+            theme: dark ? 'dark' : 'default'
+          });
+          var result = await mermaid.render('mmd-' + current + '-' + Date.now(), String(source || ''));
+          if (current !== generation) return;
+          root.innerHTML = result.svg;
+          reportSize(current);
+        } catch (error) {
+          if (current !== generation) return;
+          root.replaceChildren();
+          answer({ type: 'error', message: String(error && error.message || error) });
+        }
+      };
+    })();
+  </script>
+</body>
+</html>

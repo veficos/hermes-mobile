@@ -1,0 +1,3491 @@
+{
+  "@@locale": "en",
+  "commonCopyFailed": "Could not copy to the clipboard",
+  "commonClipboardReadFailed": "Could not read the clipboard",
+  "petGenerateReferenceFailed": "Could not add the reference image: {error}",
+  "@petGenerateReferenceFailed": {"placeholders":{"error":{"type":"String"}}},
+  "petSelectFailed": "Could not select pet: {error}",
+  "@petSelectFailed": {"placeholders":{"error":{"type":"String"}}},
+  "terminalSshNamed":"SSH {host}", "@terminalSshNamed":{"placeholders":{"host":{"type":"String"}}},
+  "deepLinkUnsupported":"Unsupported Hermes link", "deepLinkMcpNameInvalid":"Invalid MCP name format", "deepLinkMcpConfigMissing":"MCP link is missing configuration", "deepLinkMcpConfigTooLarge":"MCP configuration exceeds 32 KiB", "deepLinkMcpEncodingInvalid":"Invalid MCP configuration encoding", "deepLinkMcpJsonInvalid":"MCP configuration is not valid JSON", "deepLinkMcpObjectRequired":"MCP configuration must be an object", "deepLinkMcpUrlCommandConflict":"MCP configuration cannot contain both a URL and a command", "deepLinkMcpHttpOnly":"MCP URL must use HTTP or HTTPS", "deepLinkMcpEndpointMissing":"MCP configuration is missing a URL or command", "terminalConnectionClosed":"Terminal connection is closed", "terminalRequestFailed":"Could not send terminal request: {error}", "terminalGenericError":"Terminal error", "botUntitledTask":"Untitled task", "botMemberPaused":"{name} is paused. Mention this member or send resume to continue.", "botRoutineFieldsRequired":"Task name, instruction, and schedule are required", "botRoutineNulForbidden":"Task name, instruction, and schedule cannot contain NUL", "pluginLoadActionReadOnly":"Plugin view.load_action must be read-only", "pluginMethodMissing":"Plugin action is missing method", "pluginPathInvalid":"Plugin action path is invalid", "pluginMethodUnsupported":"Plugin REST method is unsupported: {method}", "pluginUrlInvalid":"Plugin action URL is invalid", "pluginUrlSchemeUnsupported":"Plugin action URL scheme is unsupported", "pluginLinkOpenFailed":"Could not open link", "pluginNotificationFieldsMissing":"Plugin notification action is missing title or message", "pluginNotificationUnavailable":"Notifications are unavailable in this host", "pluginActionUnsupported":"Plugin action is unsupported on mobile: {kind}",
+  "@terminalRequestFailed":{"placeholders":{"error":{"type":"String"}}}, "@botMemberPaused":{"placeholders":{"name":{"type":"String"}}}, "@pluginMethodUnsupported":{"placeholders":{"method":{"type":"String"}}}, "@pluginActionUnsupported":{"placeholders":{"kind":{"type":"String"}}},
+  "kanbanTaskAlreadyRunning":"Task is already running", "gatewayUnavailable":"Hermes backend Gateway is unavailable", "filesDirectoryMissing":"Directory does not exist", "filesFolderFallback":"This platform cannot list local folders; select multiple files instead", "billingCreditsExhausted":"Balance or credit limit exhausted", "workspacePaneLimit":"Up to {count} panes can be open in the workspace", "projectMissing":"Project does not exist or was deleted", "updateHttpError":"Update service returned HTTP {status}", "@workspacePaneLimit":{"placeholders":{"count":{"type":"int"}}}, "@updateHttpError":{"placeholders":{"status":{"type":"int"}}},
+  "chatCompactingThread":"Summarizing thread", "chatModelChanged":"Model changed", "chatTurnContinued":"Interrupted turn continued", "chatPersonalityChanged":"Personality changed", "chatDelegationCompleted":"Background agent work completed", "chatDelegationCountCompleted":"{count} background agent tasks completed", "chatHermesNotification":"Hermes notification", "chatBrowserTask":"Browser task", "chatPreviewRestart":"Preview service restart", "chatPreparingTool":"Preparing {name}", "chatMoaAggregating":"◇ Aggregating multi-model results...", "chatMoaCollaboration":"Multi-model collaboration", "chatCurrentGoal":"Current goal", "chatCodeReview":"Code review", "chatHermesRunFailed":"Hermes run failed", "chatPlanItem":"Plan item", "chatAssistantReplyFailed":"Assistant reply failed",
+  "@chatDelegationCountCompleted":{"placeholders":{"count":{"type":"int"}}}, "@chatPreparingTool":{"placeholders":{"name":{"type":"String"}}},
+  "terminalServerNotConfigured":"Server is not configured", "terminalLimitReached":"Up to {count} terminals can be open at once. Close a session first.", "terminalNumbered":"Terminal {number}", "terminalSnapshotStart":"-- Read-only output snapshot from the previous session --", "terminalSnapshotEnd":"-- Snapshot ended; restoring terminal --", "terminalSshHostRequired":"SSH host is required", "terminalRestartingShell":"-- Restarting shell... --", "terminalOpenedNewShell":"-- Could not restore the original shell; opened a new shell --", "terminalPtyIdMissing":"The server did not return a PTY session ID", "terminalShellExited":"-- Shell exited{code, select, other{ (code {code})} empty{}} · Tap Restart to continue --", "terminalReconnecting":"Terminal connection interrupted. Reconnecting...", "terminalRestoringShell":"-- Connection interrupted; restoring or reopening shell... --", "terminalConnectionRestored":"-- Terminal connection restored --", "terminalConnectionRestoreFailed":"-- Could not restore terminal connection --", "terminalReconnected":"Terminal reconnected; a new shell may have been opened", "terminalReconnectFailed":"Could not reconnect the terminal. Create a new terminal manually.",
+  "@terminalLimitReached":{"placeholders":{"count":{"type":"int"}}}, "@terminalNumbered":{"placeholders":{"number":{"type":"int"}}}, "@terminalShellExited":{"placeholders":{"code":{"type":"String"}}},
+  "sessionChooseHandoffPlatform":"Choose a handoff platform", "sessionHandoffTargetFailed":"Handoff to {target} failed", "sessionHandoffTimeout":"Handoff timed out. Try again.", "sessionNoActive":"No active session", "sessionLoadMoreFailed":"Could not load more sessions: {error}", "sessionOfflineTranscript":"Offline mode: showing the cached transcript", "sessionTranscriptRefreshFailed":"Could not refresh transcript: {error}", "sessionOlderMessagesFailed":"Could not load older messages: {error}", "sessionListLoadFailed":"Could not load sessions: {error}", "sessionProfileSwitching":"The profile is switching. Try again shortly.", "sessionSubagentReadOnly":"Subagent sessions are read-only", "sessionChangedRetry":"The session changed. Try again shortly.", "sessionConnectionUnknown":"The session connection is unknown: {id}", "sessionConnectionUnavailable":"The session connection is unavailable: {id}", "sessionUnsavedTitle":"The session has not been saved, so a title cannot be generated", "sessionShareLinkMissing":"The server did not return a share link", "sessionBatchDeletePartial":"Deleted {deleted}; {failed} failed", "sessionCouldNotCreate":"Could not create a session", "sessionUserMessageMissing":"Could not find the corresponding user message", "sessionRestoreMessageMissing":"Could not find the user message to restore", "sessionBranchMessageMissing":"Could not find the message to branch from", "sessionHistoryPositionMissing":"This message has no history position. Refresh the session and try again.", "sessionRuntimeIdMissing":"Hermes did not return a runtime session ID",
+  "@sessionHandoffTargetFailed":{"placeholders":{"target":{"type":"String"}}}, "@sessionLoadMoreFailed":{"placeholders":{"error":{"type":"String"}}}, "@sessionTranscriptRefreshFailed":{"placeholders":{"error":{"type":"String"}}}, "@sessionOlderMessagesFailed":{"placeholders":{"error":{"type":"String"}}}, "@sessionListLoadFailed":{"placeholders":{"error":{"type":"String"}}}, "@sessionConnectionUnknown":{"placeholders":{"id":{"type":"String"}}}, "@sessionConnectionUnavailable":{"placeholders":{"id":{"type":"String"}}}, "@sessionBatchDeletePartial":{"placeholders":{"deleted":{"type":"int"},"failed":{"type":"int"}}},
+  "@artifactExportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatAddImageFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatAddedToQueue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatApprovalModeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatApprovalModeSet": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatArtifactVersions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatAttachmentUploadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatBackgroundAgentsRunning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatBackgroundCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatBackgroundSubmitFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatBackgroundSubmittedWithId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatBackgroundTaskCompleted": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatBackgroundTaskFailed": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatBranchChanges": {
+    "placeholders": {
+      "branch": {
+        "type": "String"
+      },
+      "changedFiles": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatBranchCreatedWithId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatBranchFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatBranchedWithId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatBranchesLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatCompressionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatContextUsagePercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatCronSuggestion": {
+    "placeholders": {
+      "phrase": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatDeletePromptFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatDiagnosticsError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatDiagnosticsModel": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatDiagnosticsTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatEditFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatExecutionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatFileTooLarge": {
+    "placeholders": {
+      "maxMb": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatFolderFilesAttached": {
+    "placeholders": {
+      "attached": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatForwardedToCommand": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatHandingOffTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatHandoffCompletedTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatHandoffFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatHandoffPlatformsFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatHomeChannel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatMessageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatModelSwitchFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatModelsLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatMonthDay": {
+    "placeholders": {
+      "month": {
+        "type": "int"
+      },
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatPendingRequests": {
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatPlanProgress": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatPreviewCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatProfileSwitchFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatProfileSwitched": {
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatProfilesLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatQueueFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatQueueSummary": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "expandLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatQueuedMinutesAgo": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatQueuedSecondsAgo": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatReasoningEffortSet": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatReasoningEffortSetFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatRegenerateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatRegenerateTitleFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatRestoreFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatRetryFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatSavePromptFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatSavedPromptsLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatSelectFilesFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatSelectFolderFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatSendFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatSendQueueCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatSetTitleFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatShareLinkFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatSteerNowFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatStopProcessFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatSubagentCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatTitleSet": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatTitleUpdated": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatToolCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatToolsetCounts": {
+    "placeholders": {
+      "sessionCount": {
+        "type": "String"
+      },
+      "globalCount": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatToolsetToggleFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatToolsetsEnabled": {
+    "placeholders": {
+      "globalCount": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatTopicNumber": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatTopicRailSemantics": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatUndoFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatVersionCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatVersionLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatVersionNumber": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "@chatWakeVoiceFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatWarning": {
+    "placeholders": {
+      "warning": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatWorkspaceSwitchFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatWorkspaceSwitched": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@chatYoloToggleFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@configDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@configInvalidFieldValue": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@configInvalidJson": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@configRestoreDefaultsDescription": {
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "@configSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@configServerDidNotDelete": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "@configServerRejected": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "@dateMonthDay": {
+    "placeholders": {
+      "month": {
+        "type": "int"
+      },
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "@homeBackendSummary": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      },
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeContinueSession": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeNeedsAttention": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@homeProfileTooltip": {
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeWorkingDetail": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "@modelAuxiliarySaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@modelMoaAggregatorSummary": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "@modelMoaEditTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@modelMoaReferenceCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@modelMoaReferenceNumber": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "@modelMoaSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@modelRecommended": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "@modelSwitchFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@modelSwitchSucceeded": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "@moreStatus": {
+    "placeholders": {
+      "connection": {
+        "type": "String"
+      },
+      "agent": {
+        "type": "String"
+      }
+    }
+  },
+  "@notificationOpenFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@pluginActionFailed": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@pluginFieldMaximum": {
+    "placeholders": {
+      "value": {
+        "type": "num"
+      }
+    }
+  },
+  "@pluginFieldMinimum": {
+    "placeholders": {
+      "value": {
+        "type": "num"
+      }
+    }
+  },
+  "@pluginItemFallback": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "@previewActionSendFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@previewActionSent": {
+    "placeholders": {
+      "prompt": {
+        "type": "String"
+      }
+    }
+  },
+  "@previewFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@previewOpenSessionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@projectFolderCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@projectResumeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@projectSessionCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@providerEnterDeviceCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "@providerMissingKeys": {
+    "placeholders": {
+      "keys": {
+        "type": "String"
+      }
+    }
+  },
+  "@providerModelTitle": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "@providerRevealFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@providerActionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@providerRunSetupDescription": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      },
+      "command": {
+        "type": "String"
+      }
+    }
+  },
+  "@providerSetEnvironmentVariable": {
+    "placeholders": {
+      "key": {
+        "type": "String"
+      }
+    }
+  },
+  "@providerToolsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@providerToolsetProviderTitle": {
+    "placeholders": {
+      "toolset": {
+        "type": "String"
+      }
+    }
+  },
+  "@pushTestFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionBatchDeleteDescription": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionDeleteDescription": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionDeletedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionDurationDaysHours": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionDurationMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionHandoff": {
+    "placeholders": {
+      "state": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionMessageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionOpenCopyFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionProjectSessionCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionResumeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionResumeLastFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionResumeSubagentFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionSearchFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@sessionSearchResultCount": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "visible": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionToolCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sessionWithinDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@settingsBackendRestartFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@taskAssigneeFilter": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "@taskBulkFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@taskCommentCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@taskPriorityMeta": {
+    "placeholders": {
+      "priority": {
+        "type": "String"
+      }
+    }
+  },
+  "@taskProfileDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@taskSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@taskTenantFilter": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "@terminalFontSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@timeDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@timeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@timeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@updateAvailableTitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "@updateCheckUnavailable": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@updateFound": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "@updateMinimumVersion": {
+    "placeholders": {
+      "minimumVersion": {
+        "type": "String"
+      }
+    }
+  },
+  "@updateRequiredDefault": {
+    "placeholders": {
+      "currentVersion": {
+        "type": "String"
+      },
+      "minimumVersion": {
+        "type": "String"
+      }
+    }
+  },
+  "@updateVersionBuild": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      }
+    }
+  },
+  "@workspaceOpenPluginFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@workspaceOpenSessionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "@workspaceSessionResumeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutLicenses": "Open source licenses",
+  "aboutLicensesDescription": "View licenses for third-party software used by the app",
+  "aboutProductDescription": "The mobile client for Hermes Agent",
+  "aboutProductInfo": "Product information",
+  "aboutTitle": "About Hermes",
+  "appTitle": "Hermes Mobile",
+  "appearanceHaptics": "Haptic feedback",
+  "appearanceHapticsDesc": "Vibrate on send, errors, and completed tasks",
+  "appearanceHighContrast": "High contrast",
+  "appearanceHighContrastDesc": "Increase text and border contrast",
+  "appearanceKeepAwake": "Keep screen awake",
+  "appearanceKeepAwakeDesc": "Prevent the screen from sleeping while a chat is open",
+  "appearanceModeDark": "Dark",
+  "appearanceModeLight": "Light",
+  "appearanceModeSystem": "System",
+  "appearanceThemeColor": "Theme color",
+  "appearanceTitle": "Appearance",
+  "approvalRequests": "Approval requests",
+  "backendConnected": "Backend connected",
+  "backendDisconnected": "Backend disconnected",
+  "billingAccountBalance": "Account balance",
+  "billingAccountTab": "Account",
+  "billingAmountUsd": "Amount (USD)",
+  "billingAutoReload": "Auto reload",
+  "billingAutoReloadDescription": "Add credits when the balance falls below the threshold",
+  "billingAutoReloadDisabled": "Auto reload disabled",
+  "billingAutoReloadEnabled": "Auto reload enabled",
+  "billingAutoReloadUpdateFailed": "Could not update auto reload",
+  "billingAvailableCredits": "Available credits",
+  "billingCancelAtPeriodEnd": "Cancel subscription at period end",
+  "billingCancelAtPeriodEndDescription": "Current plan benefits remain available until the end of this period.",
+  "billingCancelAtPeriodEndQuestion": "Cancel at the end of the period?",
+  "billingCancelFailed": "Could not cancel subscription",
+  "billingChargeCompleted": "Credit purchase completed",
+  "billingChargeForbidden": "This account cannot purchase credits from the app",
+  "billingChargeIncomplete": "Credit purchase incomplete",
+  "billingConfirmCancellation": "Confirm cancellation",
+  "billingConfirmPurchase": "Confirm purchase",
+  "billingConfirmUpgrade": "Confirm the plan upgrade.",
+  "billingCreditsPerMonth": "{credits} credits/month",
+  "billingCurrent": "Current",
+  "billingDowngrade": "Downgrade",
+  "billingDowngradePeriodEnd": "The downgrade takes effect at the end of the current period.",
+  "billingGatewayMissing": "Not connected to the Hermes gateway",
+  "billingInvalidReloadValues": "Enter a valid threshold and reload amount",
+  "billingLoading": "Loading billing status...",
+  "billingLoadingPlans": "Loading plan catalog...",
+  "billingLoggedIn": "Signed in",
+  "billingLoggedOut": "Signed out",
+  "billingManageInPortal": "Manage in Portal",
+  "billingMaximumCharge": "Maximum ${amount}",
+  "billingMinimumCharge": "Minimum ${amount}",
+  "billingMonthlySpendingCap": "Monthly remote spending cap",
+  "billingNoActivePlan": "No active plan",
+  "billingNoPlans": "No plan catalog available",
+  "billingNoUsageData": "No usage data available",
+  "billingNoUsageDescription": "The gateway has not returned a Remote Spending usage model.",
+  "billingNotConnected": "Not connected to Hermes",
+  "billingNotProvided": "Not provided",
+  "billingNotSet": "Not set",
+  "billingOpenPortal": "Open Portal",
+  "billingOpenVerification": "Open verification page",
+  "billingPaymentIncomplete": "Payment incomplete",
+  "billingPaymentMethod": "Payment method",
+  "billingPaymentTimeout": "Payment status timed out. Check the result in Portal.",
+  "billingPending": "Pending",
+  "billingPendingCancellation": "Cancels on {date}",
+  "billingPendingDowngrade": "Downgrades to {name} on {date}",
+  "billingPerMonth": "{price}/month",
+  "billingPeriodEnd": "the end of the period",
+  "billingPlanAlreadyActive": "This plan is already active.",
+  "billingPlanChangeEffectiveAt": "The plan change takes effect on {date}.",
+  "billingPlanChangeFailed": "Could not change plan",
+  "billingPlanChangeForbidden": "This account cannot change plans",
+  "billingPlanChangePeriodEnd": "The plan change takes effect at the end of the current period.",
+  "billingPlanChangeUnavailable": "This change is currently unavailable.",
+  "billingPlanCredits": "Plan credits",
+  "billingPlansTab": "Plans",
+  "billingPortalMissing": "The server did not provide a billing Portal URL",
+  "billingPortalOpenFailed": "Could not open the billing Portal",
+  "billingPurchaseCredits": "Purchase credits",
+  "billingReloadAboveMaximum": "The reload amount exceeds the server maximum",
+  "billingReloadBelowMinimum": "The reload amount is below the server minimum",
+  "billingReloadTo": "Reload to",
+  "billingRemaining": "{amount} remaining",
+  "billingRenews": "Renews {date}",
+  "billingResumeFailed": "Could not undo the pending change",
+  "billingSaveAutoReload": "Save auto reload",
+  "billingSpentThisMonth": "Spent this month: {amount}",
+  "billingSwitchPlan": "Switch to {name}?",
+  "billingTitle": "Billing",
+  "billingTopupCredits": "Purchased credits",
+  "billingTriggerThreshold": "Trigger threshold",
+  "billingUnavailableForAccount": "Unavailable for this account",
+  "billingUpgradeAmount": "The upgrade takes effect immediately. Amount due now: ${amount}.",
+  "billingUpgradeChargeNow": "The upgrade takes effect immediately and incurs a charge.",
+  "billingUsageTab": "Usage",
+  "billingUsedOf": "Used {spent} of {total}",
+  "billingVerificationFailed": "Verification failed: {error}",
+  "billingVerificationIncomplete": "Verification is not complete. Try again shortly.",
+  "billingVerificationInstructions": "Complete verification in your browser to allow remote spending actions from this device.",
+  "billingVerificationRequired": "Additional verification required",
+  "billingVerificationStarting": "Starting verification...",
+  "billingVerificationSucceeded": "Verification succeeded. You can continue.",
+  "billingVerifyAndContinue": "Verify and continue",
+  "billingViewSubscriptionInPortal": "View your subscription in Portal.",
+  "chatAbsoluteServerPath": "Use an absolute path on the server",
+  "chatAddImage": "Add image",
+  "chatAddImageFailed": "Could not add image: {error}",
+  "chatAddedToQueue": "Added to queue ({count} pending)",
+  "chatAllDates": "All dates",
+  "chatAllHistoryShown": "All history is shown",
+  "chatApprovalManual": "Manual",
+  "chatApprovalManualDescription": "Confirm every step",
+  "chatApprovalMode": "Approval mode",
+  "chatApprovalModeFailed": "Could not set approval mode: {error}",
+  "chatApprovalModeSet": "Approval mode set to {mode}",
+  "chatApprovalOff": "Off",
+  "chatApprovalOffDescription": "Run without confirmation",
+  "chatApprovalSmart": "Smart",
+  "chatApprovalSmartDescription": "Ask only for risky actions",
+  "chatApprovalsUsage": "Usage: /approvals manual|smart|off",
+  "chatArtifactVersions": "All versions ({count})",
+  "chatAssistant": "Assistant",
+  "chatAttach": "Attach",
+  "chatAttachFiles": "Attach files",
+  "chatAttachLink": "Attach link",
+  "chatAttachmentUploadFailed": "Could not upload attachment: {error}",
+  "chatAutoRetried": "Automatically retried",
+  "chatBackToNewerMessages": "Back to newer messages",
+  "chatBackToWorkspace": "Back to workspace",
+  "chatBackgroundAgentRunning": "Background agent running · this turn will continue when it finishes",
+  "chatBackgroundAgentsRunning": "{count} background agents running · the turn will continue when they finish",
+  "chatBackgroundCount": "{count} background tasks",
+  "chatBackgroundPrompt": "Background task prompt",
+  "chatBackgroundSubmitFailed": "Could not submit background task: {error}",
+  "chatBackgroundSubmitted": "Background task submitted",
+  "chatBackgroundSubmittedWithId": "Background task submitted ({id})",
+  "chatBackgroundTaskCompleted": "{label} completed",
+  "chatBackgroundTaskFailed": "{label} failed",
+  "chatBasicToolsets": "Basic toolsets",
+  "chatBranch": "Branch",
+  "chatBranchChanges": "{branch} · {changedFiles} changed files",
+  "chatBranchCreated": "Branch session created",
+  "chatBranchCreatedWithId": "Branch session created ({id})",
+  "chatBranchFailed": "Could not create branch: {error}",
+  "chatBranchInNewSession": "Branch in new session",
+  "chatBranchedHere": "Branched from here",
+  "chatBranchedWithId": "Branched from here ({id})",
+  "chatBranchesLoadFailed": "Could not load branches: {error}",
+  "chatBrowseArtifactsDescription": "Browse artifacts generated in this session",
+  "chatBrowseFiles": "Browse file manager",
+  "chatBrowseFilesDescription": "Locate and select a directory in file manager",
+  "chatCancelKeyboardHint": "Cancel (Esc)",
+  "chatCatalogEmpty": "No servers available",
+  "chatChangeWorkspace": "Change workspace",
+  "chatChangeWorkspaceDescription": "The AI will read and modify files in the selected server directory",
+  "chatClosePreview": "Close preview",
+  "chatCollapseStatusDetails": "Collapse details",
+  "chatCollapseSubsessions": "collapse subsessions",
+  "chatCommandCompletedNoOutput": "Command completed with no output",
+  "chatCommandExecutionFailed": "Command execution failed",
+  "chatCommandFailed": "Command failed: {error}",
+  "chatCommandMessageQueued": "Message queued",
+  "chatCommandNoFillContent": "Nothing to fill in",
+  "chatCommandNoSendableContent": "Nothing to send",
+  "chatCommandQueued": "Command queued",
+  "chatCommandSearchHint": "Try a different search",
+  "chatCommandSearchFailed": "Couldn't load commands — check your connection",
+  "chatCommandStarting": "Command starting",
+  "chatCompositeToolsets": "Composite toolsets",
+  "chatCompressContext": "Compress",
+  "chatCompressionFailed": "Could not compress context: {error}",
+  "chatCompressionRequested": "Context compression requested",
+  "chatConfigureProvider": "Configure provider",
+  "chatConnecting": "Connecting",
+  "chatConnectionFailed": "Connection failed",
+  "chatContentFilled": "Content filled in",
+  "chatContextUsage": "Context usage",
+  "chatContextUsagePercent": "Context usage {percent}%",
+  "chatCopyAsMarkdown": "Copy as Markdown",
+  "chatCopyDiagnostics": "Copy diagnostics",
+  "chatCopySessionId": "Copy session ID",
+  "chatCopySessionLink": "Copy session link",
+  "chatCopyText": "Copy text",
+  "chatCreateScheduledTask": "Create scheduled task",
+  "chatCronSuggestion": "Detected a schedule: {phrase}",
+  "chatCurrentSessionArtifacts": "Artifacts in this session",
+  "chatCurrentSessionToolsets": "current session toolsets",
+  "chatCurrentlyActive": "Currently active",
+  "chatDeletePromptFailed": "Could not delete prompt: {error}",
+  "chatDeliveryUncertain": "Delivery uncertain",
+  "chatDiagnosticsCopied": "Diagnostics copied",
+  "chatDiagnosticsError": "Error: {error}",
+  "chatDiagnosticsModel": "Model: {provider} / {model}",
+  "chatDiagnosticsTime": "Time: {time}",
+  "chatDiagnosticsTitle": "Diagnostics",
+  "chatEditFailed": "Could not edit: {error}",
+  "chatEditMessageHint": "Edit message...",
+  "chatEditMessageKeyboardHint": "Edit message... (Enter to send, Shift+Enter for a new line)",
+  "chatEmptyDescription": "Streaming replies, tool calls, approvals, and clarifications, with full desktop parity.",
+  "chatEmptyTitle": "Start a conversation with Hermes",
+  "chatEnterOtherDirectory": "Enter another directory",
+  "chatEnterWorkspacePath": "Enter workspace path",
+  "chatErrorAuth": "Authentication error",
+  "chatErrorBilling": "Billing error",
+  "chatErrorNetwork": "Network error",
+  "chatErrorProvider": "Provider error",
+  "chatErrorRateLimit": "Rate limited",
+  "chatErrorReply": "Reply error",
+  "chatExecuting": "Executing…",
+  "chatExecutionFailed": "Execution failed: {error}",
+  "chatExpandStatusDetails": "Expand details",
+  "chatExpandSubsessions": "expand subsessions",
+  "chatFileTooLarge": "{name} exceeds the {maxMb} MB limit",
+  "chatFillRetry": "Retry",
+  "chatFindHint": "Find in this conversation",
+  "chatFindInConversation": "Find in conversation",
+  "chatFolderFilesAttached": "Attached {attached} files ({skipped} skipped)",
+  "chatFolderPickerUnavailable": "Folder selection is not available on this platform",
+  "chatForwardedToCommand": "Forwarded to {target}",
+  "chatGlobalCliToolsets": "global cli toolsets",
+  "chatGlobalToolsetsDescription": "Global CLI toolset switches; changes apply immediately",
+  "chatGoals": "Goals",
+  "chatHandingOffTo": "Handing off to {name}",
+  "chatHandoff": "Handoff",
+  "chatHandoffCompleted": "Completed",
+  "chatHandoffCompletedTo": "Session handed off to {name}",
+  "chatHandoffFailed": "Handoff failed: {error}",
+  "chatHandoffFailedStatus": "Failed",
+  "chatHandoffGatewayRunning": "Running",
+  "chatHandoffPlatformsFailed": "Could not load handoff platforms: {error}",
+  "chatHandoffTimeout": "Handoff timed out",
+  "chatHandoffToPlatform": "Hand off to platform",
+  "chatHandoffWaiting": "Waiting",
+  "chatHideStatus": "Hide",
+  "chatHistoryLocator": "history locator",
+  "chatHomeChannel": "Home channel: {name}",
+  "chatHomeChannelNotSet": "Home channel not set",
+  "chatHtmlPreview": "HTML preview",
+  "chatInflightRecovered": "Recovered an in-progress reply",
+  "chatInsufficientQuota": "Insufficient quota",
+  "chatInvalidCommandAlias": "Invalid command alias",
+  "chatJumpToTopic": "Jump to topic",
+  "chatLast24Hours": "Last 24 hours",
+  "chatLast7Days": "Last 7 days",
+  "chatLastTurnRetried": "Last turn retried",
+  "chatLastTurnUndone": "Last turn undone",
+  "chatLoadFailed": "Load failed",
+  "chatLoadOlderMessagesHint": "Scroll up to load older messages",
+  "chatLoadingCommands": "Loading commands…",
+  "chatLocalCommands": "Local commands",
+  "chatLocateTopic": "Locate topic",
+  "chatLongPressCodingStatus": "Long-press the coding status to switch branch or start a worktree",
+  "chatMarkMessage": "Mark message",
+  "chatMarkdownCopied": "Copied as Markdown",
+  "chatMarkedOnly": "Marked only",
+  "chatMessageCount": "{count} messages",
+  "chatModel": "Model",
+  "chatModelSwitchDeferred": "Model switch will take effect next turn",
+  "chatModelSwitchFailed": "Could not switch model: {error}",
+  "chatModelsLoadFailed": "Could not load models: {error}",
+  "chatMonthDay": "{month}/{day}",
+  "chatMyMessages": "My messages",
+  "chatNewSessionOpened": "New session opened",
+  "chatNewWorktreeDescription": "Create a new git worktree",
+  "chatNoActiveTurnQueued": "No active turn — queued instead",
+  "chatNoConfigurableToolsets": "The backend has no configurable toolsets",
+  "chatNoContextData": "No context data",
+  "chatNoHandoffPlatforms": "No handoff platforms",
+  "chatNoHandoffPlatformsDescription": "No platforms are connected for handoff yet",
+  "chatNoMatchingCommands": "No matching commands",
+  "chatNoMatchingMessages": "No matching messages",
+  "chatNoProfiles": "The backend has no profiles to switch to",
+  "chatNoQueuedMessages": "No queued messages",
+  "chatNoRetryMessage": "No message to retry",
+  "chatNoSavedPrompts": "No saved prompts yet",
+  "chatNoSessions": "No sessions",
+  "chatNoText": "No text content",
+  "chatNoUploadableFolderFiles": "No uploadable files in this folder",
+  "chatNotConfigured": "Not configured",
+  "chatNotConnected": "Not connected",
+  "chatOlderMessagesLoadFailed": "Could not load older messages; tap to retry",
+  "chatPendingRequests": "{kind} (+{count} pending)",
+  "chatPlanProgress": "{completed}/{total} completed",
+  "chatPreviewCount": "{count} previews",
+  "chatProfileSwitchFailed": "Could not switch profile: {error}",
+  "chatProfileSwitched": "Switched to “{profile}”",
+  "chatProfilesLoadFailed": "Could not load profiles: {error}",
+  "chatPromptSaved": "Prompt saved",
+  "chatProvider": "Provider",
+  "chatQueue": "Queue",
+  "chatQueueFailed": "Could not queue: {error}",
+  "chatQueuePaused": "Paused",
+  "chatQueueSummary": "{label} · {count} · {expandLabel}",
+  "chatQueueUsage": "Enter something to queue",
+  "chatQueued": "Queued",
+  "chatQueuedMessageUpdated": "Queued message updated",
+  "chatQueuedMinutesAgo": "Queued {minutes} min ago",
+  "chatQueuedSecondsAgo": "Queued {seconds} sec ago",
+  "chatReasoningEffort": "reasoning effort",
+  "chatReasoningEffortDescription": "Update the backend reasoning effort setting",
+  "chatReasoningEffortSet": "Reasoning effort set to {value}",
+  "chatReasoningEffortSetFailed": "Could not set reasoning effort: {error}",
+  "chatReconnecting": "Reconnecting",
+  "chatRegenerate": "Regenerate",
+  "chatRegenerateFailed": "Could not regenerate: {error}",
+  "chatRegenerateTitle": "Regenerate title",
+  "chatRegenerateTitleFailed": "Could not regenerate title: {error}",
+  "chatRename": "Rename",
+  "chatRenameSession": "Rename session",
+  "chatRequestApproval": "Approval",
+  "chatRequestMcpConfig": "MCP setup",
+  "chatRequestPassword": "Password",
+  "chatRequestQuestion": "Question",
+  "chatRequestSecret": "Secret",
+  "chatRequestTerminalInput": "Terminal input",
+  "chatRestoreAndRerun": "Restore and rerun",
+  "chatRestoreFailed": "Could not restore: {error}",
+  "chatRestoreToMessage": "Restore to this message",
+  "chatRestoreToMessageTitle": "Restore to this message?",
+  "chatRestoreVersionTitle": "Restore this version?",
+  "chatRetryFailed": "Retry failed: {error}",
+  "chatRunInBackground": "Run in background",
+  "chatSaveCurrentInput": "Save current input",
+  "chatSavePromptFailed": "Could not save prompt: {error}",
+  "chatSavedPrompts": "Saved prompts",
+  "chatSavedPromptsLoadFailed": "Could not load saved prompts: {error}",
+  "chatScrollToBottom": "Scroll to bottom",
+  "chatSearchLoadedHistory": "Search loaded history",
+  "chatSelectFilesFailed": "Could not select files: {error}",
+  "chatSelectFolder": "Select folder",
+  "chatSelectFolderFailed": "Could not select folder: {error}",
+  "chatSelectProfile": "select profile",
+  "chatSelectProfileDescription": "Choose the profile used for home data and future launches",
+  "chatSendDiagnostics": "Send diagnostics",
+  "chatSendEdit": "send edit",
+  "chatSendEditAndRerun": "Send edit and rerun",
+  "chatSendEditTitle": "Send edited message?",
+  "chatSendFailed": "Could not send: {error}",
+  "chatSendNow": "Send now",
+  "chatSendQueue": "Send queue",
+  "chatSendQueueCount": "Send queue ({count})",
+  "chatServerCatalog": "Server catalog",
+  "chatServerDirectory": "server directory",
+  "chatServerDirectoryHelp": "The directory must exist and be accessible to the server account",
+  "chatServerNotConnected": "Server not connected",
+  "chatSessionCleared": "Session cleared",
+  "chatSessionIdCopied": "Session ID copied",
+  "chatSessionInfo": "Session info",
+  "chatSessionMenu": "Session menu",
+  "chatSessionShareLinkCopied": "Session share link copied",
+  "chatSessionToolsetsDescription": "Session toolsets (only affect this session)",
+  "chatSessions": "Sessions",
+  "chatSetAsNext": "Queue next",
+  "chatSetTitleFailed": "Could not set title: {error}",
+  "chatShareLinkFailed": "Could not get share link: {error}",
+  "chatShareUrlMissing": "No share link was returned",
+  "chatSkillsCenter": "Skills center",
+  "chatSlashCommands": "Slash commands",
+  "chatStartSessionBeforeWorkspace": "Start a session before changing workspace",
+  "chatStarterDebugIssue": "Help me debug",
+  "chatStarterDebugIssuePrompt": "I ran into a problem. Help me outline a debugging approach first.",
+  "chatStarterExplainProject": "Explain this project",
+  "chatStarterExplainProjectPrompt": "Give me a quick overview of this project's structure, core features, and how to run it.",
+  "chatStarterReviewChanges": "Review current changes",
+  "chatStarterReviewChangesPrompt": "Review the current workspace changes, identify potential issues, and suggest improvements.",
+  "chatSteerCurrentTurn": "Steer current turn",
+  "chatSteerHint": "Steering message",
+  "chatSteerInjected": "Steering message injected",
+  "chatSteerMessage": "Steer",
+  "chatSteerNowFailed": "Could not steer now: {error}",
+  "chatSteerQueued": "Steering message queued",
+  "chatSteerUsage": "Enter something to steer with",
+  "chatStopProcess": "Stop",
+  "chatStopProcessFailed": "Could not stop process: {error}",
+  "chatSubagentCount": "{count} subagents",
+  "chatTextSnippet": "Text snippet",
+  "chatTextSnippetHint": "Paste or type text",
+  "chatTitle": "Hermes Chat",
+  "chatTitleSet": "Title set to “{title}”",
+  "chatTitleUnchanged": "Title unchanged",
+  "chatTitleUpdated": "Title updated to “{title}”",
+  "chatToday": "today",
+  "chatToolConfiguration": "tool configuration",
+  "chatToolCount": "{count} tools",
+  "chatToolStatusMessage": "Tool status message",
+  "chatToolsetCounts": "Session: {sessionCount} · Global: {globalCount}",
+  "chatToolsetToggleFailed": "Could not toggle {name}: {error}",
+  "chatToolsetsEnabled": "{globalCount} toolsets enabled",
+  "chatToolsetsExplanation": "Current session toolsets are registered and usable by Hermes Agent in this session.\nGlobal CLI toolsets are configured globally and may not all be loaded in this session.",
+  "chatToolsetsLoadFailed": "toolsets load failed",
+  "chatTopicNumber": "Topic {index}",
+  "chatTopicRailSemantics": "{count} topics",
+  "chatTranscriptLoadFailed": "Could not load chat history",
+  "chatTruncateWarning": "This will delete all subsequent messages and cannot be undone",
+  "chatUndoFailed": "Could not undo: {error}",
+  "chatUnknownCommandResult": "Unknown command result",
+  "chatUnknownTime": "Unknown time",
+  "chatUnmarkMessage": "Unmark message",
+  "chatUntitled": "Untitled session",
+  "chatUntitledSession": "Untitled session",
+  "chatVersion": "Version",
+  "chatVersionCount": "{count} versions",
+  "chatVersionLoadFailed": "Could not load versions: {error}",
+  "chatVersionNumber": "Version {index}",
+  "chatViewBilling": "View billing",
+  "chatViewCleared": "View cleared",
+  "chatWakeServiceUnavailable": "Wake word service unavailable",
+  "chatWakeVoiceFailed": "Wake word failed: {error}",
+  "chatWarning": "Warning: {warning}",
+  "chatWorkingDirectory": "Working directory",
+  "chatWorkspace": "Workspace",
+  "chatWorkspaceFiles": "workspace files",
+  "chatWorkspaceSwitchFailed": "Could not change workspace: {error}",
+  "chatWorkspaceSwitched": "Workspace changed to {name}",
+  "chatYesterday": "yesterday",
+  "chatYoloDisabled": "YOLO mode disabled",
+  "chatYoloEnabled": "YOLO mode enabled",
+  "chatYoloMode": "YOLO mode",
+  "chatYoloToggleFailed": "Could not toggle YOLO mode: {error}",
+  "appSessionCompletedTitle": "Session completed",
+  "appSessionCompletedBody": "A background session completed. Tap to view the result.",
+  "appOpenNotificationFailed": "Could not open the notification session: {error}",
+  "deepLinkPluginInstallTitle": "Install Hermes plugin",
+  "deepLinkPluginInstallPrompt": "This link requests installation of a backend plugin from:",
+  "deepLinkLegacyPluginWarning": "This is a legacy Desktop plugin link. Mobile installs only its backend Agent capabilities.",
+  "deepLinkEnableAfterInstall": "Enable after installation",
+  "deepLinkForceReinstall": "Force reinstall",
+  "deepLinkInstall": "Install",
+  "deepLinkPluginInstalling": "Installing {identifier}...",
+  "deepLinkPluginInstalled": "Plugin installed",
+  "deepLinkPluginInstallFailed": "Plugin installation failed: {error}",
+  "deepLinkMcpAddTitle": "Add MCP server",
+  "deepLinkMcpServerName": "Server name",
+  "deepLinkMcpNameFormatError": "Use 1-64 letters, numbers, periods, underscores, or hyphens",
+  "deepLinkMcpNameConflict": "That name already exists. Choose another name.",
+  "deepLinkMcpCommandWarning": "This configuration runs a local command on the Hermes backend. Continue only if you trust the source.",
+  "deepLinkConfigPreview": "Configuration preview",
+  "deepLinkMcpAdded": "MCP server {name} added",
+  "deepLinkMcpAddFailed": "Could not add MCP server: {error}",
+  "commonAdd": "Add",
+  "commonAll": "All",
+  "commonAuthorize": "Authorize",
+  "commonBack": "Back",
+  "commonCancel": "Cancel",
+  "commonCancelAll": "Cancel all",
+  "commonClose": "Close",
+  "commonCollapse": "Collapse",
+  "commonCompleted": "Completed",
+  "commonConfirm": "Confirm",
+  "commonConnected": "Connected",
+  "commonContinue": "Continue",
+  "commonCopied": "Copied",
+  "commonCreate": "Create",
+  "commonDefault": "Default",
+  "commonDelete": "Delete",
+  "commonDisconnect": "Disconnect",
+  "commonDisconnected": "Disconnected",
+  "commonDone": "Done",
+  "commonEdit": "Edit",
+  "commonErrorTitle": "Something went wrong",
+  "commonAuthenticationFailed": "Authentication failed. Check the API key.",
+  "commonExpand": "Expand",
+  "commonFile": "File",
+  "commonFolder": "Folder",
+  "commonGotIt": "Got it",
+  "commonHide": "Hide",
+  "commonIdle": "Idle",
+  "commonIgnore": "Ignore",
+  "commonLater": "Later",
+  "commonListSeparator": ", ",
+  "commonLoading": "Loading...",
+  "commonManage": "Manage",
+  "commonMore": "More",
+  "commonName": "Name",
+  "commonNew": "New",
+  "commonNext": "Next",
+  "commonNoMatches": "No matches",
+  "commonNotifications": "Notifications",
+  "commonOffline": "Offline",
+  "commonOnline": "Online",
+  "commonOperationFailed": "The operation failed. Try again.",
+  "commonNetworkFailed": "Unable to reach the server. Check the network and server status.",
+  "commonOpen": "Open",
+  "commonPrevious": "Previous",
+  "commonProcessing": "Processing...",
+  "commonReauthorize": "Reauthorize",
+  "commonRefresh": "Refresh",
+  "commonReload": "Reload",
+  "commonReset": "Reset",
+  "commonRestart": "Restart",
+  "commonRetry": "Retry",
+  "commonRun": "Run",
+  "commonRunning": "Running",
+  "commonSave": "Save",
+  "commonSearch": "Search",
+  "commonSelect": "Select",
+  "commonSend": "Send",
+  "commonStop": "Stop",
+  "commonSubmit": "Submit",
+  "commonSwitch": "Switch",
+  "commonTitle": "Title",
+  "commonUndo": "Undo",
+  "commonUnknownError": "Unknown error",
+  "commonViewAll": "View all",
+  "configAppliesToProfile": "Applies to profile",
+  "configConnectionLabel": "Connection",
+  "configCurrentProfile": "the current profile",
+  "configDefaultProcessProfile": "Default / process profile",
+  "configDeleteFailed": "Could not remove override: {error}",
+  "configFullJson": "Full JSON",
+  "configInvalidFieldValue": "Invalid value for {path}: {error}",
+  "configInvalidJson": "Invalid JSON: {error}",
+  "configListJsonError": "Value must be a JSON array",
+  "configLoading": "Loading configuration and schema...",
+  "configNoMatches": "No matching fields",
+  "configObjectJsonError": "Value must be a JSON object",
+  "configRemoveOverride": "Remove override and use the default value",
+  "configRestore": "Restore",
+  "configRestoreDefaults": "Restore defaults",
+  "configRestoreDefaultsDescription": "This applies to {profile}. Existing custom values will be replaced by defaults.",
+  "configRestoreDefaultsQuestion": "Restore the default Hermes configuration?",
+  "configSaveFailed": "Could not save: {error}",
+  "providerEndpointValidationFailed": "Endpoint validation failed",
+  "kanbanMoveSelected": "Move selected tasks",
+  "kanbanClearSelection": "Clear task selection",
+  "configSearchHint": "Search configuration fields...",
+  "configServerDidNotDelete": "The server did not remove {path}",
+  "configServerMismatch": "The server returned content that differs from the submitted full configuration",
+  "configServerRejected": "The server did not accept {path}; the server value has been restored.",
+  "configTitle": "Hermes Config",
+  "configTopLevelObject": "The top-level JSON value must be an object",
+  "configUseDefault": "Default",
+  "connectAction": "Connect",
+  "connectAddHeader": "Add request header",
+  "connectAllowPublicHttp": "Allow public cleartext HTTP",
+  "connectAllowPublicHttpWarning": "Use only on a trusted network where HTTPS is unavailable; tokens may be intercepted",
+  "connectApiKey": "API key",
+  "connectConfiguration": "Connection configuration",
+  "connectConnecting": "Connecting…",
+  "connectCredentialRequired": "Enter an access credential",
+  "connectDeleteHeader": "Delete request header",
+  "connectDeleteProfile": "Delete configuration",
+  "connectDiscoverCloud": "Discover an agent from Hermes Cloud",
+  "connectExtraHeaders": "Additional request headers",
+  "connectHeaderManaged": "Managed by Hermes",
+  "connectHeaderName": "Header name",
+  "connectHeaderNameInvalid": "Invalid name",
+  "connectHeaderValue": "Value",
+  "connectHeaderValueRequired": "Enter a value",
+  "connectHeadersDescription": "Optional access-proxy headers. Values are stored in secure system storage.",
+  "connectHideKey": "Hide key",
+  "connectHidePassphrase": "Hide passphrase",
+  "connectHidePassword": "Hide password",
+  "connectHidePrivateKey": "Hide private key",
+  "connectHideValue": "Hide value",
+  "connectHttpsRequired": "Public connections require HTTPS unless insecure transport is explicitly allowed",
+  "connectNativeCleartextRestricted": "Release builds allow cleartext only for localhost or .local companion names. Use HTTPS or a .local hostname.",
+  "connectNotSignedIn": "Not signed in",
+  "connectOauthSignedIn": "Signed in with OAuth",
+  "connectPkceUnavailable": "This gateway does not support native_pkce sign-in. Update Hermes or use a token.",
+  "connectPort": "Port",
+  "connectPrivateKey": "OpenSSH / PEM private key",
+  "connectPrivateKeyPassphrase": "Private key passphrase (optional)",
+  "connectProfileName": "Configuration name (defaults to host name)",
+  "connectProfileNameInvalid": "Invalid profile name",
+  "connectRemoteHermesPath": "Remote Hermes path (auto-detect)",
+  "connectRemoteProfile": "Remote profile (optional)",
+  "connectSaveProfile": "Save as a server configuration",
+  "connectSaveProfileDescription": "Switch to it from the saved list next time",
+  "connectSavedBackends": "Saved backends",
+  "connectServerAddress": "Server address",
+  "connectServerInvalid": "Enter a valid HTTP(S) address",
+  "connectServerRequired": "Enter a server address",
+  "connectShowKey": "Show key",
+  "connectShowPassphrase": "Show passphrase",
+  "connectShowPassword": "Show password",
+  "connectShowPrivateKey": "Show private key",
+  "connectShowValue": "Show value",
+  "connectSignIn": "Sign in",
+  "connectSignInAgain": "Sign in again",
+  "connectSshCredentialRequired": "Enter a private key or password",
+  "connectSshHost": "SSH host",
+  "connectSshHostRequired": "Enter an SSH host",
+  "connectSshPassword": "SSH password (optional)",
+  "connectSshUser": "SSH user",
+  "connectSshUserRequired": "Enter an SSH user",
+  "connectTitle": "Connection",
+  "connectUnableServer": "Could not connect to the server",
+  "connectValidationFailed": "Connection validation failed. Check the server address and API key.",
+  "connectValidationNetworkFailed": "Connection validation failed. Check the server address, API key, and network.",
+  "dateMonthDay": "{month}/{day}",
+  "dateToday": "Today",
+  "dateYesterday": "Yesterday",
+  "discordCommunityTitle": "Join the Discord community",
+  "featureAbout": "About",
+  "featureAboutDesc": "Version information",
+  "featureAgent": "Agent",
+  "featureAgentDesc": "Runtime and backend status",
+  "featureArtifacts": "Artifacts",
+  "featureArtifactsDesc": "Session outputs",
+  "featureBilling": "Billing",
+  "featureBillingDesc": "Usage, plans and invoices",
+  "featureCommandCenter": "Command center",
+  "featureCommandCenterDesc": "Live status and logs",
+  "featureConnection": "Connection",
+  "featureConnectionDesc": "Multiple backend profiles",
+  "featureCredentials": "Credentials",
+  "featureCredentialsDesc": "Third-party accounts and keys",
+  "featureCron": "Scheduled tasks",
+  "featureCronDesc": "Cron automation",
+  "featureFiles": "Files",
+  "featureFilesDesc": "Browse the working directory",
+  "featureGit": "Git",
+  "featureGitDesc": "Changes, commits and branches",
+  "featureGlobalSearchDesc": "Search commands, sessions and pages",
+  "featureInsights": "Insights",
+  "featureInsightsDesc": "Usage and cost trends",
+  "featureMcp": "MCP",
+  "featureMcpDesc": "MCP server configuration",
+  "featureMemory": "Memory",
+  "featureMemoryDesc": "Long-term memory management",
+  "featureMessaging": "Messaging",
+  "featureMessagingDesc": "Telegram, Discord and more",
+  "featureNotificationsDesc": "Notification center",
+  "featurePet": "Pet",
+  "featurePetDesc": "Companion and collection",
+  "featurePlugins": "Plugins",
+  "featurePluginsDesc": "Plugin management",
+  "featureProfiles": "Profiles",
+  "featureProfilesDesc": "Model execution profiles",
+  "featureProjects": "Projects",
+  "featureProjectsDesc": "Group sessions across projects",
+  "featureSettings": "Settings",
+  "featureSettingsDesc": "Appearance and preferences",
+  "featureSkills": "Skills",
+  "featureSkillsDesc": "Skill hub",
+  "featureStarmap": "Knowledge starmap",
+  "featureStarmapDesc": "Keyword knowledge graph",
+  "featureSubagents": "Subagents",
+  "featureSubagentsDesc": "Background agent activity",
+  "featureTerminal": "Terminal",
+  "featureTerminalDesc": "Interactive command line",
+  "featureTools": "Toolsets",
+  "featureToolsDesc": "Tools and keys",
+  "featureWebhooks": "Webhooks",
+  "featureWebhooksDesc": "Event delivery",
+  "gitAgentShipFailed": "Agent Ship failed: {error}",
+  "gitAgentShipPrompt": "Review the current changes, commit them with a clear conventional commit message, push the branch, and open a pull request.",
+  "gitAgentShipQuestion": "Have the Agent commit and push changes, then create a PR?",
+  "gitAgentShipSent": "Sent the commit-and-create-PR task to Hermes",
+  "gitAuthor": "Author",
+  "gitAuthorMeta": "Author: {author}",
+  "gitBaseBranch": "Base branch",
+  "gitBranchMeta": "Branch: {branch}",
+  "gitBranchesTab": "Branches",
+  "gitChangeDirectory": "Change directory",
+  "gitChangedFiles": "Changed files",
+  "gitChangedFilesLabel": "Changed files:",
+  "gitChangesTab": "Changes",
+  "gitCommit": "Commit",
+  "gitCommitChanges": "Commit changes",
+  "gitCommitDetails": "Commit details",
+  "gitCommitFailed": "Commit failed: {error}",
+  "gitCommitMessage": "Commit message",
+  "gitCommitsTab": "Commits",
+  "gitCreatePr": "Create PR",
+  "gitCreatePrFailed": "Could not create PR: {error}",
+  "gitCreatePrQuestion": "Create or open a pull request for the current branch with GitHub CLI?",
+  "gitCreateWorktreeFailed": "Could not create worktree: {error}",
+  "gitCurrent": "Current",
+  "gitDeleteWorktreeDescription": "This deletes the working directory {path} and its uncommitted changes. It cannot be recovered.",
+  "gitDeleteWorktreeFailed": "Could not delete worktree: {error}",
+  "gitDeleteWorktreeQuestion": "Delete worktree?",
+  "gitDetachedHead": "(detached HEAD)",
+  "gitDiffLoadFailed": "Could not load diff: {error}",
+  "gitEndOfLog": "— End of log —",
+  "gitForceDelete": "Force delete",
+  "gitForceDeleteWorktreeQuestion": "Force delete and discard these changes?",
+  "gitGenerateCommitMessage": "Generate commit message",
+  "gitGenerateMessageFailed": "Could not generate commit message: {error}",
+  "gitGithubCliUnavailable": "GitHub CLI is not installed or signed in on the backend",
+  "gitHoursAgo": "{count} hr ago",
+  "gitJustNow": "just now",
+  "gitLoadMore": "Load more ({loaded}/{total})",
+  "gitLoadingBranches": "Loading branches...",
+  "gitLoadingLog": "Loading commit log...",
+  "gitLoadingStatus": "Loading repository status...",
+  "gitLocalBranches": "Local branches",
+  "gitLogLoadFailed": "Could not load commit log: {error}",
+  "gitMainWorktree": "Main",
+  "gitMinutesAgo": "{count} min ago",
+  "gitNewWorktree": "New worktree",
+  "gitNoAdditionalWorktrees": "No additional worktrees",
+  "gitNoBranches": "No branches available",
+  "gitNoBranchesDescription": "Select a Git repository and try again.",
+  "gitNoCommits": "No commits",
+  "gitNoCommitsDescription": "This repository has no commits, or no commits match the current filters",
+  "gitNoDiff": "No diff",
+  "gitNoDiffDescription": "This file does not differ from HEAD",
+  "gitNoMatchingBranches": "No matching branches",
+  "gitNoStashes": "No stashes",
+  "gitNoVisibleRemotes": "No visible remotes",
+  "gitNotRepository": "Not a Git repository",
+  "gitNotRepositoryDescription": "{path}\n\nUse the button below to change directory",
+  "gitOpenInNewSession": "Open in new session",
+  "gitOpenPr": "Open PR #{number}",
+  "gitOpenedInNewSession": "Opened {path} in a new session",
+  "gitParent": "parent",
+  "gitPrCreated": "PR created",
+  "gitPrNumber": "Number: #{number}",
+  "gitPushAfterCommit": "Push after commit",
+  "gitPushAction": "Push {count} commit(s)",
+  "gitPushSucceeded": "Pushed to remote",
+  "gitPushFailed": "Push failed: {error}",
+  "gitRecentRepositories": "Recent repositories",
+  "gitRemotes": "Remotes",
+  "gitRemotesAndStashes": "Remotes and stashes",
+  "gitRepositoryDirectory": "Repository directory",
+  "gitRevert": "Revert",
+  "gitRevertAll": "Revert all",
+  "gitRevertAllDescription": "This discards all uncommitted working-tree changes and cannot be undone.",
+  "gitRevertAllQuestion": "Revert all changes?",
+  "gitRevertFailed": "Revert failed: {error}",
+  "gitRevertFile": "Revert this file",
+  "gitRevertFileDescription": "This discards uncommitted changes to “{file}” and cannot be undone.",
+  "gitRevertFileQuestion": "Revert this file?",
+  "gitSearchBranches": "Search branches...",
+  "gitSearchCommits": "Search commit messages",
+  "gitSelectFileForDiff": "Select a file to view its diff",
+  "gitSelectFileForDiffDescription": "Select a changed file on the left to view its diff here",
+  "gitServerRepositoryPath": "Repository path on server",
+  "gitStage": "Stage",
+  "gitStageFailed": "Staging operation failed: {error}",
+  "gitStagedChanges": "Staged · +{added} −{removed}",
+  "gitStashes": "Stashes",
+  "gitSwitch": "Switch",
+  "gitSwitchBranch": "Switch branch",
+  "gitSwitchBranchFailed": "Could not switch branch: {error}",
+  "gitUnknownAuthor": "Unknown",
+  "gitUnstage": "Unstage",
+  "gitWorkingTreeClean": "Working tree clean; no changes",
+  "gitWorktreeHasChanges": "The worktree has uncommitted changes",
+  "gitWorktreeNameHint": "For example, feature-login",
+  "gitWorktrees": "Worktrees",
+  "globalSearch": "Global search",
+  "groupConfiguration": "Configuration",
+  "groupIntegrations": "Integrations",
+  "groupIntelligence": "Intelligence",
+  "groupSystem": "System",
+  "groupWorkspace": "Workspace",
+  "helpAndFeedbackTitle": "Help and feedback",
+  "homeAllFeatures": "All features",
+  "homeAttentionDetail": "The agent may be waiting for your confirmation",
+  "homeBackendSummary": "Backend connected · {model} · Profile: {profile}",
+  "homeContinueSession": "Continue “{title}”",
+  "homeContinueWork": "Continue your work",
+  "homeCurrentWork": "Current work",
+  "homeDefaultProfile": "Default",
+  "homeDragToReorder": "Drag to reorder",
+  "homeEditQuickTools": "Edit quick tools",
+  "homeLastVisibleTool": "Last tool shown on Home",
+  "homeLoadingRecent": "Loading recent work…",
+  "homeMoreTools": "More tools",
+  "homeNeedsAttention": "{count, plural, =1{1 item needs attention} other{{count} items need attention}}",
+  "homeNoWorkDescription": "Describe a goal above to start your first task",
+  "homeNoWorkTitle": "No work history yet",
+  "homeProfileTooltip": "Profile: {profile}",
+  "homeQuickTools": "Quick tools",
+  "homeQuickToolsDescription": "The first 5 tools appear on Home. The rest are available under More.",
+  "homeReadyTitle": "Hermes is ready",
+  "homeRecentSessions": "Recent sessions",
+  "homeRestoreDefaults": "Restore defaults",
+  "homeStartNewSession": "Start new session",
+  "homeSwitchProfile": "Switch profile",
+  "homeToolKnowledge": "Knowledge",
+  "homeViewAttentionSessions": "View pending sessions",
+  "homeViewSession": "View session",
+  "homeWorkingDetail": "Processing the current task · {model}",
+  "homeWorkingTitle": "Hermes is working",
+  "languageArabic": "Arabic",
+  "languageDescription": "Choose the language used by Hermes Mobile",
+  "languageEnglish": "English",
+  "languageJapanese": "Japanese",
+  "languageSimplifiedChinese": "Simplified Chinese",
+  "languageSystem": "System default",
+  "languageTitle": "Language",
+  "languageTraditionalChinese": "Traditional Chinese",
+  "legalPrivacy": "Privacy policy",
+  "legalTerms": "Terms of service",
+  "legalTitle": "Legal and licenses",
+  "modelAllFollowMain": "Make all follow main model",
+  "modelApply": "Apply",
+  "modelAuxiliarySaveFailed": "Could not save auxiliary model: {error}",
+  "modelAuxiliaryTitle": "Auxiliary models",
+  "modelAuxiliaryUnavailable": "This Hermes backend does not provide auxiliary model configuration.",
+  "modelChoose": "Choose model",
+  "modelConfirmSelection": "Confirm model selection",
+  "modelCreate": "Create",
+  "modelCurrent": "In use",
+  "modelDefaultTitle": "Default model",
+  "modelExpensiveWarning": "This model may incur higher costs. Continue?",
+  "modelFallbackHint": "fallback_providers (one provider:model per line)",
+  "modelFallbackTitle": "Fallback models",
+  "modelFollowMain": "Follow main model",
+  "modelLabel": "Model",
+  "modelMoaAddReference": "Add reference model",
+  "modelMoaAggregator": "Aggregator",
+  "modelMoaAggregatorMaxTokens": "Aggregator output limit",
+  "modelMoaAggregatorModel": "Aggregator model",
+  "modelMoaAggregatorSummary": "Aggregator: {provider} · {model}",
+  "modelMoaAggregatorTemperature": "Aggregator temperature",
+  "modelMoaCompleteModels": "Complete all model selections",
+  "modelMoaCreatePreset": "Create MoA preset",
+  "modelMoaCreateTooltip": "Create preset",
+  "modelMoaDefaultPreset": "Default preset",
+  "modelMoaDegradedLoud": "Report degradation",
+  "modelMoaDegradedPolicy": "Degraded policy",
+  "modelMoaDegradedSilent": "Silent degradation",
+  "modelMoaDeleteTooltip": "Delete preset",
+  "modelMoaDescription": "Reference models answer in parallel and the aggregator produces the final result",
+  "modelMoaEditConfiguration": "Edit configuration",
+  "modelMoaEditTitle": "Edit {name}",
+  "modelMoaEnablePreset": "Enable preset",
+  "modelMoaFanoutCadence": "Fanout cadence",
+  "modelMoaFanoutHint": "user_turn / per_iteration / every_n:2",
+  "modelMoaNoEditable": "There are no editable MoA presets.",
+  "modelMoaPresetLabel": "Preset",
+  "modelMoaReferenceCount": "{count} reference models",
+  "modelMoaReferenceMaxTokens": "Reference output limit",
+  "modelMoaReferenceModels": "Reference models",
+  "modelMoaReferenceNumber": "Reference {index}",
+  "modelMoaReferenceTemperature": "Reference temperature",
+  "modelMoaReferenceTimeout": "Reference timeout (seconds)",
+  "modelMoaRuntimeParameters": "Runtime parameters",
+  "modelMoaSaveConfiguration": "Save configuration",
+  "modelMoaSaveFailed": "Could not save MoA configuration: {error}",
+  "modelMoaSetDefault": "Set as default",
+  "modelMoaUnavailable": "This Hermes backend does not provide MoA configuration.",
+  "modelNoAvailable": "No models available",
+  "modelPresetName": "Name",
+  "modelProvider": "Provider",
+  "modelProviderNotFound": "Could not find the provider for this model",
+  "modelRecommended": "Recommended: {model}",
+  "modelRemove": "Remove",
+  "modelSwitchDeferred": "Model switch queued and will apply after the current turn",
+  "modelSwitchFailed": "Could not switch model: {error}",
+  "modelSwitchSucceeded": "Switched to {model}",
+  "moreCloseSearch": "Close directory search",
+  "moreNoMatches": "No matching features",
+  "moreSearchDirectory": "Search directory",
+  "moreSearchHint": "Search features",
+  "moreStatus": "{connection} · Agent {agent}",
+  "navHome": "Home",
+  "navMore": "More",
+  "navSessions": "Sessions",
+  "navTasks": "Tasks",
+  "notificationClear": "Clear",
+  "notificationClearConfirmTitle": "Clear all notifications?",
+  "notificationClearConfirmBody": "This removes every notification from this list. It can't be undone.",
+  "notificationEmptyDescription": "Agent completions, approvals, and errors appear here",
+  "notificationEmptyTitle": "No notifications",
+  "notificationMarkAllRead": "Mark all read",
+  "notificationOpenFailed": "Could not open session: {error}",
+  "notificationOpenSession": "View session",
+  "notificationTitle": "Notifications",
+  "paletteHint": "Search pages, sessions, and commands…",
+  "paletteHintClose": "Close",
+  "paletteHintNavigate": "Navigate",
+  "paletteHintOpen": "Open",
+  "paletteKanban": "Kanban",
+  "paletteKindAction": "Action",
+  "paletteKindCommand": "Command",
+  "paletteKindPage": "Page",
+  "paletteKindSession": "Session",
+  "paletteNewSessionDesc": "Start a new conversation",
+  "paletteNoResults": "No matching results",
+  "paletteReconnect": "Reconnect",
+  "paletteReconnectDesc": "Reconnect to the server",
+  "paletteVoiceInput": "Voice input",
+  "paletteVoiceInputDesc": "Start voice dictation",
+  "pluginActionFailed": "{title} failed: {error}",
+  "pluginFieldInvalidNumber": "Enter a valid number",
+  "pluginFieldMaximum": "Maximum value: {value}",
+  "pluginFieldMinimum": "Minimum value: {value}",
+  "pluginFieldRequired": "This field is required",
+  "pluginItemFallback": "Item {index}",
+  "pluginNoItems": "No items",
+  "pluginResultCopied": "Result copied",
+  "pluginResultCopy": "Copy result",
+  "pluginResultOpenLink": "Open link",
+  "pluginSubmit": "Submit",
+  "previewActionSendFailed": "Could not send preview action: {error}",
+  "previewActionSent": "Preview action sent: {prompt}",
+  "previewBack": "Back",
+  "previewClearConsole": "Clear console",
+  "previewCloseConsole": "Close console",
+  "previewConsoleTitle": "Console",
+  "previewEmpty": "Open a link in chat or select an HTML file",
+  "previewFailed": "Preview failed: {error}",
+  "previewForward": "Forward",
+  "previewNoLogs": "No logs",
+  "previewOpenBrowser": "Open in browser",
+  "previewOpenConsole": "Open console",
+  "previewOpenSessionFailed": "Could not open session: {error}",
+  "previewRefresh": "Refresh preview",
+  "previewRunJavascript": "Run JavaScript",
+  "previewRunScript": "Run script",
+  "previewTitle": "Preview",
+  "previewUnsupportedWebView": "Embedded WebView is unavailable on this platform. Open it in your browser.",
+  "projectBrowseFiles": "Browse the project directory",
+  "projectDetailTitle": "Project details",
+  "projectFolderCount": "{count} folders",
+  "projectGitDescription": "View repository status and changes",
+  "projectGlobalMemoryDescription": "Profile memory (global view)",
+  "projectGlobalStarmapDescription": "Knowledge graph (global view)",
+  "projectGlobalSubagentsDescription": "Subagent activity across sessions",
+  "projectGlobalWebhooksDescription": "Webhook configuration (global view)",
+  "projectLoadingSessions": "Loading sessions...",
+  "projectModulesTitle": "Modules",
+  "projectNoKanbanBoard": "This project has no linked board",
+  "projectNoSessions": "No related sessions",
+  "projectNoSessionsDescription": "Sessions started inside this project appear here",
+  "projectResumeFailed": "Could not resume session: {error}",
+  "projectSessionCount": "{count} sessions",
+  "projectSessionsTitle": "Sessions",
+  "projectTasksDescription": "Open a board linked to this project",
+  "projectTasksTitle": "Tasks and boards",
+  "projectUnavailable": "Unavailable",
+  "projectUntitled": "Untitled project",
+  "providerActiveDefault": "Active / default",
+  "providerAddEndpointTitle": "New custom endpoint",
+  "providerCustomEndpointJson": "Custom endpoint JSON",
+  "providerCustomEndpointsSection": "Custom endpoints",
+  "providerDeviceAuthorization": "Device authorization",
+  "providerEditEndpointTitle": "Edit custom endpoint",
+  "providerEndpointApiKey": "API key",
+  "providerEndpointBaseUrl": "Base URL",
+  "providerEndpointDefaultModel": "Default model",
+  "providerEndpointDiscoverModels": "Auto-discover models",
+  "providerEndpointFallback": "Endpoint",
+  "providerEndpointModelsList": "Available models (one per line)",
+  "providerEndpointName": "Name",
+  "providerEndpointNameRequired": "Enter a name",
+  "providerEndpointUrlRequired": "Enter a base URL",
+  "providerEnterDeviceCode": "Enter this verification code in your browser: {code}",
+  "providerActionFailed": "Action failed: {error}",
+  "providerEnvironmentSection": "Environment",
+  "providerEnvironmentVariableName": "Environment variable name",
+  "providerEnvironmentVariableValue": "Environment variable value",
+  "providerMissingKeys": "Missing: {keys}",
+  "providerModelTitle": "{provider} model",
+  "providerNoConfiguration": "No configuration",
+  "providerNotSet": "Not set",
+  "providerOauthSection": "Provider OAuth",
+  "providerPasteOauthCode": "Paste OAuth code",
+  "providerProfileLabel": "Profile",
+  "providerRevealFailed": "Couldn't read value: {error}",
+  "providerRevealValue": "Reveal",
+  "providerRevealedValueTitle": "Saved value",
+  "providerRunSetupDescription": "{provider} needs to run: {command}",
+  "providerRunSetupQuestion": "Run provider setup?",
+  "providerSetActive": "Set active",
+  "providerSetEnvironmentVariable": "Set {key}",
+  "providerToolsCount": "{count} tools",
+  "providerToolsetProviderTitle": "{toolset} provider",
+  "providerToolsetProvidersSection": "Toolset providers",
+  "pushEnabled": "Remote notifications",
+  "pushEnabledDescription": "Register this installation with the active Hermes server",
+  "pushOsPermissionDenied": "System notifications are blocked",
+  "pushOsPermissionDeniedDescription": "Remote notifications are enabled in Hermes, but the OS is blocking them, so nothing will actually be delivered. Enable notifications for Hermes Mobile in your device's system settings.",
+  "pushNoProviders": "APNs or FCM credentials are not configured on the server",
+  "pushNotRegistered": "Not registered",
+  "pushProviders": "Delivery providers",
+  "pushRefresh": "Refresh push status",
+  "pushRegistered": "Registered for the active connection and profile",
+  "pushRegistration": "Device registration",
+  "pushSendTest": "Send test notification",
+  "pushSettingsDescription": "Receive completions and approval requests when Hermes Mobile is closed.",
+  "pushSettingsTitle": "Remote notifications",
+  "pushTestDelivered": "Test notification delivered",
+  "pushTestFailed": "Could not send test notification: {error}",
+  "pushTestNotDelivered": "No provider delivered the test notification",
+  "reportIssueTitle": "Report an issue on GitHub",
+  "sendDiagnosticsSubtitle": "Upload redacted logs to help us debug an issue",
+  "sendDiagnosticsTitle": "Send diagnostics",
+  "sessionActions": "Session actions",
+  "sessionAllTags": "All tags",
+  "sessionArchiveView": "Archive view",
+  "sessionArchiveViewDescription": "Show archived sessions only",
+  "sessionBatchDeleteDescription": "{count, plural, =1{The selected session will be permanently deleted. This cannot be undone.} other{The {count} selected sessions will be permanently deleted. This cannot be undone.}}",
+  "sessionBatchDeleteTitle": "Delete sessions?",
+  "sessionCancelSelection": "Cancel selection",
+  "sessionClearAll": "Clear all",
+  "sessionClearFilters": "Clear filters",
+  "sessionClearSearch": "Clear search",
+  "sessionCollapseChildren": "Collapse child sessions",
+  "sessionConfirmDelete": "Delete permanently",
+  "sessionContinueLast": "Continue last session",
+  "sessionDeepSearchHint": "Search session titles and message history",
+  "sessionDeepSearchTitle": "Search chat history",
+  "sessionDeleteDescription": "“{title}” will be permanently deleted.",
+  "sessionDeleteFailed": "Could not delete sessions: {error}",
+  "sessionDeleteSelected": "Delete selected",
+  "sessionDeleteTitle": "Delete session?",
+  "sessionDeletedCount": "{count, plural, =1{Deleted 1 session} other{Deleted {count} sessions}}",
+  "sessionDurationDaysHours": "{days}d {hours}h",
+  "sessionDurationHoursMinutes": "{hours}h {minutes}m",
+  "sessionDurationMinutes": "{minutes}m",
+  "sessionEmptyDescription": "Start a new session to chat with Hermes",
+  "sessionEmptyTitle": "No sessions yet",
+  "sessionExpandChildren": "Expand child sessions",
+  "sessionFilterAll": "All",
+  "sessionFilterApproval": "Needs approval",
+  "sessionFilterByTag": "Filter by tag",
+  "sessionFilterCompleted": "Completed",
+  "sessionFilterTitle": "Filter sessions",
+  "sessionGroupArchived": "Archived",
+  "sessionGroupByProject": "Group by project",
+  "sessionGroupByTime": "Group by time",
+  "sessionGroupLast7Days": "Last 7 days",
+  "sessionGroupOlder": "Older",
+  "sessionGroupPinned": "Pinned",
+  "sessionGroupRunning": "Running",
+  "sessionHandoff": "Handoff {state}",
+  "sessionHistoryArchive": "History archive",
+  "sessionLoadMore": "Load more sessions",
+  "sessionManage": "Manage sessions",
+  "sessionMessageCount": "{count, plural, =1{1 message} other{{count} messages}}",
+  "sessionNew": "New session",
+  "sessionNoMatchesDescription": "Adjust the search or status filters",
+  "sessionNoMatchesTitle": "No matching sessions",
+  "sessionNoProjectsDescription": "Sessions started in Git repositories are grouped into projects automatically",
+  "sessionNoProjectsTitle": "No projects",
+  "sessionOpenCopyFailed": "Could not open the copy: {error}",
+  "sessionPrClosed": "Closed",
+  "sessionPrDraft": "Draft",
+  "sessionPrMerged": "Merged",
+  "sessionPrNone": "No PR",
+  "sessionPrOpen": "Open",
+  "sessionProjectBack": "Back to projects",
+  "sessionProjectEnter": "Open",
+  "sessionProjectNoSessions": "No sessions in this project",
+  "sessionProjectSessionCount": "{count, plural, =1{1 session} other{{count} sessions}}",
+  "sessionProjectUnavailable": "Project unavailable",
+  "sessionPullRequests": "Pull requests",
+  "sessionResumeFailed": "Could not restore the session: {error}",
+  "sessionResumeLastFailed": "Could not restore the last session: {error}",
+  "sessionResumeSubagentFailed": "Could not restore the subagent session: {error}",
+  "sessionSearchFailed": "Search failed: {error}",
+  "sessionSearchMessages": "Search message content",
+  "sessionSearchNoFilteredResults": "No results match the current filters",
+  "sessionSearchPrompt": "Enter keywords to search all session history",
+  "sessionSearchResultCount": "Found {total} sessions, showing {visible}",
+  "sessionSearchTitleHint": "Search session titles…",
+  "sessionSelectAll": "Select all",
+  "sessionSelectDescription": "Open a session from the list to continue working",
+  "sessionSelectMultiple": "Select multiple",
+  "sessionSelectSessions": "Select sessions",
+  "sessionSelectTitle": "Select a session",
+  "sessionSelectedCount": "{count, plural, =1{1 selected} other{{count} selected}}",
+  "sessionServerNotConnected": "Server not connected",
+  "sessionSortActivity": "Recent activity",
+  "sessionSortCreated": "Date created",
+  "sessionSortTitle": "Sort by",
+  "sessionSortTokens": "Token usage",
+  "sessionStatusAttention": "Needs attention",
+  "sessionStatusIdle": "Idle",
+  "sessionStatusWorking": "Working",
+  "sessionTimeAll": "All time",
+  "sessionTitle": "Sessions",
+  "sessionToolCount": "{count, plural, =1{1 tool} other{{count} tools}}",
+  "sessionUntitled": "Untitled session",
+  "sessionWithinDays": "Within {count} days",
+  "settingsAppearanceDesc": "Display mode, theme color, and contrast",
+  "settingsBackHome": "Back to Home",
+  "settingsBackendConfigSummary": "Backend configuration summary",
+  "settingsBackendConfigSummaryDesc": "Key configuration values",
+  "settingsBackendConnectionSection": "Backend and connection",
+  "settingsBackendRestartFailed": "Could not restart backend: {error}",
+  "settingsBackendRestarted": "Backend restarted",
+  "settingsCapabilitiesDesc": "MCP, knowledge, skills, and plugins",
+  "settingsCapabilitiesTitle": "Capability management",
+  "settingsChangeConnection": "Change connection",
+  "settingsChangeConnectionDesc": "Edit the server address and API key",
+  "settingsChangeConnectionQuestion": "Change connection?",
+  "settingsChangeConnectionWarning": "The current server connection will be cleared so you can enter a new server address and API key.",
+  "settingsGroupModels": "Models and capabilities",
+  "settingsGroupPersonalization": "Personalization",
+  "settingsModelDesc": "Models, conversations, memory context, and keys",
+  "settingsModelTitle": "Models and conversations",
+  "settingsProvidersDesc": "Environment, custom endpoints, OAuth, and toolset providers",
+  "settingsProvidersTitle": "Providers and runtime",
+  "settingsRestartBackend": "Restart Hermes backend",
+  "settingsRestartBackendDesc": "Interrupt current work and restart the server process",
+  "settingsRestartBackendQuestion": "Restart the Hermes backend?",
+  "settingsRestartBackendWarning": "Running sessions on the server will be interrupted.",
+  "settingsSystemConnectionDesc": "Connection, security, terminal, and backend",
+  "settingsSystemConnectionTitle": "System and connection",
+  "settingsTerminalSection": "Terminal",
+  "taskAll": "All",
+  "taskAssigneeFilter": "Assignee: {value}",
+  "taskAutoDecompose": "Automatically decompose tasks",
+  "taskAutoGenerate": "Generate automatically",
+  "taskBoardView": "Board",
+  "taskBulkFailed": "Could not update {count} tasks",
+  "taskClearFilters": "Clear filters",
+  "taskCloseSearch": "Close search",
+  "taskCommentCount": "{count} comments",
+  "taskConnectBackend": "Connect to the backend to view tasks",
+  "taskDefault": "Default",
+  "taskDefaultAssignee": "Default assignee",
+  "taskFilter": "Filters",
+  "taskListView": "List",
+  "taskNew": "New task",
+  "taskNoDescription": "No description",
+  "taskOptions": "Task options",
+  "taskOrchestration": "Orchestration",
+  "taskOrchestratorProfile": "Orchestrator profile",
+  "taskPriorityHigh": "High",
+  "taskPriorityMeta": "Priority: {priority}",
+  "taskPriorityNormal": "Normal",
+  "taskPriorityUrgent": "Urgent",
+  "taskProfileDescription": "Description for {name}",
+  "taskProfileDescriptions": "Profile descriptions",
+  "taskSearch": "Search tasks",
+  "taskSelectedCount": "{count} selected",
+  "taskShowArchived": "Show archived",
+  "taskStatusArchived": "Archived",
+  "taskStatusBlocked": "Blocked",
+  "taskStatusDone": "Done",
+  "taskStatusReady": "Ready",
+  "taskStatusReview": "Review",
+  "taskStatusRunning": "Running",
+  "taskStatusScheduled": "Scheduled",
+  "taskStatusTodo": "To do",
+  "taskStatusTriage": "Triage",
+  "taskSwitchBoard": "Switch board",
+  "taskTenantFilter": "Tenant: {value}",
+  "taskTitle": "Tasks",
+  "taskUnassigned": "Unassigned",
+  "taskWeeklyDelivery": "Weekly delivery",
+  "terminalDefaultMonospace": "Default monospace font",
+  "terminalFontHint": "Leave empty to use the default monospace font",
+  "terminalFontPreview": "Preview  ~/project  git:main  >",
+  "terminalFontSaveFailed": "Could not save terminal font: {error}",
+  "terminalFontSaved": "Terminal font saved",
+  "terminalFontTitle": "Terminal font",
+  "timeDaysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
+  "timeHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "timeJustNow": "Just now",
+  "timeMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
+  "updateAppVersion": "App version",
+  "updateAvailableTitle": "Update available: {version}",
+  "updateCheck": "Check for updates",
+  "updateCheckDescription": "Check the mobile release manifest for a new version",
+  "updateCheckFailed": "Update check failed",
+  "updateCheckUnavailable": "Temporarily unavailable: {error}",
+  "updateCurrent": "You are using the latest version",
+  "updateFound": "Version {version} is available",
+  "updateGoToUpdate": "Update",
+  "updateMinimumVersion": "Minimum compatible version: {minimumVersion}",
+  "updateNewVersionPublished": "A new version has been released",
+  "updateReleaseNotes": "Release notes",
+  "updateRequiredDefault": "Version {currentVersion} is below the minimum compatible version {minimumVersion}. Update to continue.",
+  "updateRequiredTitle": "Hermes Mobile update required",
+  "updateSectionTitle": "Updates",
+  "updateUnsupportedTitle": "This version is no longer supported",
+  "updateVersionBuild": "v{version} · build {build}",
+  "workspaceAddPaneTooltip": "Open pane",
+  "workspaceApplyLayoutTooltip": "Apply layout",
+  "workspaceCloseAllAction": "Close all",
+  "workspaceCloseAllDescription": "This only closes the mobile workspace. Sessions and plugin data will not be deleted.",
+  "workspaceCloseAllQuestion": "Close all panes?",
+  "workspaceCloseAllTooltip": "Close all panes",
+  "workspaceEmptyDescription": "Open content from a session menu or plugin pane entry",
+  "workspaceEmptyTitle": "Workspace is empty",
+  "workspaceLayoutDefault": "Default",
+  "workspaceLayoutFocus": "Focus",
+  "workspaceLayoutQuad": "Quad",
+  "workspaceLayoutTerminalDeck": "Terminal deck",
+  "workspaceLayoutTooltip": "Adjust pane layout",
+  "workspaceMergeTabs": "Merge as tabs",
+  "workspaceMoveBottom": "Move down",
+  "workspaceMoveLeft": "Move left",
+  "workspaceMoveRight": "Move right",
+  "workspaceMoveTop": "Move up",
+  "workspaceOpenPluginFailed": "Could not open plugin pane: {error}",
+  "workspaceOpenSessionFailed": "Could not open workspace: {error}",
+  "workspacePaneFiles": "Files",
+  "workspacePaneLogs": "Logs",
+  "workspacePanePreview": "Preview",
+  "workspacePaneReview": "Review",
+  "workspacePaneTerminal": "Terminal",
+  "workspacePluginUnavailable": "This plugin pane is unavailable. Check that the plugin is enabled.",
+  "workspaceSessionResumeFailed": "Could not restore session: {error}",
+  "workspaceTitle": "Workspace",
+  "statusSemantics": "Status: {label}",
+  "@statusSemantics": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "statusAgentSemantics": "Agent status: {label}",
+  "@statusAgentSemantics": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "statusToolSemantics": "Tool status: {label}",
+  "@statusToolSemantics": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "statusIdle": "Idle",
+  "statusThinking": "Thinking",
+  "statusPlanning": "Planning",
+  "statusRunning": "Running",
+  "statusWaiting": "Waiting",
+  "statusAwaitingApproval": "Awaiting approval",
+  "statusPaused": "Paused",
+  "statusCompleted": "Completed",
+  "statusFailed": "Failed",
+  "statusStopped": "Stopped",
+  "statusCancelled": "Cancelled",
+  "composerUndoInput": "Undo input",
+  "composerRedoInput": "Redo input",
+  "composerReadOnly": "Subagent sessions are read-only",
+  "composerMessageHint": "Message Hermes...",
+  "composerProfileValue": "Profile: {value}",
+  "@composerProfileValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "composerSelectProfile": "Select profile",
+  "composerWorkspaceValue": "Workspace: {value}",
+  "@composerWorkspaceValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "composerSelectWorkspace": "Select workspace",
+  "composerModelValue": "Model: {value}",
+  "@composerModelValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "composerSelectModel": "Select model",
+  "composerDifficultyValue": "Difficulty: {value}",
+  "@composerDifficultyValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "composerYoloModeValue": "Yolo mode: {value}",
+  "@composerYoloModeValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "composerEnabled": "Enabled",
+  "composerDisabled": "Disabled",
+  "composerConfigureToolsets": "Configure toolsets",
+  "composerCloseEmojiPanel": "Close emoji panel",
+  "composerEmoji": "Emoji",
+  "composerEditorActions": "Editor actions",
+  "composerClearInput": "Clear input",
+  "composerEnterSendsTooltip": "Enter sends; Shift+Enter inserts a new line",
+  "composerEnterNewlineTooltip": "Enter inserts a new line; tap Send to submit",
+  "composerEnterSends": "Enter sends",
+  "composerEnterNewline": "Enter for new line",
+  "composerRemoveAttachment": "Remove attachment: {label}",
+  "composerFolderNotUploaded": "Local folder reference — not sent to the server",
+  "@composerRemoveAttachment": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "composerCurrentDefault": "Current profile default",
+  "composerUsedDefaultTools": "Using default tool configuration",
+  "composerAppliedTools": "Applied {count} tools",
+  "@composerAppliedTools": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "composerSwitchedToDefault": "Switched to default configuration",
+  "composerToolConfiguration": "Tool configuration",
+  "composerToolConfigurationDescription": "Use the current profile defaults or select custom toolsets for this session",
+  "composerUseCurrentDefault": "Use current profile default",
+  "composerSelectCustomTools": "Select custom tools for this session",
+  "composerConfiguredMcpServers": "Configured MCP servers",
+  "composerNoConfiguredMcpServers": "No MCP servers configured",
+  "composerUseDefault": "Use default",
+  "composerApply": "Apply",
+  "commonRemove": "Remove",
+  "onboardingChatTitle": "Chat with Hermes",
+  "onboardingChatDescription": "Start sessions, use voice input, inspect tool calls and reasoning, and continue earlier conversations.",
+  "onboardingProjectsTitle": "Projects and sessions",
+  "onboardingProjectsDescription": "Sessions are grouped by project, Git branch, and worktree, with pinning, archiving, and status filters.",
+  "onboardingTerminalTitle": "Terminal and Git",
+  "onboardingTerminalDescription": "Run terminal commands, review diffs, stage and commit changes, and create pull requests from mobile.",
+  "onboardingPaletteTitle": "Command palette",
+  "onboardingPaletteDescription": "Open the command palette from search or a pull-down gesture to jump to features, recent sessions, or slash commands.",
+  "onboardingPetTitle": "Your AI pet",
+  "onboardingPetDescription": "An AI pet that reacts to task status and can have its own generated appearance.",
+  "onboardingSkip": "Skip",
+  "onboardingStart": "Get started",
+  "onboardingNext": "Next",
+  "petGenerateInputRequired": "Enter a description or add a reference image",
+  "petGenerateEmptyResult": "No drafts were generated",
+  "petGenerateHatchFailed": "Hatching failed: {error}",
+  "petGenerateAdoptFailed": "Adoption failed: {error}",
+  "petGenerateTitle": "Generate a new pet",
+  "petGenerateDescribe": "Describe the pet you want",
+  "petGeneratePromptHint": "For example: a cyberpunk mechanical cat",
+  "petGenerateAddReference": "Add reference image (optional)",
+  "petGenerateReferenceHelp": "Every draft will use this image as a reference",
+  "petGenerateModel": "Generation model",
+  "petGenerateAutoSelect": "Select automatically",
+  "petGenerateDraftsAction": "Generate 4 drafts",
+  "petGenerateProgress": "Generating drafts… ({done}/{total})",
+  "petGenerateChooseDraft": "Choose your favorite draft",
+  "petGenerateDraftLabel": "Draft {index}",
+  "petGenerateAgain": "Generate again",
+  "petGenerateHatch": "Hatch",
+  "petGeneratePreparing": "Preparing…",
+  "petGenerateDrawingProgress": "Drawing {state} frames ({done}/{total})",
+  "petGenerateDrawing": "Drawing {state} frames",
+  "petGenerateComposing": "Composing sprite sheet…",
+  "petGenerateSaving": "Saving…",
+  "petGenerateHatching": "Hatching…",
+  "petGenerateReady": "Your new pet has hatched!",
+  "petGenerateNameLabel": "Give it a name",
+  "petGenerateDiscard": "Discard",
+  "petGenerateAdopt": "Adopt",
+  "imageSave": "Save image",
+  "imageCopyLink": "Copy image link",
+  "imageSavedToGallery": "Saved to gallery",
+  "kanbanHomeChannels": "Home channel notifications",
+  "kanbanHomeChannelsFailed": "Could not load home channels",
+  "kanbanHomeChannelsEmpty": "No home channels are available",
+  "kanbanUnsupportedAction": "This version does not support the {action} action",
+  "chatSessionSaved": "Saved transcript to {path}",
+  "artifactSessionPendingTitle": "Start the session to view artifacts",
+  "artifactSessionPendingDescription": "Artifacts appear here after this conversation is saved.",
+  "artifactEmptyTitle": "No artifacts yet",
+  "artifactEmptyDescription": "Code, files, links, and images generated in this session appear here.",
+  "artifactFallbackLabel": "Artifact {id}",
+  "artifactDetailTitle": "Artifact details",
+  "artifactSessionMeta": "{kind} · Session {session}",
+  "artifactMetadata": "Metadata",
+  "artifactSaveAs": "Save as",
+  "artifactCopyContent": "Copy content",
+  "artifactExportFailed": "Could not export: {error}",
+  "artifactType": "Type",
+  "artifactSession": "Session",
+  "artifactSessionTitle": "Session title",
+  "artifactMessageRow": "Message row",
+  "logsAllServers": "All servers",
+  "logsLoading": "Loading logs...",
+  "webhookEnableFirst": "Enable the Webhook platform first",
+  "webhookEnabledRestart": "Webhooks enabled. Restart the Hermes gateway to apply the change.",
+  "webhookEnabled": "Webhooks enabled",
+  "webhookEnableFailed": "Could not enable Webhooks: {error}",
+  "webhookLoading": "Loading Webhooks...",
+  "webhookEmptyTitle": "No Webhooks",
+  "webhookEmptyDescription": "Tap + to create a Webhook for Hermes event delivery.",
+  "webhookPlatformDisabled": "Webhook platform is disabled · Tap to enable",
+  "webhookConfigured": "Configured Webhooks",
+  "webhookStopped": "Webhook disabled",
+  "webhookOperationFailed": "Webhook operation failed: {error}",
+  "webhookDeleteTitle": "Delete Webhook?",
+  "webhookDeletePrompt": "{name} will be deleted.",
+  "webhookDeleted": "Webhook deleted",
+  "webhookDeleteFailed": "Could not delete Webhook: {error}",
+  "webhookEnabledLabel": "Enabled",
+  "webhookDisabledLabel": "Disabled",
+  "webhookEvents": "Subscribed events",
+  "webhookDescription": "Description",
+  "webhookPrompt": "Prompt",
+  "webhookSkills": "Skills",
+  "webhookDeliverTo": "Delivery target",
+  "webhookEnableThis": "Enable this Webhook",
+  "webhookHotReloadDescription": "Changes are hot-reloaded by the Hermes gateway.",
+  "webhookNameRequired": "Enter a name",
+  "webhookCreated": "Webhook created",
+  "webhookSecretOnce": "The signing secret is shown in full only once. Store it now.",
+  "webhookSecretSaved": "I stored it",
+  "webhookSaveFailed": "Could not save Webhook: {error}",
+  "webhookNew": "New Webhook",
+  "webhookName": "Name",
+  "webhookDescriptionOptional": "Description (optional)",
+  "webhookEventsComma": "Subscribed events (comma-separated)",
+  "webhookPromptOptional": "Trigger prompt (optional)",
+  "webhookSkillsComma": "Skills (comma-separated, optional)",
+  "webhookDeliveryTarget": "Delivery target",
+  "webhookLogOnly": "Log only",
+  "webhookSaving": "Saving...",
+  "commonPartialDataLoadFailed": "Some data could not be loaded: {details}",
+  "cronRunsLoadFailed": "Could not load run history: {error}",
+  "profilesOptionsLoadFailed": "Some profile editor options could not be loaded: {details}",
+  "skillsBulkFailed": "{failed} of {total} skill updates failed.",
+  "petCleanupFailed": "Could not clean up the generation task: {error}",
+  "skillsTitle": "Skills",
+  "skillsMarketplace": "Skill marketplace",
+  "skillsEnableAll": "Enable all",
+  "skillsDisableAll": "Disable all",
+  "skillsToggleFailed": "Could not update skill: {error}",
+  "skillsSearchHint": "Search skills...",
+  "skillsEnabledCount": "Enabled {enabled}/{total}",
+  "skillsLoading": "Loading skills...",
+  "skillsEmptyTitle": "No skills",
+  "skillsEmptyDescription": "This agent has no available skills.",
+  "skillsUncategorized": "Uncategorized",
+  "skillsNoMatches": "No matching skills",
+  "skillsUsageCount": "Used {count} times",
+  "skillsLearned": "Learned",
+  "skillsBuiltIn": "Built in",
+  "skillsProvenanceMarketplace": "Marketplace",
+  "skillsSaved": "Saved",
+  "skillsSaveFailed": "Could not save skill: {error}",
+  "skillsArchiveQuestion": "Archive skill?",
+  "skillsArchivePrompt": "Archive the learned skill \"{name}\"? You can undo this later.",
+  "skillsArchive": "Archive",
+  "skillsArchived": "Archived",
+  "skillsArchiveFailed": "Could not archive skill: {error}",
+  "skillsContent": "Content",
+  "skillsNoContent": "(No content)",
+  "skillsCancelEdit": "Cancel editing",
+  "skillsSaving": "Saving...",
+  "historyTitle": "History",
+  "historyResumeFailed": "Could not resume session: {error}",
+  "historyManageSessions": "Manage sessions",
+  "historyHideArchived": "Hide archived",
+  "historyShowArchived": "Show archived",
+  "historySelectTitle": "Select a session",
+  "historySelectDescription": "Select a session on the left to view its summary and management actions.",
+  "historyLoading": "Loading session history...",
+  "historySearchHint": "Search titles, content, or working directories",
+  "historyClearSearch": "Clear search",
+  "historyEmpty": "No sessions yet",
+  "historyNoMatches": "No matching sessions",
+  "historyLoadMore": "Load more",
+  "historyLoadMoreCount": "Load more ({loaded}/{total})",
+  "historyPinned": "Pinned",
+  "historyToday": "Today",
+  "historyYesterday": "Yesterday",
+  "historyThisWeek": "This week",
+  "historyLastWeek": "Last week",
+  "historyEarlier": "Earlier",
+  "historyCollapseChildren": "Collapse child sessions",
+  "historyExpandChildren": "Expand child sessions",
+  "historySessionActions": "Session actions",
+  "historyManageSession": "Manage session",
+  "historyUntitled": "Untitled session",
+  "historyMessageCount": "{count} messages",
+  "historyDeleteQuestion": "Delete session?",
+  "historyDeletePrompt": "\"{title}\" will be permanently deleted. This cannot be undone.",
+  "historyDeleteFailed": "Could not delete session: {error}",
+  "historyRenameFailed": "Could not rename session: {error}",
+  "historyCompressed": "Session compressed ({count} messages removed)",
+  "historyCompressFailed": "Could not compress session: {error}",
+  "historyArchiveFailed": "Could not archive session: {error}",
+  "historyUnarchiveFailed": "Could not unarchive session: {error}",
+  "historyManagement": "Session management",
+  "historySaveTitle": "Save title",
+  "historyContextUsage": "Context usage: {used} / {maximum}{percent}",
+  "historyPercent": " ({percent}%)",
+  "historyCompress": "Compress session",
+  "historyArchive": "Archive",
+  "historyUnarchive": "Unarchive",
+  "cronTitle": "Scheduled tasks",
+  "cronLoading": "Loading scheduled tasks...",
+  "cronEmptyTitle": "No scheduled tasks yet",
+  "cronEmptyDescription": "Create an automated task that runs on a schedule.",
+  "cronNew": "New task",
+  "cronNextRun": "Next run: {time}",
+  "cronRunHistory": "Run history",
+  "cronRunHistoryTitle": "Run history · {name}",
+  "cronNoRuns": "No run history",
+  "cronTriggerNow": "Run now",
+  "cronTriggered": "Task triggered",
+  "cronTriggerFailed": "Could not trigger task: {error}",
+  "cronUpdateFailed": "Could not update task: {error}",
+  "cronDeleteQuestion": "Delete scheduled task?",
+  "cronDeletePrompt": "\"{name}\" will be deleted.",
+  "cronDeleteFailed": "Could not delete task: {error}",
+  "cronStateCompleted": "Completed",
+  "cronStateDisabled": "Disabled",
+  "cronStateEnabled": "Enabled",
+  "cronStateError": "Error",
+  "cronStatePaused": "Paused",
+  "cronStateRunning": "Running",
+  "cronStateScheduled": "Scheduled",
+  "cronModelsLoadFailed": "Could not load model options: {error}",
+  "cronBlueprintsLoadFailed": "Could not load automation templates: {error}",
+  "cronTargetsLoadFailed": "Could not load delivery targets: {error}",
+  "cronPresetMinute": "Every minute",
+  "cronPresetHour": "Hourly",
+  "cronPresetDay": "Daily at 09:00",
+  "cronPresetWeek": "Mondays at 09:00",
+  "cronPresetMonth": "Monthly on day 1 at 09:00",
+  "cronPresetCustom": "Custom",
+  "cronPresetMinuteHint": "Runs every minute",
+  "cronPresetHourHint": "Runs at the start of every hour",
+  "cronPresetDayHint": "Runs every day at 09:00",
+  "cronPresetWeekHint": "Runs every Monday at 09:00",
+  "cronPresetMonthHint": "Runs on day 1 of every month at 09:00",
+  "cronPromptAndExpressionRequired": "Enter task instructions and a Cron expression.",
+  "cronExpressionRequired": "Enter a Cron expression.",
+  "cronPromptRequired": "Enter task instructions.",
+  "cronSaveFailed": "Could not save task: {error}",
+  "cronCreateTitle": "New scheduled task",
+  "cronEditTitle": "Edit scheduled task",
+  "cronStartFromTemplate": "Start from a template",
+  "cronScheduling": "Scheduling...",
+  "cronScheduleAutomation": "Schedule automation",
+  "cronScriptOnlyDescription": "This is a script-only task. You can change its name, schedule, delivery targets, and the script itself; model settings don't apply.",
+  "cronScriptLabel": "Script",
+  "cronLastRun": "Last run: {time}",
+  "cronRunScheduledAt": "Scheduled at",
+  "cronRunStartedAt": "Started at",
+  "cronRunFinishedAt": "Finished at",
+  "cronRunStatus": "Status",
+  "cronRunOutput": "Output",
+  "cronRunDetailTitle": "Run succeeded",
+  "cronRunDetailFailedTitle": "Run failed",
+  "cronNameOptional": "Name (optional)",
+  "cronDeliverResultsTo": "Deliver results to",
+  "cronTaskModel": "Task model",
+  "cronUseGlobalDefault": "Use global default",
+  "cronSavedModel": "{model} (currently saved)",
+  "cronPromptLabel": "Task instructions (prompt)",
+  "cronFrequency": "Frequency",
+  "cronExpression": "Cron expression",
+  "cronExpressionHint": "minute hour day month weekday",
+  "cronSaving": "Saving...",
+  "cronThisDevice": "This device",
+  "cronConfigureHomeChannelFirst": "Configure a home channel first",
+  "profilesTitle": "Agent Profiles",
+  "profilesLoading": "Loading profiles...",
+  "profilesEmptyTitle": "No profiles",
+  "profilesEmptyDescription": "Create your first agent profile.",
+  "profilesNew": "New profile",
+  "profilesImport": "Import profile",
+  "profilesExport": "Export profile",
+  "profilesDuplicate": "Duplicate profile",
+  "profilesEditSoul": "Edit SOUL.md",
+  "profilesSetupCommand": "Terminal launch command",
+  "profilesSaveFailed": "Could not save profile: {error}",
+  "profilesCreated": "Profile created",
+  "profilesSaved": "Profile saved",
+  "profilesCopyName": "{name} copy",
+  "profilesDuplicateFailed": "Could not duplicate profile: {error}",
+  "profilesDuplicated": "Profile duplicated",
+  "profilesDeleteQuestion": "Delete profile \"{name}\"?",
+  "profilesDeleteActiveWarning": "This profile is currently active.",
+  "profilesDeleteWarning": "This action cannot be undone.",
+  "profilesDeleteFailed": "Could not delete profile: {error}",
+  "profilesDeleted": "Profile deleted",
+  "profilesSwitchFailed": "Could not switch profile: {error}",
+  "profilesSwitchedTo": "Switched to \"{name}\"",
+  "profilesSoulHint": "Describe this agent's identity, behavior, and communication style",
+  "profilesSoulSaved": "SOUL.md saved",
+  "profilesSoulFailed": "SOUL.md operation failed: {error}",
+  "profilesCopy": "Copy",
+  "profilesSetupCommandFailed": "Could not read launch command: {error}",
+  "profilesExported": "Profile exported",
+  "profilesExportFailed": "Could not export profile: {error}",
+  "profilesImported": "Imported {name}",
+  "profilesImportFailed": "Could not import profile: {error}",
+  "profilesParameters": "temp {temperature} · max_tokens {maxTokens}{activeSuffix}",
+  "profilesCurrentSuffix": " · active",
+  "profilesActive": "Active",
+  "profilesActivate": "Activate",
+  "profilesNameRequired": "Enter a profile name.",
+  "profilesCreateTitle": "New profile",
+  "profilesEditTitle": "Edit profile",
+  "profilesProvider": "Provider",
+  "profilesModel": "Model",
+  "profilesSystemPrompt": "System prompt",
+  "profilesDescriptionOptional": "Description (optional)",
+  "profilesTools": "Tools",
+  "profilesDeselectAll": "Deselect all",
+  "profilesSelectAll": "Select all",
+  "profilesSetActive": "Set as active profile",
+  "memoryTitle": "Memory",
+  "memoryLoading": "Loading memory status...",
+  "memorySwitchFailed": "Could not switch provider: {error}",
+  "memoryResetScope": "Choose what to reset",
+  "memoryResetScopeDescription": "Only the selected memory files will be deleted.",
+  "memoryAll": "All memory",
+  "memoryAllFiles": "MEMORY.md and USER.md",
+  "memoryLongTerm": "Long-term memory",
+  "memoryLongTermFile": "MEMORY.md only",
+  "memoryUser": "User memory",
+  "memoryUserFile": "USER.md only",
+  "memoryResetQuestion": "Reset memory?",
+  "memoryResetWarning": "Deleted memory cannot be recovered.",
+  "memoryNothingDeleted": "There were no memory files to delete.",
+  "memoryDeleted": "Deleted {files}",
+  "memoryResetFailed": "Could not reset memory: {error}",
+  "memoryCuratorUpdateFailed": "Could not update Curator: {error}",
+  "memoryCuratorStarted": "Curator started",
+  "memoryCuratorRunFailed": "Could not run Curator: {error}",
+  "memoryCurrentProvider": "Current memory provider",
+  "memoryDisabled": "Disabled",
+  "memoryEnabled": "Enabled",
+  "memoryProviders": "Providers",
+  "memoryNoProviders": "No providers available",
+  "memoryBuiltInFiles": "Built-in memory files",
+  "memoryReset": "Reset memory",
+  "memoryInUse": "In use",
+  "memoryConfigured": "Configured",
+  "memoryConfigureProvider": "Configure {name}",
+  "memoryEnableProvider": "Enable {name}",
+  "memoryCuratorLoading": "Loading Curator status...",
+  "memoryCuratorUnavailable": "Curator unavailable",
+  "memoryPaused": "Paused",
+  "memoryCuratorInterval": "Checks every {hours} hours",
+  "memoryCuratorLastRun": "Last run {time}",
+  "memoryResume": "Resume",
+  "memoryPause": "Pause",
+  "memoryRunNow": "Run now",
+  "memoryInvalidJson": "{field} is not valid JSON",
+  "memoryProviderSaved": "Provider configuration saved",
+  "memoryProviderSaveFailed": "Could not save provider configuration: {error}",
+  "memoryOAuthTimeout": "Connection timed out. Try again.",
+  "memoryCurrentProfile": "Current profile",
+  "memoryProfile": "Profile: {name}",
+  "memoryProviderConfigLoading": "Loading provider configuration...",
+  "memoryNoProviderConfig": "This provider has no additional settings",
+  "memoryViewProviderDocs": "View provider documentation",
+  "memorySaving": "Saving...",
+  "memorySaveConfig": "Save configuration",
+  "memoryAccountConnected": "Account connected",
+  "memoryConnectAccount": "Connect provider account",
+  "memoryReconnect": "Reconnect",
+  "memoryConnect": "Connect",
+  "memoryKeepSecretHint": "Leave blank to keep the current value",
+  "agentOpenBotFailed": "Could not open Bot Chat: {error}",
+  "agentNewGroup": "New group chat",
+  "agentEditGroup": "Edit group chat",
+  "agentGroupName": "Group chat name",
+  "agentGroupSaveFailed": "Could not save group chat: {error}",
+  "agentBotThinking": "{name} is thinking",
+  "agentBotPaused": "{name} paused",
+  "agentStartGroupChat": "Start the group chat",
+  "agentReplyTo": "Reply to #{id}",
+  "agentSendToRoom": "Send to room",
+  "agentMentionHint": "Use @name to target a member or @all to notify everyone",
+  "agentAttachmentTooLarge": "{name} exceeds 20 MB",
+  "agentAttachFailed": "Could not add attachment: {error}",
+  "agentGroupSendFailed": "Could not send group message: {error}",
+  "agentAppendMessage": "Add message",
+  "agentAwaitingApproval": "Awaiting approval",
+  "agentNeedsInformation": "More information needed",
+  "agentRespond": "Respond",
+  "agentMemberRequest": "Request from {name}",
+  "agentAllowOperationQuestion": "Allow this operation?",
+  "agentDeny": "Deny",
+  "agentAlwaysAllow": "Always allow",
+  "agentAllow": "Allow",
+  "agentCustomAnswer": "Custom answer",
+  "agentEnterAnswer": "Enter an answer",
+  "agentRespondFailed": "Could not respond: {error}",
+  "agentLoading": "Loading agent status...",
+  "agentNoData": "No data",
+  "agentManageBots": "Manage or create Bots",
+  "agentRefreshRoster": "Refresh Bot roster",
+  "agentGroupSummary": "{count} Bots · across connections{runningSuffix}",
+  "agentRunningSuffix": " · running",
+  "agentDeleteGroupQuestion": "Delete group chat \"{name}\"?",
+  "agentDeleteGroupWarning": "The group history will be permanently deleted. This cannot be undone.",
+  "agentDeleteGroupFailed": "Could not delete group chat: {error}",
+  "agentDeleteGroup": "Delete group chat",
+  "agentDeleteBotQuestion": "Delete Bot \"{name}\"?",
+  "agentBotOperationFailed": "Bot operation failed: {error}",
+  "agentDuplicateBot": "Duplicate Bot",
+  "agentDeleteBot": "Delete Bot",
+  "agentGateway": "Gateway",
+  "agentActiveAgents": "Active agents",
+  "agentBusy": "Busy",
+  "agentYes": "Yes",
+  "agentNo": "No",
+  "agentModelSection": "Model",
+  "agentCurrentModel": "Current model",
+  "agentProvider": "Provider",
+  "agentContextLength": "Context length",
+  "agentSessionModel": "Session model",
+  "agentRuntimeSection": "Runtime",
+  "agentType": "Type",
+  "agentSourceRoot": "Source root",
+  "agentHermesHome": "Hermes home",
+  "agentServerVersion": "Server version",
+  "agentCapability": "Capability",
+  "agentRestarting": "Restarting...",
+  "botRoutineUpdateFailed": "Could not update Cronjob: {error}",
+  "botRoutineDeleteQuestion": "Delete Cronjob?",
+  "botRoutineDeletePrompt": "\"{title}\" and its schedule will be permanently deleted.",
+  "botRoutineStatus": "Status",
+  "botRoutinePaused": "Paused",
+  "botRoutineSchedule": "Schedule",
+  "botRoutineRawSchedule": "Raw schedule",
+  "botRoutineRepeatCount": "Repeat count",
+  "botRoutineNextRun": "Next run",
+  "botRoutineLastRun": "Last run",
+  "botRoutineLastResult": "Last result",
+  "botRoutineDeliverTo": "Deliver to",
+  "botRoutineModel": "Model",
+  "botRoutineWorkdir": "Working directory",
+  "botRoutineInstruction": "Instruction",
+  "botRoutineLegacyWarning": "This legacy task was paused for safety. Delete it and create it again before running it.",
+  "botRoutineTitle": "{name} · Cronjobs",
+  "commonBytes": "{count} bytes",
+  "botRoutineLoading": "Loading Bot Cronjobs...",
+  "botRoutineEmptyTitle": "No Cronjobs yet",
+  "botRoutineEmptyDescription": "Create a dedicated scheduled task for {name}.",
+  "botRoutineNew": "New Cronjob",
+  "botRoutineNext": "Next {time}",
+  "botRoutineLegacyPaused": "Legacy task, paused safely",
+  "botRoutineDelete": "Delete Cronjob",
+  "botRoutineScheduleOnce": "Once · in {duration}",
+  "botRoutineScheduleEvery": "Every {duration}",
+  "botRoutineScheduleHourly": "At the start of every hour",
+  "botRoutineScheduleDaily": "Daily at 09:00",
+  "botRoutineScheduleWeekdays": "Weekdays at 09:00",
+  "botRoutineScheduleWeekly": "Mondays at 09:00",
+  "botRoutineScheduleMonthly": "Monthly on day 1 at 09:00",
+  "botRoutineRequiredFields": "Enter a name, instruction, and schedule.",
+  "botRoutineCreateTitle": "New Cronjob · {name}",
+  "botRoutineInstructionLabel": "Instruction to run each time",
+  "botRoutineFrequencyOnce": "Once, after a delay",
+  "botRoutineFrequencyHourly": "Hourly",
+  "botRoutineFrequencyDaily": "Daily",
+  "botRoutineFrequencyWeekdays": "Weekdays",
+  "botRoutineFrequencyWeekly": "Weekly",
+  "botRoutineFrequencyMonthly": "Monthly",
+  "botRoutineFrequencyInterval": "Fixed interval",
+  "botRoutineFrequencyAdvanced": "Advanced expression",
+  "botRoutineTime": "Time (HH:mm)",
+  "botRoutineWeekday": "Weekday",
+  "botRoutineMonday": "Monday",
+  "botRoutineTuesday": "Tuesday",
+  "botRoutineWednesday": "Wednesday",
+  "botRoutineThursday": "Thursday",
+  "botRoutineFriday": "Friday",
+  "botRoutineSaturday": "Saturday",
+  "botRoutineSunday": "Sunday",
+  "botRoutineDayOfMonth": "Day of month",
+  "botRoutineValue": "Value",
+  "botRoutineUnit": "Unit",
+  "botRoutineMinutes": "Minutes",
+  "botRoutineHours": "Hours",
+  "botRoutineDays": "Days",
+  "botRoutineAdvancedExpression": "Cron or every Nm/Nh/Nd",
+  "botRoutineWillSaveAs": "Will be saved as: {schedule}",
+  "botRoutineRepeatLimit": "Maximum runs (leave blank to keep running)",
+  "botRoutineContinuity": "Continuity",
+  "botRoutineContinuityDescription": "Each run can read the previous output from this task.",
+  "botRoutineSendToBot": "Send to {name}'s Bot Chat",
+  "botRoutineSendToBotDescription": "The Bot will read the result and continue responding.",
+  "botRoutineCreating": "Creating...",
+  "botRoutineCreate": "Create Cronjob",
+  "mcpTitle": "MCP servers",
+  "mcpOperationFailed": "Operation failed: {error}",
+  "mcpTestSuccess": "Connected: {tools} tools, {prompts} prompts, {resources} resources",
+  "mcpTestConnectionFailed": "Connection failed: {error}",
+  "mcpTestFailed": "Test failed: {error}",
+  "mcpReloadFailed": "Configuration was saved, but MCP hot reload failed for the active session: {error}",
+  "mcpImportUnrecognized": "Could not recognize the pasted content. Check its format.",
+  "mcpImportDetected": "Detected {count} servers",
+  "mcpImportAllQuestion": "Add all of these servers?\n\n{names}",
+  "mcpAddAll": "Add all",
+  "mcpServersAdded": "Added {count} servers",
+  "mcpServersPartiallyAdded": "Added {added}; {failed} failed",
+  "mcpAddServer": "Add MCP server",
+  "mcpPasteImport": "Paste import (mcp.json / command / claude mcp add / URL)",
+  "mcpParse": "Parse",
+  "mcpRemoteUrl": "Remote URL",
+  "mcpLocalStdio": "Local stdio",
+  "mcpServerUrl": "Server URL",
+  "mcpCommand": "Command",
+  "mcpArgumentsOnePerLine": "Arguments (one per line)",
+  "mcpEnvironmentJson": "Environment variables (JSON)",
+  "mcpAuthentication": "Authentication",
+  "mcpNoAuthentication": "No authentication",
+  "mcpEnvironmentMustBeJson": "Environment variables must be a JSON object.",
+  "mcpServerAdded": "MCP server added",
+  "mcpAddFailed": "Could not add server: {error}",
+  "mcpDeleteQuestion": "Delete {name}?",
+  "mcpDeleteWarning": "This server will be permanently removed from the Hermes MCP configuration.",
+  "mcpDeleteFailed": "Could not delete server: {error}",
+  "mcpReadConfigFailed": "Could not read configuration: {error}",
+  "mcpEditServer": "Edit {name}",
+  "mcpInvalidJson": "Not a valid JSON object: {error}",
+  "mcpServerSaved": "{name} saved",
+  "mcpSaveFailed": "Could not save server: {error}",
+  "mcpToolToggleFailed": "Could not toggle tool: {error}",
+  "mcpOAuthStartFailed": "OAuth could not start",
+  "mcpOAuthMissingUrl": "The OAuth server did not return an authorization URL.",
+  "mcpBrowserOpenFailed": "Could not open the system browser.",
+  "mcpCompleteAuthorization": "Complete authorization for {name} in the browser.",
+  "mcpOAuthAuthorizationFailed": "OAuth authorization failed",
+  "mcpAuthorizationSucceeded": "{name} authorized; found {tools} tools",
+  "mcpOAuthFailed": "OAuth failed: {error}",
+  "mcpInstallTitle": "Install {name}",
+  "mcpRequired": "Required",
+  "mcpOptional": "Optional",
+  "mcpRequiredCredentials": "Enter all required credentials.",
+  "mcpReinstall": "Reinstall",
+  "mcpInstall": "Install",
+  "mcpInstallExitCode": "Installer exited with code {code}",
+  "mcpInstallComplete": "{name} installed",
+  "mcpInstallFailed": "Installation failed: {error}",
+  "mcpViewLogs": "View logs",
+  "mcpLoading": "Loading MCP servers...",
+  "mcpConfiguredServers": "Configured servers",
+  "mcpNoConfiguredServers": "No MCP servers configured",
+  "mcpDescription": "MCP connects agents to external tools and data sources.",
+  "mcpAvailableCatalog": "Available catalog ({count})",
+  "mcpToolCount": "{count} tools",
+  "mcpUsage30Days": "{count} uses / 30 days",
+  "mcpTestConnection": "Test connection",
+  "mcpEditConfiguration": "Edit configuration",
+  "mcpOAuthAuthorization": "OAuth authorization",
+  "mcpInstalledEnabled": "Installed and enabled",
+  "mcpInstalledDisabled": "Installed but disabled",
+  "commandCenterTitle": "Command Center",
+  "commandStatusTab": "Status",
+  "commandUsageTab": "Usage",
+  "commandMaintenanceTab": "Maintenance",
+  "commandStatusLoadFailed": "Could not load status: {error}",
+  "commandLogsLoadFailed": "Could not load logs: {error}",
+  "commandRestartWarning": "This restarts the Hermes backend process and may interrupt active turns.",
+  "commandRestartResult": "Restart result: {result}",
+  "commandNoLogs": "(No logs)",
+  "commandBackendProcess": "Backend process",
+  "commandStopped": "Stopped",
+  "commandLiveLogs": "Live logs",
+  "commandDiagnostics": "Diagnostic details",
+  "commandSystemStatus": "System status",
+  "commandNoStatusData": "No status data",
+  "commandUsageLoadFailed": "Could not load usage: {error}",
+  "commandDays": "{count} days",
+  "commandSessions": "Sessions",
+  "commandApiCalls": "API calls",
+  "commandTokensInOut": "Tokens (in/out)",
+  "commandDailyUsage": "Daily usage",
+  "commandNoUsageData": "No usage data",
+  "commandTopModels": "Top models",
+  "commandTopSkills": "Top skills",
+  "commandUseCount": "{count} uses",
+  "commandChartTooltip": "{day}\nInput {input} / Output {output}",
+  "commandInputTokens": "Input tokens",
+  "commandOutputTokens": "Output tokens",
+  "commandStarting": "Starting {label}...",
+  "commandMissingActionName": "The backend did not return an action name.",
+  "commandNoOutput": "(No output yet)",
+  "commandActionExitFailed": "{label} failed (exit code {code})",
+  "commandActionComplete": "{label} completed",
+  "commandLogError": "{logs}\n\nError: {error}",
+  "commandActionFailed": "{label} failed: {error}",
+  "commandDebugShareFailed": "Could not generate debug share: {error}",
+  "commandDebugShare": "Generate debug share",
+  "commandLogsRedacted": "Sensitive values were redacted from the logs.",
+  "commandLogsNotRedacted": "The logs were not redacted. Share them carefully.",
+  "commandAutoDeleteHours": "Links will be deleted automatically in about {hours} hours.",
+  "commandPartialUploadFailed": "Some content failed to upload:",
+  "commandDiagnosticsMaintenance": "Diagnostics and maintenance",
+  "commandRunDoctor": "Run diagnostics",
+  "commandRunDoctorDescription": "hermes doctor - check the environment and configuration",
+  "commandDoctor": "Diagnostics",
+  "commandSecurityAudit": "Security audit",
+  "commandSecurityAuditDescription": "hermes security audit - scan for potential security issues",
+  "commandBackupNow": "Back up now",
+  "commandBackupDescription": "hermes backup - package configuration and data locally",
+  "commandBackup": "Backup",
+  "commandDebugShareDescription": "Upload redacted logs and create shareable debug links",
+  "terminalStartFailed": "Could not start terminal: {error}",
+  "terminalSshHost": "Host or SSH config alias *",
+  "terminalSshUserOptional": "User (optional)",
+  "terminalSshPort": "Port (default 22)",
+  "terminalSshIdentityFile": "Server-side IdentityFile (optional)",
+  "terminalSshRemoteCwd": "Remote working directory (optional)",
+  "terminalSshAuthenticationNote": "Authentication uses the ssh-agent or SSH config on the Hermes server. The mobile app does not store passwords.",
+  "terminalSshFailed": "SSH connection failed: {error}",
+  "terminalCloseRunningQuestion": "Close running terminal?",
+  "terminalCloseRunningWarning": "Processes in \"{name}\" will be terminated. This cannot be undone.",
+  "terminalClose": "Close terminal",
+  "terminalSessions": "Terminal sessions",
+  "terminalSessionLimit": "Up to {count} terminals can be open at once",
+  "terminalCloseNamed": "Close {name}",
+  "terminalSelectTextFirst": "Select text first.",
+  "terminalPasteLinesQuestion": "Paste {count} lines?",
+  "terminalMergeSingleLine": "Merge into one line",
+  "terminalConfirmPaste": "Paste",
+  "terminalSelectTerminalTextFirst": "Select text in the terminal first.",
+  "terminalSentToChat": "Sent to the chat composer",
+  "terminalOpenLinkFailed": "Could not open link: {link}",
+  "terminalDismissNotice": "Dismiss notice",
+  "terminalNew": "New terminal",
+  "terminalNewSsh": "New SSH terminal",
+  "terminalOpenDirectory": "Open in a directory",
+  "terminalDisplaySettings": "Terminal display settings",
+  "terminalNoWorkingDirectory": "(No working directory)",
+  "terminalNoActive": "No active terminal",
+  "terminalCommandMode": "Command mode",
+  "terminalInteractiveMode": "Interactive mode",
+  "terminalControlInterrupt": "Ctrl+C interrupt",
+  "terminalControlSuspend": "Ctrl+Z suspend",
+  "terminalControlClear": "Ctrl+L clear screen",
+  "terminalControlBackWord": "Alt+B previous word",
+  "terminalControlForwardWord": "Alt+F next word",
+  "terminalControlKeys": "Control keys",
+  "terminalVisibleOutputCopied": "Visible terminal output copied",
+  "terminalDisplay": "Terminal display",
+  "terminalDisplayDescription": "These settings affect only local display, not PTY or command behavior.",
+  "terminalPreviewOutput": "✓ 42 tests passed  Localized output preview",
+  "terminalFontSize": "Font size  {value}",
+  "terminalLineHeight": "Line height  {value}",
+  "terminalColorTheme": "Color theme",
+  "terminalThemeSystem": "Follow system",
+  "terminalThemeProfessionalDark": "Professional dark",
+  "terminalThemeHighContrastDark": "High-contrast dark",
+  "terminalThemeSoftLight": "Soft light",
+  "terminalCursorStyle": "Cursor style",
+  "terminalCursorBar": "Bar",
+  "terminalCursorBlock": "Block",
+  "terminalCursorUnderline": "Underline",
+  "terminalContentPadding": "Terminal padding",
+  "terminalContentPaddingHint": "Turn off to show more columns",
+  "terminalResetDisplay": "Restore recommended settings",
+  "terminalCommandHint": "Enter a command...",
+  "terminalRunCommand": "Run command",
+  "terminalPaste": "Paste",
+  "terminalClear": "Clear",
+  "terminalSendToChat": "Send to chat",
+  "terminalInteractiveHint": "Interactive mode · input is sent directly to the PTY",
+  "terminalMoreActions": "More terminal actions",
+  "terminalCopySelection": "Copy selection",
+  "terminalSendSelectionToChat": "Send selection to chat",
+  "terminalOpenOtherDirectory": "Open terminal in another directory",
+  "terminalManageSessions": "Manage terminal sessions",
+  "terminalPrivacyHistory": "Privacy and history",
+  "terminalPrivacyDescription": "Command history and terminal output are not persisted by default.",
+  "terminalSaveCommandHistory": "Save command history",
+  "terminalSaveOutputSnapshots": "Save terminal output snapshots",
+  "terminalClearSavedData": "Clear saved history and snapshots",
+  "terminalClearDataQuestion": "Clear history and snapshots?",
+  "terminalClearDataWarning": "Saved command history and terminal output snapshots will be permanently deleted. This cannot be undone.",
+  "filesRevealFailed": "Could not reveal the item in file manager: {error}",
+  "@filesRevealFailed": {"placeholders":{"error":{"type":"String"}}},
+  "filesLargeDownloadQuestion": "Download large file?",
+  "filesLargeDownloadDescription": "\"{name}\" is about {size} MB. Downloading may take a while and use device storage.",
+  "@filesLargeDownloadDescription": {"placeholders":{"name":{"type":"String"},"size":{"type":"String"}}},
+  "filesContinueDownload": "Continue download",
+  "filesLargeEditQuestion": "Open large file?",
+  "filesLargeEditDescription": "\"{name}\" is about {size} MB. Loading it into the editor may be slow.",
+  "@filesLargeEditDescription": {"placeholders":{"name":{"type":"String"},"size":{"type":"String"}}},
+  "filesContinueEdit": "Open anyway",
+  "filesFolderDownloadQuestion": "Download folder?",
+  "filesFolderDownloadDescription": "\"{name}\" will be downloaded to this device as a ZIP archive. Large folders may take a while and use device storage.",
+  "@filesFolderDownloadDescription": {"placeholders":{"name":{"type":"String"}}},
+  "filesArchiveDownload": "Archive and download",
+  "filesDownloadedPath": "Downloaded to {path} (path copied)",
+  "@filesDownloadedPath": {"placeholders":{"path":{"type":"String"}}},
+  "filesDownloadFailed": "Download failed: {error}",
+  "@filesDownloadFailed": {"placeholders":{"error":{"type":"String"}}},
+  "filesSelectDownloadItem": "Select at least one file or folder",
+  "filesDownloadSummary": "Downloaded {success}; {failed} failed; {skipped} skipped",
+  "@filesDownloadSummary": {"placeholders":{"success":{"type":"int"},"failed":{"type":"int"},"skipped":{"type":"int"}}},
+  "filesRevealOnServer": "Reveal on server",
+  "filesRevealOnServerDescription": "Open on the machine running Hermes",
+  "filesDetails": "Details",
+  "filesDownloading": "Downloading...",
+  "filesDownloadFolderZip": "Download folder (ZIP)",
+  "filesDownloadToDevice": "Download to device",
+  "filesCopyToClipboard": "Copy to clipboard",
+  "filesCopiedPasteHint": "Copied; open the destination folder and tap Paste",
+  "filesCutToClipboard": "Cut to clipboard",
+  "filesCutPasteHint": "Cut; open the destination folder and tap Paste",
+  "filesRename": "Rename",
+  "filesCopyPath": "Copy path",
+  "filesPathCopied": "Path copied",
+  "filesCopyRelativePath": "Copy relative path",
+  "filesRelativePathCopied": "Relative path copied",
+  "filesLink": "Link",
+  "filesInfoPath": "Path: {value}",
+  "filesInfoType": "Type: {value}",
+  "filesInfoSize": "Size: {value} B",
+  "filesInfoModified": "Modified: {value}",
+  "filesInfoReadable": "Readable: {value}",
+  "filesInfoWritable": "Writable: {value}",
+  "@filesInfoPath": {"placeholders":{"value":{"type":"String"}}},
+  "@filesInfoType": {"placeholders":{"value":{"type":"String"}}},
+  "@filesInfoSize": {"placeholders":{"value":{"type":"int"}}},
+  "@filesInfoModified": {"placeholders":{"value":{"type":"String"}}},
+  "@filesInfoReadable": {"placeholders":{"value":{"type":"String"}}},
+  "@filesInfoWritable": {"placeholders":{"value":{"type":"String"}}},
+  "filesMovedCount": "Moved {count} items",
+  "filesCopiedCount": "Copied {count} items",
+  "@filesMovedCount": {"placeholders":{"count":{"type":"int"}}},
+  "@filesCopiedCount": {"placeholders":{"count":{"type":"int"}}},
+  "filesPasteFailed": "Paste failed: {error}",
+  "@filesPasteFailed": {"placeholders":{"error":{"type":"String"}}},
+  "filesConfirmDelete": "Confirm deletion",
+  "filesDeleteSelectedDescription": "Delete the {count} selected items? This cannot be undone.",
+  "@filesDeleteSelectedDescription": {"placeholders":{"count":{"type":"int"}}},
+  "filesDeleteFailed": "Delete failed: {error}",
+  "@filesDeleteFailed": {"placeholders":{"error":{"type":"String"}}},
+  "filesNewFile": "New file",
+  "filesFileName": "File name",
+  "filesCreateFileFailed": "Could not create file: {error}",
+  "@filesCreateFileFailed": {"placeholders":{"error":{"type":"String"}}},
+  "filesNewSessionPrompt": "Review and process these files:\n{references}",
+  "@filesNewSessionPrompt": {"placeholders":{"references":{"type":"String"}}},
+  "filesNewFolder": "New folder",
+  "filesNewName": "New name",
+  "filesRenameFailed": "Rename failed: {error}",
+  "@filesRenameFailed": {"placeholders":{"error":{"type":"String"}}},
+  "filesDeleteFolderDescription": "Delete folder \"{name}\" and all its contents?",
+  "filesDeleteFileDescription": "Delete file \"{name}\"?",
+  "@filesDeleteFolderDescription": {"placeholders":{"name":{"type":"String"}}},
+  "@filesDeleteFileDescription": {"placeholders":{"name":{"type":"String"}}},
+  "filesFolderName": "Folder name",
+  "filesCreateFolderFailed": "Could not create folder: {error}",
+  "@filesCreateFolderFailed": {"placeholders":{"error":{"type":"String"}}},
+  "filesSelectWorkspaceDirectory": "Select workspace directory",
+  "filesSelectedCount": "{count} selected",
+  "@filesSelectedCount": {"placeholders":{"count":{"type":"int"}}},
+  "filesSwitchToDirectoryBrowser": "Switch to directory browser",
+  "filesSwitchToProjectTree": "Switch to project tree",
+  "filesOpenInGit": "Open in Git",
+  "filesNewSessionForDirectory": "New session for current directory",
+  "filesSendSelectionToNewSession": "Send selected files to new session",
+  "filesDownloadSelected": "Download selected",
+  "filesCopySelected": "Copy selected",
+  "filesCutSelected": "Cut selected",
+  "filesDeleteSelected": "Delete selected",
+  "filesClearSelection": "Clear selection",
+  "filesMoveHere": "Move here",
+  "filesCopyHere": "Copy here",
+  "filesSelectCurrentDirectory": "Select current directory",
+  "filesUseAsWorkspace": "Use \"{name}\" as workspace",
+  "@filesUseAsWorkspace": {"placeholders":{"name":{"type":"String"}}},
+  "filesSelectPreview": "Select a file to preview",
+  "filesSelectPreviewDescription": "Select a file on the left to edit or preview it here",
+  "filesFilterProjectTree": "Filter loaded project tree...",
+  "filesSearchDirectory": "Search current directory...",
+  "filesLoadingDirectory": "Loading directory...",
+  "filesNoMatches": "No matching files",
+  "filesActions": "File actions",
+  "filesUnableToRead": "Unable to read",
+  "filesDownload": "Download",
+  "filesCut": "Cut",
+  "configTabModel":"Models", "configTabChat":"Chat", "configTabMemory":"Memory", "configTabVoice":"Voice", "configTabToolsKeys":"Tools & keys", "configTitle":"Models & chat", "configLoadFailed":"Could not load configuration: {error}", "@configLoadFailed":{"placeholders":{"error":{"type":"String"}}},
+  "configAuxVision":"Vision", "configAuxWebExtract":"Web extraction", "configAuxCompression":"Context compression", "configAuxSkillsHub":"Skills hub", "configAuxApproval":"Approval decisions", "configAuxMcp":"MCP assistance", "configAuxTitleGeneration":"Title generation", "configAuxReview":"Code review", "configAuxTriage":"Task triage", "configAuxKanban":"Kanban decomposition", "configAuxProfile":"Profile description", "configAuxCurator":"Content curation",
+  "configPersonalityDisplay":"Personality (display.personality)", "configPersonality":"Personality", "configTimezone":"Time zone (IANA)", "configShowReasoning":"Show reasoning blocks", "configMessageReactions":"Enable message reactions", "configApprovalMode":"Approval mode", "configYoloApproval":"YOLO automatic approval", "configChatFieldsUnavailable":"Chat fields not returned by backend", "configChatFieldsUnavailableDescription":"GET /api/v1/config did not return personality, timezone, approvals, or yolo.",
+  "configPersistentMemory":"Persistent memory", "configUserProfile":"User profile", "configMemoryBudget":"Memory budget (characters)", "configProfileBudget":"Profile budget (characters)", "configMemoryProvider":"Memory provider", "configContextEngine":"Context engine", "configAutoCompression":"Automatic compression", "configCompressionThreshold":"Compression threshold", "configCompressionRatio":"Compression target ratio", "configProtectRecent":"Protect latest N messages", "configMemoryFieldsUnavailable":"Memory fields not returned by backend", "configMemoryFieldsUnavailableDescription":"GET /api/v1/config did not return memory, compression, or context.",
+  "configVoice":"Voice", "configVoiceModel":"Model", "configVoiceId":"Voice ID", "configModelId":"Model ID", "configLanguage":"Language", "configSpeechSpeed":"Speech speed", "configAutoSpeechTags":"Automatic speech tags", "configStreamingLatency":"Streaming latency optimization", "configSampleRate":"Sample rate", "configBitRate":"Bit rate", "configDevice":"Device", "configLanguageCode":"Language code", "configAudioEvents":"Tag audio events", "configDiarization":"Speaker diarization", "configSpeechToText":"Speech to text", "configEchoTranscripts":"Echo transcripts", "configSttProvider":"STT provider", "configTtsProvider":"TTS provider", "configAutoReadReplies":"Read replies automatically", "configMaxRecordingSeconds":"Maximum recording seconds", "configRecordShortcut":"Recording shortcut", "configDirectVoiceService":"Connect directly to voice service", "configVoiceFieldsUnavailable":"Voice fields not returned by backend", "configVoiceFieldsUnavailableDescription":"GET /api/v1/config did not return stt, tts, or voice.",
+  "configProviderApiKeys":"Model provider API keys", "configNoProviders":"No configured providers", "configNoProvidersDescription":"Add an API key to enable a model provider", "configEnvironmentVariables":"Environment variables", "configConfigured":"Configured", "configNotConfigured":"Not configured", "configAvailableModels":"{count} models available", "@configAvailableModels":{"placeholders":{"count":{"type":"int"}}}, "configDisconnectedProvider":"Disconnected {name}", "@configDisconnectedProvider":{"placeholders":{"name":{"type":"String"}}}, "configDisconnectFailed":"Could not disconnect: {error}", "@configDisconnectFailed":{"placeholders":{"error":{"type":"String"}}}, "configUpdateKey":"Update key", "configAddKey":"Add key", "configProviderApiKey":"{name} API key", "@configProviderApiKey":{"placeholders":{"name":{"type":"String"}}}, "configProviderKeySaved":"Saved {name} API key", "@configProviderKeySaved":{"placeholders":{"name":{"type":"String"}}},
+  "configSaved":"Saved", "configPressEnterToSave":"Press Enter to save", "configEnterNumber":"Enter a number", "configNewValueOptional":"New value (leave blank to keep unchanged)", "configValue":"Value", "configRevealFailed":"Could not reveal value: {error}", "@configRevealFailed":{"placeholders":{"error":{"type":"String"}}}, "configDeleteVariableQuestion":"Delete {key}?", "@configDeleteVariableQuestion":{"placeholders":{"key":{"type":"String"}}}, "configDeleteVariableDescription":"This environment variable will be permanently removed from the server .env file. This cannot be undone.", "configAddEnvironmentVariable":"Add environment variable", "configVariableName":"Variable name", "configNoEnvironmentVariables":"No environment variables", "configNoEnvironmentVariablesDescription":"Add custom environment variables to configure tools or providers", "configHideAdvancedVariables":"Hide advanced variables", "configShowAdvancedVariables":"Show advanced variables ({count})", "@configShowAdvancedVariables":{"placeholders":{"count":{"type":"int"}}}, "configSet":"Set", "configNotSet":"Not set", "configVoiceIdManual":"Press Enter to save (no account voices were returned; enter an ID manually)", "configVoicesLoadFailed":"Could not load account voices: {error}. Enter an ID manually and press Enter to save.", "@configVoicesLoadFailed":{"placeholders":{"error":{"type":"String"}}},
+  "chatDraftHandoffSaveFailed": "The draft is available here but could not be saved to the server: {error}",
+  "@chatDraftHandoffSaveFailed": {"placeholders":{"error":{"type":"String"}}},
+  "toolPlanTitle":"Plan", "toolPlanCopy":"Copy plan", "toolPlanCopied":"Plan copied",
+  "toolValueNotProvided":"Not provided", "toolCommand":"Command", "toolWaitingCommand":"Waiting for command", "toolOutput":"Output", "toolErrorOutput":"Error output", "toolExitCode":"Exit code: {code}",
+  "toolCode":"Code", "toolCodeLanguage":"Code · {language}", "toolWaitingCode":"Waiting for code", "toolExecutionResult":"Execution result", "toolChangedFiles":"Changed files · {count}",
+  "toolPatchContent":"Patch", "toolWaitingPatch":"Waiting for patch", "toolResult":"Result", "toolSearchQuery":"Search query", "toolSearchingWeb":"Searching the web", "toolSearchResults":"Search results · {count}",
+  "toolNoResults":"No results", "toolLink":"Link", "toolContent":"Content", "toolFile":"File", "toolReadingFile":"Reading file", "toolWritingFile":"Writing file", "toolWriteContent":"Content to write",
+  "toolFileList":"Files · {count}", "toolNoFiles":"No files", "toolDetails":"Details", "toolNoReadableContent":"(No readable content)", "toolWaitingForResult":"Waiting for tool output",
+  "toolUntitledResult":"Untitled result", "toolCopyAll":"Copy all", "toolHiddenRestore":"{name} is hidden; tap to restore", "toolReadableView":"Readable view", "toolRawJsonView":"Raw JSON view",
+  "toolHideRow":"Hide this tool row", "toolCopyResult":"Copy result", "toolRawDetailsTitle":"{name} raw details", "toolViewRawDetails":"View raw details", "toolArguments":"Arguments",
+  "toolNoDetailedData":"(No detailed data)", "toolArgumentDetailsTitle":"{key} argument", "toolTapForFullContent":"[Tap to view all {count} characters]",
+  "toolContentTooLong":"Content is long ({count} characters)", "toolFullResultTitle":"{name} full result", "toolViewFull":"View all",
+  "@toolExitCode":{"placeholders":{"code":{"type":"int"}}}, "@toolCodeLanguage":{"placeholders":{"language":{"type":"String"}}},
+  "@toolChangedFiles":{"placeholders":{"count":{"type":"int"}}}, "@toolSearchResults":{"placeholders":{"count":{"type":"int"}}}, "@toolFileList":{"placeholders":{"count":{"type":"int"}}},
+  "@toolHiddenRestore":{"placeholders":{"name":{"type":"String"}}}, "@toolRawDetailsTitle":{"placeholders":{"name":{"type":"String"}}},
+  "@toolArgumentDetailsTitle":{"placeholders":{"key":{"type":"String"}}}, "@toolTapForFullContent":{"placeholders":{"count":{"type":"int"}}},
+  "@toolContentTooLong":{"placeholders":{"count":{"type":"int"}}}, "@toolFullResultTitle":{"placeholders":{"name":{"type":"String"}}},
+  "kanbanDeleteAttachment":"Delete {name}?", "kanbanCannotUndo":"This action cannot be undone.", "kanbanOperationFailed":"Operation failed: {error}", "kanbanNoLog":"No log available",
+  "kanbanAddChildTask":"Add child task", "kanbanTaskId":"Task ID", "kanbanDescription":"Description", "kanbanCommandCopied":"Command copied", "kanbanViewLog":"View log",
+  "kanbanEstimate":"Estimate", "kanbanDecompose":"Decompose", "kanbanNoDescription":"No description", "kanbanDiagnostics":"Diagnostics", "kanbanComments":"Comments ({count})",
+  "kanbanAddComment":"Add comment", "kanbanDependencies":"Dependencies: {parents} parent tasks, {children} child tasks", "kanbanChildTask":"Child task {id}",
+  "kanbanAttachments":"Attachments ({count})", "kanbanEventTimeline":"Event timeline ({count})", "kanbanRuns":"Runs ({count})", "kanbanUploadAttachment":"Upload attachment", "kanbanAttachmentBytes":"{count} bytes",
+  "@kanbanDeleteAttachment":{"placeholders":{"name":{"type":"String"}}}, "@kanbanOperationFailed":{"placeholders":{"error":{"type":"String"}}},
+  "@kanbanComments":{"placeholders":{"count":{"type":"int"}}}, "@kanbanDependencies":{"placeholders":{"parents":{"type":"int"},"children":{"type":"int"}}},
+  "@kanbanChildTask":{"placeholders":{"id":{"type":"String"}}}, "@kanbanAttachments":{"placeholders":{"count":{"type":"int"}}},
+  "@kanbanEventTimeline":{"placeholders":{"count":{"type":"int"}}}, "@kanbanRuns":{"placeholders":{"count":{"type":"int"}}}, "@kanbanAttachmentBytes":{"placeholders":{"count":{"type":"int"}}},
+  "messageReactionFailed":"Could not update reaction: {error}", "messageRenderFailed":"This message cannot be displayed", "messageRenderFailedDescription":"Other messages are unaffected",
+  "messageRemoveMyReaction":"Remove my reaction", "messageAgentReaction":"Agent reaction", "messageAddReaction":"Add reaction", "messageSearchEmoji":"Search emoji",
+  "messageImageSaveFailed":"Could not save image: {error}", "messageGeneratingImage":"Generating image...", "messageImageGenerationFailed":"Image generation failed", "messageWaitingForImage":"Waiting for image result",
+  "messageGeneratedImage":"Generated image", "messageImageLinkCopied":"Image link copied", "messageOpenInBrowser":"Open in browser",
+  "messageMcpSetup":"MCP server setup", "messageMcpServer":"MCP · {server}", "messageMcpSetupFailed":"Setup failed; retry in MCP settings", "messageMcpSetupWaiting":"Waiting for setup to complete",
+  "messageMcpSetupComplete":"Setup complete", "messageOpenMcpSettings":"Open MCP settings", "messageFileChanges":"File changes", "messageViewDiff":"View diff", "messageOpenLink":"Open link",
+  "messageSendingToAgent":"Sending to {name}...", "messageSentToAgent":"Sent to {name}", "messageReplyFromAgent":"Reply from {name}", "messageRepliedToAgent":"Replied to {name}", "messageFromAgent":"From agent · {name}",
+  "messageSteered":"Steered", "messageHermesAvatar":"Hermes assistant avatar", "messageSourceWechat":"WeChat", "messageSourceFeishu":"Feishu", "messageSourceDesktop":"Desktop",
+  "messageRestoreVersion":"Restore this version", "messagePreviousVersion":"Previous version", "messageNextVersion":"Next version", "messageCopyText":"Copy text", "messageCopyMarkdown":"Copy as Markdown",
+  "messageBranchFromHere":"Branch from this message", "messageSpeakDisconnected":"Connect to the server to read this message aloud", "messageSpeakFailed":"Could not play speech. Try again.", "messageStopSpeaking":"Stop reading", "messageSpeak":"Read aloud",
+  "@messageReactionFailed":{"placeholders":{"error":{"type":"String"}}}, "@messageImageSaveFailed":{"placeholders":{"error":{"type":"String"}}},
+  "@messageMcpServer":{"placeholders":{"server":{"type":"String"}}}, "@messageSendingToAgent":{"placeholders":{"name":{"type":"String"}}},
+  "@messageSentToAgent":{"placeholders":{"name":{"type":"String"}}}, "@messageReplyFromAgent":{"placeholders":{"name":{"type":"String"}}},
+  "@messageRepliedToAgent":{"placeholders":{"name":{"type":"String"}}}, "@messageFromAgent":{"placeholders":{"name":{"type":"String"}}},
+  "sessionDetailMessages":"Messages", "sessionDetailTools":"Tools", "sessionDetailEstimated":"Estimated", "sessionDetailCost":"Cost", "sessionDetailDuration":"Duration",
+  "sessionDetailInfo":"Session information", "sessionDetailSource":"Source", "sessionDetailModel":"Model", "sessionDetailStarted":"Started", "sessionDetailLastActivity":"Last activity",
+  "sessionDetailEnded":"Ended", "sessionDetailEndReason":"End reason", "sessionDetailHandoff":"Handoff", "sessionDetailHandoffError":"Handoff error",
+  "sessionDetailTokensBilling":"Tokens and billing", "sessionDetailInputOutput":"Input / output", "sessionDetailCacheReadWrite":"Cache read / write", "sessionDetailReasoningTokens":"Reasoning tokens", "sessionDetailBillingSource":"Billing source",
+  "sessionDetailContextSource":"Context and source", "sessionDetailWorkingDirectory":"Working directory", "sessionDetailGitBranch":"Git branch", "sessionDetailContact":"Contact", "sessionDetailChatType":"Chat type",
+  "sessionDetailUserId":"User ID", "sessionDetailParentSession":"Parent session", "sessionDetailRewindCount":"Rewind count", "sessionDetailCompressionFailed":"Compression temporarily failed", "sessionDetailOpen":"Open session",
+  "sessionActionOpenWorkspace":"Open in workspace", "sessionActionUnpin":"Unpin", "sessionActionPin":"Pin", "sessionActionAppearance":"Appearance", "sessionActionDuplicate":"Duplicate session", "sessionActionShare":"Share session", "sessionActionExport":"Export session", "sessionActionMoveProject":"Move to project", "sessionActionUnarchive":"Unarchive", "sessionActionArchive":"Archive", "sessionActionStopResponse":"Stop response",
+  "sessionActionAppearanceTitle":"Session appearance", "sessionActionRenameFailed":"Could not rename session: {error}", "sessionActionUnarchived":"Session unarchived", "sessionActionArchived":"Session archived", "sessionActionFailed":"Operation failed: {error}", "sessionActionUnpinned":"Session unpinned", "sessionActionPinned":"Session pinned", "sessionActionMoved":"Session moved", "sessionActionMoveFailed":"Could not move session: {error}",
+  "sessionActionBranchCreated":"Branch created: {id}", "sessionActionCopyCreated":"Session copy created", "sessionActionDuplicateFailed":"Could not duplicate session: {error}", "sessionActionShareCreated":"Share link created", "sessionActionShareWarning":"Anyone with this link can view the session.", "sessionActionShareFailed":"Could not share session: {error}", "sessionActionStopRequested":"Stop requested",
+  "sessionActionExportMarkdownHint":"Good for viewing and sharing", "sessionActionExportJsonHint":"Preserves all structured data", "sessionActionExportCopiedWeb":"Export copied to clipboard because web cannot save local files", "sessionActionExported":"Exported to {path}; path copied", "sessionActionExportFailed":"Could not export session: {error}",
+  "@sessionActionRenameFailed":{"placeholders":{"error":{"type":"String"}}}, "@sessionActionFailed":{"placeholders":{"error":{"type":"String"}}}, "@sessionActionMoveFailed":{"placeholders":{"error":{"type":"String"}}},
+  "@sessionActionBranchCreated":{"placeholders":{"id":{"type":"String"}}}, "@sessionActionDuplicateFailed":{"placeholders":{"error":{"type":"String"}}}, "@sessionActionShareFailed":{"placeholders":{"error":{"type":"String"}}},
+  "@sessionActionExported":{"placeholders":{"path":{"type":"String"}}}, "@sessionActionExportFailed":{"placeholders":{"error":{"type":"String"}}},
+  "sessionsNoDetail":"No session details", "sessionsNoDetailDescription":"Adjust the filters to view a session summary", "sessionsAllProjects":"All projects", "sessionsProject":"Project", "sessionsSearchHint":"Search titles, previews, or working directories...",
+  "sessionsToday":"Today", "sessionsThisWeek":"This week", "sessionsStarred":"Starred", "sessionsSortNewest":"Time: newest first", "sessionsSortOldest":"Time: oldest first", "sessionsSortTitle":"Title: A-Z", "sessionsSortMessages":"Messages: most first", "sessionsSortMethod":"Sort method", "sessionsLoading":"Loading sessions...", "sessionsViewFullDetails":"View full details", "sessionsSettings":"Settings",
+  "requestHermesQuestion":"Hermes question", "requestPending":"Pending request", "requestAlwaysAllowQuestion":"Always allow?", "requestAlwaysAllowDescription":"This operation will be added to the configuration as a permanent allow rule. Similar operations will no longer ask.", "requestAlwaysAllowDetail":"“{detail}” will be added to the configuration as a permanent allow rule. Similar operations will no longer ask.",
+  "requestNoActiveSession":"No active session", "requestConnectionUnavailable":"The request connection is unavailable", "requestRespondFailed":"Could not respond: {error}", "requestAnswerFailed":"Could not send the answer. Try again.", "requestMcpNameMissing":"The request has no MCP server name", "requestOAuthTimeout":"OAuth authorization timed out", "requestMcpTestFailed":"MCP connection test failed", "requestMcpSetupFailed":"MCP setup failed", "requestConfigureMcp":"Configure {name}",
+  "requestCloseQuestion":"Close request?", "requestCloseDescription":"This request cannot be restored after closing, and the agent will remain waiting.", "requestProcessed":"Processed", "requestInteractionProcessed":"Interactive request processed", "requestServer":"Server: {name}", "requestSubmitAllAnswers":"Submit all answers", "requestConfigureLater":"Not now", "requestConfiguring":"Configuring...", "requestInstallEnable":"Install and enable", "requestEnterContent":"Enter content", "requestEnterText":"Enter...", "requestMorePending":"{count} more pending", "requestAllowOnce":"Allow once", "requestAllowSession":"Allow for this session", "requestSubmitSelected":"Submit ({count} selected)", "requestCustomAnswer":"Other (custom answer)", "requestRecommended":"Recommended",
+  "@requestAlwaysAllowDetail":{"placeholders":{"detail":{"type":"String"}}}, "@requestRespondFailed":{"placeholders":{"error":{"type":"String"}}}, "@requestConfigureMcp":{"placeholders":{"name":{"type":"String"}}}, "@requestServer":{"placeholders":{"name":{"type":"String"}}}, "@requestMorePending":{"placeholders":{"count":{"type":"int"}}}, "@requestSubmitSelected":{"placeholders":{"count":{"type":"int"}}},
+  "messagingLoadFailed":"Could not load messaging platforms: {error}", "messagingPlatformEnabled":"{name} enabled", "messagingPlatformDisabled":"{name} disabled", "messagingUpdateFailed":"Update failed: {error}", "messagingTestPassed":"{name} connection test passed", "messagingTestNotPassed":"Connection test did not pass", "messagingTestFailed":"Test failed: {error}", "messagingConfigSaved":"{name} configuration saved. Restart Gateway to apply connection changes.", "messagingSaveFailed":"Save failed: {error}",
+  "messagingApproved":"Approved {name}", "messagingApproveFailed":"Approval failed: {error}", "messagingRevokeTitle":"Revoke access", "messagingRevokeQuestion":"Revoke messaging access for {name}?", "messagingRevoke":"Revoke", "messagingRevoked":"Access revoked", "messagingRevokeFailed":"Could not revoke access: {error}", "messagingRestartQuestion":"Restart Gateway?", "messagingRestartWarning":"This interrupts all sessions and clients connected to this Gateway. They will reconnect automatically after it completes.", "messagingRestarting":"Gateway is restarting", "messagingRestartFailed":"Gateway restart failed: {error}",
+  "messagingTitle":"Messaging platforms", "messagingRestartGateway":"Restart Gateway", "messagingLoading":"Loading messaging platforms...", "messagingPendingApproval":"Pending approval", "messagingPlatforms":"Platforms", "messagingEmpty":"No messaging platforms", "messagingEmptyDescription":"The server returned no configurable messaging platforms", "messagingAuthorizedUsers":"Authorized users", "messagingConfigure":"Configure", "messagingTest":"Test", "messagingOpenDocs":"Open documentation", "messagingUnknownUser":"Unknown user", "messagingApprove":"Approve",
+  "messagingStateDisabled":"Disabled", "messagingStateGatewayStopped":"Configured; Gateway not running", "messagingStateFatal":"Fatal error", "messagingStateStartupFailed":"Startup failed", "messagingStateConfigured":"Configured", "messagingStateNeedsConfig":"Needs configuration", "messagingPlatformConfig":"{name} configuration", "messagingNoEditableConfig":"This platform has no editable settings.", "messagingAdvancedSettings":"Advanced settings", "messagingSetLeaveBlank":"Set; leave blank to keep unchanged", "messagingEnterNewValue":"Enter a new value", "messagingShow":"Show", "messagingClearSavedValue":"Clear saved value",
+  "@messagingLoadFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingPlatformEnabled":{"placeholders":{"name":{"type":"String"}}}, "@messagingPlatformDisabled":{"placeholders":{"name":{"type":"String"}}}, "@messagingUpdateFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingTestPassed":{"placeholders":{"name":{"type":"String"}}}, "@messagingTestFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingConfigSaved":{"placeholders":{"name":{"type":"String"}}}, "@messagingSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingApproved":{"placeholders":{"name":{"type":"String"}}}, "@messagingApproveFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingRevokeQuestion":{"placeholders":{"name":{"type":"String"}}}, "@messagingRevokeFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingRestartFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingPlatformConfig":{"placeholders":{"name":{"type":"String"}}},
+  "fileTreeListView":"List view", "fileTreeTreeView":"Tree view", "fileTreeAttachToChat":"Attach to chat",
+  "projectAddFolder":"Add folder", "projectFolderPath":"Folder path", "projectFolderLabelOptional":"Label (optional)",
+  "projectCreate":"Create project", "projectLoading":"Loading projects...", "projectEmpty":"No projects yet", "projectEmptyDescription":"Create a project to organize working directories and sessions", "projectWorkspace":"Project workspace",
+  "projectEditAppearance":"Edit appearance", "projectColor":"Color", "projectIcon":"Icon", "projectAppearanceSaveFailed":"Could not save appearance: {error}", "projectRename":"Rename", "projectRenameTitle":"Rename project", "projectName":"Project name", "projectRenameFailed":"Could not rename project: {error}",
+  "projectDeleteQuestion":"Delete {name}?", "projectDeleteDescription":"The project will be deleted, but its sessions and files will not be affected. This cannot be undone.", "projectDeleteFailed":"Could not delete project: {error}", "projectCreateFailed":"Could not create project: {error}",
+  "projectManagement":"Manage projects", "projectLoadFailed":"Could not load projects", "projectNoMoveTargets":"No other eligible projects", "projectNoMoveTargetsDescription":"A project needs a valid working directory before it can receive sessions", "projectNew":"New project", "projectEditTitle":"Edit project", "projectPrimaryPath":"Primary working directory", "projectPrimaryPathHint":"For example, /home/user/projects/my-app", "projectDescriptionOptional":"Description (optional)", "projectRequiredFields":"Enter a project name and working directory", "projectCreated":"Project created", "projectUpdated":"Project updated", "projectSaveFailed":"Could not save project: {error}", "projectDeleteTitle":"Delete project?", "projectDeleteNamedDescription":"Project \"{name}\" will be deleted. Associated sessions will not be deleted.", "projectDeleted":"Project deleted",
+  "@projectAppearanceSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@projectRenameFailed":{"placeholders":{"error":{"type":"String"}}}, "@projectDeleteQuestion":{"placeholders":{"name":{"type":"String"}}}, "@projectDeleteFailed":{"placeholders":{"error":{"type":"String"}}}, "@projectCreateFailed":{"placeholders":{"error":{"type":"String"}}}, "@projectSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@projectDeleteNamedDescription":{"placeholders":{"name":{"type":"String"}}},
+  "subagentsLoadFailed":"Could not load subagents: {error}", "subagentsEmpty":"No subagent activity", "subagentsOpenSessionDescription":"Open a session to view its subagent tree", "subagentsCurrentSessionEmpty":"The current session has no running subagents", "subagentsCurrentSession":"Current session", "subagentsSession":"Session {id}", "subagentsCount":"{count} subagents", "subagentsRunningCount":"{count} running", "subagentsFailedCount":"{count} failed", "subagentsToolCalls":"{count} tool calls", "subagentsFiles":"{count} files", "subagentsInterrupt":"Interrupt", "subagentsInterruptSent":"Interrupt signal sent", "subagentsInterruptFailed":"Could not interrupt subagent: {error}", "subagentsOpenSession":"Open session", "subagentsOpenSessionFailed":"Could not open subagent session: {error}", "subagentsCurrentTool":"Tool: {name}", "subagentsTools":"{count} tools", "subagentsFilesRead":"{count} read", "subagentsFilesWritten":"{count} written", "subagentsStatusQueued":"Queued", "subagentsStatusInterrupted":"Interrupted", "subagentsStatusUnknown":"Unknown",
+  "@subagentsLoadFailed":{"placeholders":{"error":{"type":"String"}}}, "@subagentsSession":{"placeholders":{"id":{"type":"String"}}}, "@subagentsCount":{"placeholders":{"count":{"type":"int"}}}, "@subagentsRunningCount":{"placeholders":{"count":{"type":"int"}}}, "@subagentsFailedCount":{"placeholders":{"count":{"type":"int"}}}, "@subagentsToolCalls":{"placeholders":{"count":{"type":"int"}}}, "@subagentsFiles":{"placeholders":{"count":{"type":"int"}}}, "@subagentsInterruptFailed":{"placeholders":{"error":{"type":"String"}}}, "@subagentsOpenSessionFailed":{"placeholders":{"error":{"type":"String"}}}, "@subagentsCurrentTool":{"placeholders":{"name":{"type":"String"}}}, "@subagentsTools":{"placeholders":{"count":{"type":"int"}}}, "@subagentsFilesRead":{"placeholders":{"count":{"type":"int"}}}, "@subagentsFilesWritten":{"placeholders":{"count":{"type":"int"}}},
+  "credentialsLoadFailed":"Could not load credentials: {error}", "credentialsSearchHint":"Search credentials or providers...", "credentialsMissing":"Missing", "credentialsNoMatches":"No matching credentials", "credentialsNoMatchesDescription":"Adjust the search or status filter", "credentialsEmpty":"No credential providers", "credentialsEmptyDescription":"The server did not return any configurable credential providers", "credentialsGroupCloud":"Cloud providers", "credentialsGroupModelProviders":"Model providers", "credentialsGroupThirdParty":"Third-party services", "credentialsKeyRequired":"Select a provider and enter an API key or token", "credentialsSaveFailed":"Could not save credential: {error}", "credentialsAddTitle":"Add credential", "credentialsEditTitle":"Edit credential", "credentialsSaving":"Saving...", "credentialsApiKey":"{name} API key / token", "credentialsShowKey":"Show key", "credentialsHideKey":"Hide key",
+  "@credentialsLoadFailed":{"placeholders":{"error":{"type":"String"}}}, "@credentialsSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@credentialsApiKey":{"placeholders":{"name":{"type":"String"}}},
+  "petCenterTitle":"Pet center", "petRename":"Rename", "petDisable":"Disable pet", "petRenameFailed":"Could not rename pet: {error}", "petDisableFailed":"Could not disable pet: {error}", "petRenameTitle":"Rename pet", "petRenameHint":"Enter a new name...", "petUntitled":"Untitled", "petStatus":"Status: {status}", "petGallery":"Gallery", "petGalleryEmpty":"No pets available", "petGenerateNew":"Generate new pet", "petStateWave":"Waving", "petStateJump":"Jumping", "petStateCelebrate":"Celebrating",
+  "@petRenameFailed":{"placeholders":{"error":{"type":"String"}}}, "@petDisableFailed":{"placeholders":{"error":{"type":"String"}}}, "@petStatus":{"placeholders":{"status":{"type":"String"}}},
+  "credentialsDisconnectQuestion":"Disconnect {name}?", "credentialsDisconnectDescription":"The saved credential will be removed from the Hermes server. You can add it again later.",
+  "@credentialsDisconnectQuestion":{"placeholders":{"name":{"type":"String"}}},
+  "starmapLoadDetailFailed":"Could not load node details: {error}", "starmapRestoreMine":"Restore my starmap", "starmapShareImport":"Share or import", "starmapResetView":"Reset view", "starmapLoading":"Loading starmap...", "starmapNoData":"No data", "starmapEmpty":"Your starmap is empty", "starmapEmptyDescription":"As Hermes learns more, knowledge nodes will appear here.", "starmapShareTitle":"Share starmap", "starmapShareDescription":"Copy this code to share your starmap, or paste another code and load it.", "starmapShareCodeHint":"Starmap share code", "starmapCopy":"Copy", "starmapLoad":"Load", "starmapInvalidShareCode":"This starmap share code is invalid.", "starmapPause":"Pause", "starmapPlay":"Play", "starmapSkillLegend":"Skill", "starmapMemoryLegend":"Memory", "starmapChronologyLegend":"Core: oldest · outer: newest", "starmapOpenNode":"Open {name}", "starmapSaved":"Saved", "starmapSaveFailed":"Could not save node: {error}", "starmapDeleteQuestion":"Delete node?", "starmapDeleteDescription":"{name} will be removed from the starmap.", "starmapDeleted":"Node deleted", "starmapDeleteFailed":"Could not delete node: {error}", "starmapUseCount":"Used {count} times", "starmapContent":"Content", "starmapSaving":"Saving...", "starmapCreatedBy":"Created by {value}", "starmapSource":"Source: {value}", "starmapStateArchived":"Archived",
+  "@starmapLoadDetailFailed":{"placeholders":{"error":{"type":"String"}}}, "@starmapOpenNode":{"placeholders":{"name":{"type":"String"}}}, "@starmapSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@starmapDeleteDescription":{"placeholders":{"name":{"type":"String"}}}, "@starmapDeleteFailed":{"placeholders":{"error":{"type":"String"}}}, "@starmapUseCount":{"placeholders":{"count":{"type":"int"}}},
+  "configCenterLoadFailed":"Could not load capability data: {error}", "configCenterKnowledgeTab":"Knowledge", "configCenterTitle":"Capability management", "configCenterLoadErrorTitle":"Could not load capabilities", "configCenterMcpEmptyDescription":"Add an MCP server to connect external tools and data.", "configCenterUrlOrCommand":"URL or command", "configCenterTransport":"Transport", "configCenterLocalStdio":"Stdio (local process)", "configCenterMutationFailed":"Could not apply change: {error}", "configCenterKnowledgeTitle":"Knowledge sources", "configCenterKnowledgeEmpty":"No knowledge sources", "configCenterKnowledgeEmptyDescription":"Add a file, folder, or URL as a knowledge source.", "configCenterDatabase":"Database", "configCenterKnowledgeMeta":"{type} · {count} chunks · {status}", "configCenterIndexed":"Indexed", "configCenterNotIndexed":"Not indexed", "configCenterSkillsEmpty":"No skills", "configCenterSkillsEmptyDescription":"The server did not return any skills for this profile.", "configCenterConfiguration":"Configuration", "configCenterInstallPlugin":"Install plugin", "configCenterPluginsEmpty":"No plugins", "configCenterPluginsEmptyDescription":"Install a plugin to extend Hermes.", "configCenterInstall":"Install", "configCenterPluginUrl":"Plugin URL or identifier",
+  "@configCenterLoadFailed":{"placeholders":{"error":{"type":"String"}}}, "@configCenterMutationFailed":{"placeholders":{"error":{"type":"String"}}}, "@configCenterKnowledgeMeta":{"placeholders":{"type":{"type":"String"},"count":{"type":"int"},"status":{"type":"String"}}},
+  "fileEditorDiscardQuestion":"Discard unsaved changes?", "fileEditorDiscardDescription":"Going back will discard your current edits.", "fileEditorKeepEditing":"Keep editing", "fileEditorDiscard":"Discard", "fileEditorDisk":"On disk", "fileEditorEditor":"Editor", "fileEditorConflictDescription":"This file changed on disk. Overwrite it, reload the disk version, or cancel.", "fileEditorConflictTitle":"File changed externally", "fileEditorOverwriteSave":"Overwrite and save", "fileEditorReloaded":"Reloaded the disk version", "fileEditorSaved":"Saved", "fileEditorSaveFailed":"Could not save file: {error}", "fileEditorSaving":"Saving...", "fileEditorUnsavedTitle":"{name}, unsaved changes", "fileEditorEmpty":"(Empty)", "fileEditorBinaryTitle":"This file can't be edited as text", "fileEditorBinaryDescription":"It looks like a binary file (image, archive, or executable). Opening it in the text editor would corrupt it on save, so editing is disabled — download it to your device instead.",
+  "@fileEditorSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@fileEditorUnsavedTitle":{"placeholders":{"name":{"type":"String"}}},
+  "kanbanTaskCreatedLinkFailed":"Task created, but the parent link could not be added: {error}", "@kanbanTaskCreatedLinkFailed":{"placeholders":{"error":{"type":"String"}}},
+  "kanbanTaskStatus":"Status", "kanbanPriority":"Priority", "kanbanAssignee":"Assignee", "kanbanTenant":"Tenant", "kanbanParentTaskId":"Parent task ID", "kanbanWorkspacePath":"Workspace path", "kanbanModelOverride":"Model override", "kanbanProviderOverride":"Provider override", "kanbanEffort":"Reasoning effort", "kanbanEffortLow":"Low", "kanbanEffortMedium":"Medium", "kanbanEffortHigh":"High", "kanbanCreatingTask":"Creating task...", "kanbanCreateTask":"Create task", "kanbanCreateBoard":"Create board", "kanbanBoardSettings":"Board settings", "kanbanProject":"Project", "kanbanNoProject":"No project", "kanbanDeleteBoardQuestion":"Delete board?", "kanbanDeleteBoardDescription":"{name} will be deleted. This cannot be undone.", "kanbanBoardTaskCount":"{count} tasks", "kanbanBoardTaskCountProject":"{count} tasks · {project}", "kanbanRenameBoard":"Rename board",
+  "@kanbanDeleteBoardDescription":{"placeholders":{"name":{"type":"String"}}}, "@kanbanBoardTaskCount":{"placeholders":{"count":{"type":"int"}}}, "@kanbanBoardTaskCountProject":{"placeholders":{"count":{"type":"int"},"project":{"type":"String"}}},
+  "pluginsOperationFailed":"Could not update plugin: {error}", "pluginsInstallTitle":"Install agent plugin", "pluginsIdentifierHint":"Git URL or owner/repo", "pluginsEnableAfterInstall":"Enable after installation", "pluginsForceReinstall":"Force reinstall", "pluginsInstalled":"Installed {name}", "pluginsInstallFailed":"Could not install plugin: {error}", "pluginsLoading":"Loading plugins...", "pluginsNoData":"No plugin data", "pluginsSearchHint":"Search {count} plugins...", "pluginsNoMatches":"No matching plugins", "pluginsKindPlatform":"Platform", "pluginsKindProvider":"Provider", "pluginsKindTool":"Tool", "pluginsContributionTooltip":"{area} · {description}", "pluginsActionExecuted":"{title} completed", "pluginsAreaNavigation":"Navigation", "pluginsAreaCommand":"Commands", "pluginsAreaSettings":"Settings", "pluginsAreaComposer":"Composer", "pluginsAreaDetail":"Details", "pluginsAreaTranscript":"Transcript", "pluginsAreaPane":"Pane",
+  "knowledgeLoadDetailFailed":"Could not load node details: {error}", "knowledgeLoading":"Loading knowledge graph...", "knowledgeNoData":"No knowledge data", "knowledgeSearchHint":"Search knowledge nodes...", "knowledgeMemorySummary":"Memory summary ({count})", "knowledgeNoMatches":"No matching knowledge nodes", "knowledgeStateActive":"Active", "knowledgeStateInactive":"Inactive", "knowledgeNodeMeta":"{category} · used {count} times · {state}", "knowledgeNodeMetaNoCategory":"Used {count} times · {state}", "knowledgeSaved":"Saved", "knowledgeSaveFailed":"Could not save node: {error}", "knowledgeDeleteQuestion":"Delete knowledge node?", "knowledgeDeleteDescription":"{name} will be deleted. This cannot be undone.", "knowledgeDeleted":"Knowledge node deleted", "knowledgeDeleteFailed":"Could not delete node: {error}", "knowledgeCancelEditing":"Cancel editing",
+  "@pluginsOperationFailed":{"placeholders":{"error":{"type":"String"}}}, "@pluginsInstalled":{"placeholders":{"name":{"type":"String"}}}, "@pluginsInstallFailed":{"placeholders":{"error":{"type":"String"}}}, "@pluginsSearchHint":{"placeholders":{"count":{"type":"int"}}}, "@pluginsContributionTooltip":{"placeholders":{"area":{"type":"String"},"description":{"type":"String"}}}, "@pluginsActionExecuted":{"placeholders":{"title":{"type":"String"}}}, "@knowledgeLoadDetailFailed":{"placeholders":{"error":{"type":"String"}}}, "@knowledgeMemorySummary":{"placeholders":{"count":{"type":"int"}}}, "@knowledgeNodeMeta":{"placeholders":{"category":{"type":"String"},"count":{"type":"int"},"state":{"type":"String"}}}, "@knowledgeNodeMetaNoCategory":{"placeholders":{"count":{"type":"int"},"state":{"type":"String"}}}, "@knowledgeSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@knowledgeDeleteDescription":{"placeholders":{"name":{"type":"String"}}}, "@knowledgeDeleteFailed":{"placeholders":{"error":{"type":"String"}}},
+  "skillHubSearchFailed":"Skill search failed: {error}", "skillHubExitCode":"Action exited with code {code}", "skillHubActionTimeout":"The skill action timed out.", "skillHubActionDone":"Action completed", "skillHubActionFailed":"Skill action failed: {error}", "skillHubUninstallQuestion":"Uninstall {name}?", "skillHubUninstallDescription":"The skill will be removed and can be installed again later.", "skillHubUninstall":"Uninstall", "skillHubUpdateInstalled":"Update installed skills", "skillHubSearchHint":"Search the skill marketplace...", "skillHubLoading":"Loading skill marketplace...", "skillHubSourcesTimedOut":"Some sources timed out and were omitted: {sources}", "skillHubNoData":"No marketplace data", "skillHubSources":"Sources", "skillHubRateLimited":"{name} (rate limited)", "skillHubIndexUnavailable":"The skill index is currently unavailable, so search results may be incomplete.", "skillHubFeatured":"Featured", "skillHubSearchPrompt":"Enter keywords to search for skills", "skillHubInstalled":"Installed", "skillHubTrustOfficial":"Official", "skillHubTrustTrusted":"Trusted", "skillHubTrustCommunity":"Community", "skillHubTrustUnverified":"Unverified", "skillHubTrustUntrusted":"Untrusted", "skillHubTrustUnknown":"Unknown trust level",
+  "newSessionInitFailed":"Some session options could not be loaded: {error}", "newSessionStartFailed":"Could not start session: {error}", "newSessionTitleSection":"Session title", "newSessionTitleHint":"Optional; leave blank to generate automatically", "newSessionWorkspace":"Workspace", "newSessionWorkspaceHint":"Agent workspace on the server", "newSessionBrowseDirectory":"Browse directories", "newSessionNoProject":"No project", "newSessionMoveLater":"You can move the session later from its menu", "newSessionUseCurrentModel":"Use current model", "newSessionAgent":"Agent", "newSessionStarting":"Starting...", "newSessionStart":"Start session", "newSessionAgentSummary":"{model} · {cwd}", "newSessionCurrentModel":"Current model", "newSessionWorkspaceAbove":"Workspace above", "newSessionParentDirectory":"Parent directory",
+  "@skillHubSearchFailed":{"placeholders":{"error":{"type":"String"}}}, "@skillHubExitCode":{"placeholders":{"code":{"type":"int"}}}, "@skillHubActionFailed":{"placeholders":{"error":{"type":"String"}}}, "@skillHubUninstallQuestion":{"placeholders":{"name":{"type":"String"}}}, "@skillHubSourcesTimedOut":{"placeholders":{"sources":{"type":"String"}}}, "@skillHubRateLimited":{"placeholders":{"name":{"type":"String"}}}, "@newSessionInitFailed":{"placeholders":{"error":{"type":"String"}}}, "@newSessionStartFailed":{"placeholders":{"error":{"type":"String"}}}, "@newSessionAgentSummary":{"placeholders":{"model":{"type":"String"},"cwd":{"type":"String"}}},
+  "artifactsTitle":"Artifacts", "artifactsSearchHint":"Search artifact titles and sessions...", "artifactsKindCode":"Code", "artifactsKindImage":"Image", "artifactsKindLink":"Link", "artifactsEmpty":"No artifacts", "artifactsEmptyDescription":"Artifacts generated by your sessions will appear here.", "artifactsNoMatches":"No matching artifacts", "artifactsNoMatchesDescription":"Try a different search or filter.", "artifactsOpen":"Open artifact {name}", "artifactsSaved":"Saved", "artifactsSaveFailed":"Could not save artifact: {error}", "artifactsSaveToDevice":"Save to device", "artifactsCopy":"Copy artifact", "artifactsOpenLink":"Open link", "artifactsOpenLinkFailed":"Could not open the link.", "artifactsImageLoadFailed":"Could not load image",
+  "@artifactsOpen":{"placeholders":{"name":{"type":"String"}}}, "@artifactsSaveFailed":{"placeholders":{"error":{"type":"String"}}},
+  "shellReconnecting":"Disconnected. Reconnecting...", "shellReconnectNow":"Reconnect now", "shellCollapseNavigation":"Collapse navigation", "shellExpandNavigation":"Expand navigation", "shellNavigation":"Navigation", "shellSessionArea":"Sessions", "shellWorkspaceArea":"Workspace", "shellIntelligenceArea":"Intelligence", "shellModelStatus":"Model {value}", "shellWorkspaceStatus":"Workspace {value}", "shellAgentStatus":"Agent {value}",
+  "@shellModelStatus":{"placeholders":{"value":{"type":"String"}}}, "@shellWorkspaceStatus":{"placeholders":{"value":{"type":"String"}}}, "@shellAgentStatus":{"placeholders":{"value":{"type":"String"}}},
+  "gitListView":"List view", "gitTreeView":"Tree view", "gitViewPr":"View PR", "gitChangeCounts":"{staged} staged · {changed} changed", "gitWorkingTreeCleanDescription":"There are no uncommitted changes.", "gitStagedSection":"Staged", "gitUnstagedSection":"Unstaged", "gitOpenPrFailed":"Could not open the pull request.", "gitUnstageFailed":"Could not unstage: {error}", "gitCommitAndPushSucceeded":"Committed and pushed", "gitCommitSucceeded":"Committed", "gitStatusAdded":"A", "gitStatusModified":"M", "gitStatusDeleted":"D", "gitStatusRenamed":"R", "gitStatusConflict":"U",
+  "@gitChangeCounts":{"placeholders":{"staged":{"type":"int"},"changed":{"type":"int"}}}, "@gitUnstageFailed":{"placeholders":{"error":{"type":"String"}}},
+  "insightsTitle":"Insights", "insightsDays":"{count} days", "insightsLoading":"Loading statistics for the last {count} days...", "insightsNoData":"No usage data", "insightsOverview":"Overview", "insightsSessions":"Sessions", "insightsApiCalls":"API calls", "insightsCost":"Cost", "insightsDailyUsage":"Daily usage", "insightsModelUsage":"Model usage", "insightsToolCalls":"Tool calls", "insightsUnknownProvider":"Unknown provider", "insightsModelSummary":"{tokens} tokens · {sessions} sessions · ${cost}", "webhookBaseUrl":"Base URL: {url}", "webhookUrl":"URL", "webhookSecret":"Secret",
+  "@insightsDays":{"placeholders":{"count":{"type":"int"}}}, "@insightsLoading":{"placeholders":{"count":{"type":"int"}}}, "@insightsModelSummary":{"placeholders":{"tokens":{"type":"String"},"sessions":{"type":"int"},"cost":{"type":"String"}}}, "@webhookBaseUrl":{"placeholders":{"url":{"type":"String"}}},
+  "toolsTitle":"Toolsets", "toolsEmpty":"No toolsets", "toolsToolsetSummary":"{count} tools · {status}", "toolsTerminalBackend":"Terminal execution environment", "toolsReady":"Ready", "toolsNeedsSetup":"Needs setup", "toolsUnavailable":"Unavailable", "toolsBackendSwitchFailed":"Could not switch terminal environment: {error}", "toolsComputerUseUnsupported":"This backend platform is unsupported", "toolsComputerUseNotInstalled":"cua-driver is not installed", "toolsComputerUseReady":"Computer Use is ready", "toolsComputerUseNotReady":"The driver or permissions are not ready", "toolsRecheck":"Check again", "toolsCheck":"Check", "toolsCheckResult":"{label}: {result}", "toolsWaitingForPermission":"Waiting for backend permission...", "toolsRequestPermission":"Request backend system permission", "toolsPermissionTimeout":"The permission request timed out.", "toolsPermissionFailed":"Could not request system permission: {error}", "toolsToggleFailed":"Could not update toolset: {error}",
+  "@toolsToolsetSummary":{"placeholders":{"count":{"type":"int"},"status":{"type":"String"}}}, "@toolsBackendSwitchFailed":{"placeholders":{"error":{"type":"String"}}}, "@toolsCheckResult":{"placeholders":{"label":{"type":"String"},"result":{"type":"String"}}}, "@toolsPermissionFailed":{"placeholders":{"error":{"type":"String"}}}, "@toolsToggleFailed":{"placeholders":{"error":{"type":"String"}}},
+  "agentBotsTitle":"Bots", "agentRequestSummary":"{title} · {member}", "@agentRequestSummary":{"placeholders":{"title":{"type":"String"},"member":{"type":"String"}}},
+  "modelPickerRefreshFailed":"Could not refresh models: {error}", "modelPickerEdit":"Edit visible models", "modelPickerVisibilitySaveFailed":"Could not save model visibility: {error}", "modelPickerMoaPresets":"MoA presets", "modelPickerMoaModel":"MoA: {model}", "modelPickerRefresh":"Refresh models", "modelPickerFree":"Free", "modelPickerFreeDiscount":"Free · -{percent}%", "modelPickerPricing":"Input {input} / Output {output}{discount}", "modelPickerSelectNone":"Select none", "modelPickerSelectAll":"Select all",
+  "@modelPickerRefreshFailed":{"placeholders":{"error":{"type":"String"}}}, "@modelPickerVisibilitySaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@modelPickerMoaModel":{"placeholders":{"model":{"type":"String"}}}, "@modelPickerFreeDiscount":{"placeholders":{"percent":{"type":"num"}}}, "@modelPickerPricing":{"placeholders":{"input":{"type":"String"},"output":{"type":"String"},"discount":{"type":"String"}}},
+  "commonCopy":"Copy", "chatMermaidDiagram":"Mermaid diagram", "chatArtifactTitle":"{language} artifact", "chatCodeArtifactTitle":"{language} code · {count} lines", "chatArtifactPreview":"Artifact preview", "chatCodeTitle":"{language} code", "chatCodeCopied":"Code copied", "chatLivePreview":"Live preview", "chatExpandPreview":"Expand preview in message", "chatAudioPlaybackFailed":"Could not play audio", "chatPauseAudio":"Pause audio", "chatPlayAudio":"Play audio", "chatOpenVideo":"Video · tap to open", "chatOpenFile":"File · tap to open", "imageSaveFailed":"Could not save image: {error}",
+  "@chatArtifactTitle":{"placeholders":{"language":{"type":"String"}}}, "@chatCodeArtifactTitle":{"placeholders":{"language":{"type":"String"},"count":{"type":"int"}}}, "@chatCodeTitle":{"placeholders":{"language":{"type":"String"}}}, "@imageSaveFailed":{"placeholders":{"error":{"type":"String"}}},
+  "voiceMenu":"Voice menu", "voiceStopRecording":"Stop recording", "voiceDictation":"Voice input", "voiceContinuousConversation":"Continuous voice conversation", "voiceAutoReadReplies":"Read replies automatically", "voiceWakeWord":"Wake word", "voiceWakePhrase":"\"{phrase}\"", "voiceStopSpeaking":"Stop reading", "voiceWakeEnabling":"Enabling wake word...", "voiceWakeTriggered":"Wake word detected. Listening...", "voiceWakeListening":"Listening for the wake word", "voiceWakeListeningFor":"Listening for \"{phrase}\"", "voiceWakeWaiting":"Wake word waiting to resume", "voiceWakeDisabled":"Wake word off", "sessionPrBadge":"PR #{number} · {status}", "sessionPrOpenFailed":"Could not open the pull request.", "sessionCliBadge":"CLI session", "sessionDraftBadge":"Unsent draft", "sessionSharedBadge":"Shared", "sessionHandedOff":"Handed off", "sessionHandedOffTo":"Handed off · {platform}", "sessionHandoffErrorBadge":"Handoff error · {error}", "sessionCompressionErrorBadge":"Context compression temporarily failed · {error}", "sessionEndedWithReason":"Ended · {reason}", "sessionEnded":"Ended",
+  "@voiceWakePhrase":{"placeholders":{"phrase":{"type":"String"}}}, "@voiceWakeListeningFor":{"placeholders":{"phrase":{"type":"String"}}}, "@sessionPrBadge":{"placeholders":{"number":{"type":"int"},"status":{"type":"String"}}}, "@sessionHandedOffTo":{"placeholders":{"platform":{"type":"String"}}}, "@sessionHandoffErrorBadge":{"placeholders":{"error":{"type":"String"}}}, "@sessionCompressionErrorBadge":{"placeholders":{"error":{"type":"String"}}}, "@sessionEndedWithReason":{"placeholders":{"reason":{"type":"String"}}},
+  "toolGroupHiddenRestore":"{count} tools hidden; tap to restore", "backgroundStopFailed":"Could not stop process: {error}", "backgroundProcessRemoved":"This process has ended and was removed", "backgroundCloseAndHide":"Close and hide", "mcpLogsEmpty":"No logs", "subagentTaskProgress":"Task progress", "cloudDiscoverAgain":"Discover again", "cloudPortalLoginPrompt":"Sign in to the Portal below. Agents will be discovered automatically after sign-in.",
+  "@toolGroupHiddenRestore":{"placeholders":{"count":{"type":"int"}}}, "@backgroundStopFailed":{"placeholders":{"error":{"type":"String"}}},
+  "backgroundTerminal":"Background terminal", "backgroundWaitingOutput":"Waiting for output...", "backgroundStopping":"Stopping...", "backgroundStopProcess":"Stop process", "markdownAlertTip":"Tip", "markdownAlertImportant":"Important", "markdownAlertWarning":"Warning", "markdownAlertCaution":"Caution", "markdownAlertNote":"Note", "richLinkMaps":"Maps", "turnActivityTools":"{count} tools", "turnActivityReasoning":"{count} reasoning blocks", "toolGroupFailed":"{count} failed",
+  "@turnActivityTools":{"placeholders":{"count":{"type":"int"}}}, "@turnActivityReasoning":{"placeholders":{"count":{"type":"int"}}}, "@toolGroupFailed":{"placeholders":{"count":{"type":"int"}}},
+  "messageSourceDingtalk":"DingTalk", "profileScopeApplyTo":"Apply to", "profileScopeChangesApplyTo":"Changes on this page apply to the {profile} profile.", "profileScopeConfiguring":"Configuring", "profileScopeCurrent":"{name} (current)",
+  "mcpLogsAllServers":"All servers", "mcpLogsLoading":"Loading logs...", "badgeUnreadCount":"{count} unread", "progressPercent":"{percent}% complete", "avatarNamed":"Avatar: {name}", "avatarUnnamed":"Avatar",
+  "thinkingActive":"Thinking", "thinkingProcess":"Reasoning", "thinkingBriefly":"Thought briefly", "thinkingSeconds":"Thought for {seconds}s", "thinkingMinutes":"Thought for {minutes}m {seconds}s", "thinkingGeneratedCharacters":"Generated {count} characters", "thinkingCharacters":"{count} characters", "thinkingAnalyzing":"Analyzing context...",
+  "commonNoData":"No data", "commonFeatureDisabled":"Feature disabled", "cloudDiscoveryFailed":"Cloud discovery failed", "cloudDiscoveryInvalidData":"Cloud returned unrecognized data: {error}", "cloudDiscoveryUnsupported":"Hermes Cloud discovery is not supported on this platform", "sessionCreateFailed":"Could not create the session: {error}", "statusReady":"Ready", "workspaceDescription":"Session tiles and plugin panes", "subagentFallbackName":"Subagent", "subagentNoTask":"No task description", "subagentsStatusRunning":"Running", "subagentsStatusCompleted":"Completed", "subagentsStatusFailed":"Failed", "subagentCardTitle":"Subagent · {name}", "subagentTask":"Task", "subagentModel":"Model", "subagentCurrentTool":"Current tool", "subagentSummary":"Summary", "sessionApiCallCount":"{count} API calls", "sessionTokenCount":"{count} tokens",
+  "@profileScopeChangesApplyTo":{"placeholders":{"profile":{"type":"String"}}}, "@profileScopeCurrent":{"placeholders":{"name":{"type":"String"}}}, "@badgeUnreadCount":{"placeholders":{"count":{"type":"String"}}}, "@progressPercent":{"placeholders":{"percent":{"type":"int"}}}, "@avatarNamed":{"placeholders":{"name":{"type":"String"}}}, "@thinkingSeconds":{"placeholders":{"seconds":{"type":"String"}}}, "@thinkingMinutes":{"placeholders":{"minutes":{"type":"int"},"seconds":{"type":"int"}}}, "@thinkingGeneratedCharacters":{"placeholders":{"count":{"type":"int"}}}, "@thinkingCharacters":{"placeholders":{"count":{"type":"int"}}}, "@cloudDiscoveryInvalidData":{"placeholders":{"error":{"type":"String"}}}, "@sessionCreateFailed":{"placeholders":{"error":{"type":"String"}}}, "@subagentCardTitle":{"placeholders":{"name":{"type":"String"}}}, "@sessionApiCallCount":{"placeholders":{"count":{"type":"int"}}}, "@sessionTokenCount":{"placeholders":{"count":{"type":"String"}}},
+  "diagnosticsConsentDescription":"Redacted server logs and system and provider configuration will be uploaded. Logs may contain conversation content, tool output, and file paths. API keys are never uploaded, and the diagnostic bundle is deleted after 14 days.", "diagnosticsApproveUpload":"Agree and upload", "diagnosticsGatewayUnavailable":"Not connected to the Hermes gateway", "diagnosticsUploadFailed":"Upload failed", "diagnosticsSentTitle":"Diagnostics sent", "diagnosticsLinkCopied":"The view link was copied to the clipboard:", "diagnosticsSupportPrompt":"For more help, contact us through:", "diagnosticsSendFailed":"Could not send diagnostics: {error}",
+  "slashDescRetry":"Regenerate the previous response", "slashDescClear":"Clear the current session view", "slashDescUndo":"Undo the last complete turn", "slashDescSteer":"Add guidance to the current turn", "slashDescStatus":"View session status", "slashDescTitle":"Regenerate the session title", "slashDescNew":"Start a new session", "slashDescYolo":"Toggle YOLO auto-approval", "slashDescHandoff":"Open session handoff", "slashDescProfile":"Choose a profile or personality", "slashDescHelp":"List local and catalog slash commands", "slashDescBackground":"Submit a background task", "slashDescCompress":"Compress the current session context", "slashDescQueue":"Add the message to the send queue", "slashDescUsage":"View usage for this session", "slashDescVersion":"Show Hermes and mobile versions", "slashDescStop":"Stop the current turn", "slashDescTools":"Open tool configuration", "slashDescApprovals":"Set approval mode: manual / smart / off", "slashDescModel":"Open the model picker", "slashDescWake":"Manage wake word: status / on / off / toggle", "slashDescSkinUnavailable":"Desktop-only skin command", "slashDescBrowserUnavailable":"Desktop-only built-in browser command", "slashDescJourney":"Open the Starmap journey", "slashDescPet":"Open the pet center", "slashDescHatch":"Generate and hatch a new pet", "slashDescSave":"Save the current session transcript", "slashDescReloadConfigUnavailable":"reload-config is not supported by Mobile or Gateway",
+  "cronSuggestionPrefix":"Schedule this as a recurring task: ", "kanbanTaskCompletedNotification":"Kanban task completed", "kanbanTaskProblemNotification":"Kanban task needs attention", "themeGraphite":"Graphite", "themeIndigo":"Indigo", "themeMoss":"Moss", "themeDune":"Dune", "connectTransportMobileServer":"Mobile Server", "connectTransportDirectGateway":"Direct Gateway", "connectTransportSsh":"SSH", "connectAuthOauth":"OAuth", "connectAuthToken":"Token", "mcpAuthOauth":"OAuth", "mcpAuthBearerToken":"Bearer token", "gitAgentShipTitle":"Agent Ship", "commonUrl":"URL",
+  "@diagnosticsSendFailed":{"placeholders":{"error":{"type":"String"}}},
+  "toolEmptyList":"(Empty list)", "toolItemCount":"{count} items", "toolFieldCount":"{count} fields", "toolPath":"Path", "toolLanguage":"Language", "toolText":"Text", "toolMessage":"Message", "toolSummary":"Summary", "toolExecuteCommand":"Run command", "toolRunCode":"Run code", "toolRunCodeLanguage":"Run {language} code", "toolSearchFor":"Search: {query}", "toolExtractWeb":"Extract web page", "toolApplyPatch":"Apply file patch", "toolListFiles":"List files", "toolGenerateImage":"Generate image", "toolDelegateTask":"Delegated task", "toolTask":"Task {index}",
+  "toolRunEditingFiles":"{count, plural, =1{Editing 1 file} other{Editing {count} files}}", "toolRunExploringFiles":"{count, plural, =1{Exploring 1 file} other{Exploring {count} files}}", "toolRunRunningCommands":"{count, plural, =1{Running 1 command} other{Running {count} commands}}", "toolRunDelegatingTasks":"{count, plural, =1{Delegating 1 task} other{Delegating {count} tasks}}", "toolRunUsingTools":"{count, plural, =1{Using 1 tool} other{Using {count} tools}}", "toolRunEditedFiles":"{count, plural, =1{Edited 1 file} other{Edited {count} files}}", "toolRunExploredFiles":"{count, plural, =1{Explored 1 file} other{Explored {count} files}}", "toolRunRanCommands":"{count, plural, =1{Ran 1 command} other{Ran {count} commands}}", "toolRunDelegatedTasks":"{count, plural, =1{Delegated 1 task} other{Delegated {count} tasks}}", "toolRunUsedTools":"{count, plural, =1{Used 1 tool} other{Used {count} tools}}",
+  "@toolItemCount":{"placeholders":{"count":{"type":"int"}}}, "@toolFieldCount":{"placeholders":{"count":{"type":"int"}}}, "@toolRunCodeLanguage":{"placeholders":{"language":{"type":"String"}}}, "@toolSearchFor":{"placeholders":{"query":{"type":"String"}}}, "@toolTask":{"placeholders":{"index":{"type":"int"}}}, "@toolRunEditingFiles":{"placeholders":{"count":{"type":"int"}}}, "@toolRunExploringFiles":{"placeholders":{"count":{"type":"int"}}}, "@toolRunRunningCommands":{"placeholders":{"count":{"type":"int"}}}, "@toolRunDelegatingTasks":{"placeholders":{"count":{"type":"int"}}}, "@toolRunUsingTools":{"placeholders":{"count":{"type":"int"}}}, "@toolRunEditedFiles":{"placeholders":{"count":{"type":"int"}}}, "@toolRunExploredFiles":{"placeholders":{"count":{"type":"int"}}}, "@toolRunRanCommands":{"placeholders":{"count":{"type":"int"}}}, "@toolRunDelegatedTasks":{"placeholders":{"count":{"type":"int"}}}, "@toolRunUsedTools":{"placeholders":{"count":{"type":"int"}}},
+  "notificationBackgroundCompleted":"Background task completed", "notificationBackgroundCompletedBody":"A background task completed. Tap to view the result.", "notificationApprovalRequired":"Approval required", "notificationApprovalRequiredBody":"The agent is requesting approval for a sensitive operation.",
+  "voiceServerDisconnected":"Not connected to the server", "voiceRecordingUnsupported":"Microphone recording is not supported on this platform", "voiceMicrophoneStartFailed":"Microphone permission was denied or recording could not start", "voiceRecordingFailed":"Recording failed: {error}", "voiceNoSpeech":"I couldn't hear that. Try again.", "voiceSttUnavailable":"Speech-to-text (STT) is not configured on the server", "voiceTranscriptionFailed":"Transcription failed: {error}", "voiceSpeechFailed":"Voice playback failed: {error}", "voiceStreamingSpeechFailed":"Streaming voice playback failed: {error}",
+  "voiceWakeInstallNotice":"Enabling wake word. The detection engine may need to be installed the first time.", "voiceWakeUsage":"Usage: /wake [status|on|off|toggle]", "voiceWakeNotEnabled":"Wake word is not enabled", "voiceWakeOtherSurface":"Wake word is assigned to another device", "voiceWakeOwned":"Another device is listening for the wake word", "voiceWakeUnavailable":"This backend does not support wake word", "voiceWakeMicInterrupted":"Wake word microphone interrupted: {error}", "voiceWakeMicPermission":"Microphone permission was denied, so wake word cannot listen", "voiceWakeMicStartFailed":"Could not start the wake word microphone: {error}", "voiceWakeAudioUploadFailed":"Could not send wake word audio: {error}",
+  "@voiceRecordingFailed":{"placeholders":{"error":{"type":"String"}}}, "@voiceTranscriptionFailed":{"placeholders":{"error":{"type":"String"}}}, "@voiceSpeechFailed":{"placeholders":{"error":{"type":"String"}}}, "@voiceStreamingSpeechFailed":{"placeholders":{"error":{"type":"String"}}}, "@voiceWakeMicInterrupted":{"placeholders":{"error":{"type":"String"}}}, "@voiceWakeMicStartFailed":{"placeholders":{"error":{"type":"String"}}}, "@voiceWakeAudioUploadFailed":{"placeholders":{"error":{"type":"String"}}},
+  "filesThisComputer":"This computer", "billingSavedPaymentMethod":"Saved payment method", "billingPaymentMethodKind":"Payment method · {kind}", "@billingPaymentMethodKind":{"placeholders":{"kind":{"type":"String"}}}
+}

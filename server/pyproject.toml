@@ -1,0 +1,34 @@
+[project]
+name = "hermes-mobile-server"
+version = "1.0.0"
+description = "REST + WebSocket API server that locates and drives a local Hermes Agent (hermes-agent) for the Hermes Mobile app."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.30",
+    "httpx[http2]>=0.27,<1.0",
+    "pyjwt[crypto]>=2.9,<3.0",
+    "websockets>=13.0",
+    "pyyaml>=6.0",
+    "pywinpty>=2.0; sys_platform == 'win32'",
+    "ptyprocess>=0.7; sys_platform != 'win32'",
+]
+
+[project.scripts]
+hermes-mobile-server = "hermes_mobile_server.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hermes_mobile_server"]
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

@@ -94,7 +94,7 @@ void main() {
     expect(row.title, '42');
     expect(row.messageCount, 7);
     expect(row.isActive, isTrue);
-    expect(row.isStreaming, isFalse);
+    expect(row.isStreaming, isTrue);
   });
 
   test('SessionMessage coerces row_id and timestamp from strings', () {

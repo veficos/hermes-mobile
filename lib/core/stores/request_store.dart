@@ -204,6 +204,7 @@ class RequestStore extends ChangeNotifier {
   }
 
   int get pendingCount => _queue.length;
+  List<PendingRequest> get pendingRequests => List.unmodifiable(_queue);
   RequestResolution? resolution(String? requestId) =>
       requestId == null ? null : _resolved[requestId];
 
@@ -332,10 +333,15 @@ class RequestStore extends ChangeNotifier {
       switch (e.type) {
         case 'approval.request':
         case 'clarify.request':
+        case 'secret.request':
         case 'sudo.request':
         case 'terminal.read.request':
         case 'mcp.setup.request':
           enqueue(PendingRequest.fromEvent(e));
+        case 'interactive.expire':
+        case 'interactive.expired':
+          final requestId = e.payload['request_id']?.toString();
+          if (requestId?.isNotEmpty == true) dismissById(requestId);
         default:
           break;
       }
@@ -353,6 +359,10 @@ class RequestStore extends ChangeNotifier {
         case 'terminal.read.request':
         case 'mcp.setup.request':
           enqueue(PendingRequest.fromRoutedEvent(routed));
+        case 'interactive.expire':
+        case 'interactive.expired':
+          final requestId = routed.event.payload['request_id']?.toString();
+          if (requestId?.isNotEmpty == true) dismissById(requestId);
         default:
           break;
       }

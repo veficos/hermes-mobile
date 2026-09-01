@@ -83,6 +83,8 @@ class SessionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final completed =
+        session.endedAt != null || session.endReason?.trim().isNotEmpty == true;
     // Prototype parity (`sessionCard()`'s status chip: running/completed=good,
     // needs_approval=warn, archived=gray): archived must not share the same
     // green as an active/completed session — it's a distinct, neutral state.
@@ -92,14 +94,18 @@ class SessionCard extends StatelessWidget {
         ? (dark ? HermesSemanticDark.green : HermesSemantic.green)
         : session.archived
         ? (dark ? HermesSemanticDark.gray : HermesSemantic.gray)
-        : (dark ? HermesSemanticDark.green : HermesSemantic.green);
+        : completed
+        ? (dark ? HermesSemanticDark.green : HermesSemantic.green)
+        : (dark ? HermesSemanticDark.gray : HermesSemantic.gray);
     final statusLabel = attention
         ? context.l10n.sessionFilterApproval
         : working
         ? context.l10n.sessionGroupRunning
         : session.archived
         ? context.l10n.sessionGroupArchived
-        : context.l10n.sessionFilterCompleted;
+        : completed
+        ? context.l10n.sessionFilterCompleted
+        : context.l10n.sessionStatusIdle;
     final title = session.title?.trim().isNotEmpty == true
         ? session.title!.trim()
         : context.l10n.sessionUntitled;

@@ -40,6 +40,7 @@ from .plugin_manifest import enrich_plugin_inventory, profile_plugins_root
 from .prompts import SavedPromptsStore
 from .runtime import get_hermes_home
 from .session_shares import share_store
+from .session_live_state import SessionLiveState
 from . import local_workspace
 from .tasks import STATUSES, TaskStore
 
@@ -777,6 +778,9 @@ def build_domain_router(
         dependencies=[Depends(api_key_dependency(settings))],
         tags=["domain"],
     )
+    session_live_state = SessionLiveState()
+    if backend is not None and hasattr(backend, "add_event_listener"):
+        backend.add_event_listener(session_live_state.on_backend_event)
 
     def require_backend() -> BackendManager:
         if backend is None or not backend.is_running:
@@ -848,7 +852,16 @@ def build_domain_router(
                     **({"profile": profile} if profile else {}),
                 },
             )
-            return {"sessions": (data or {}).get("results", []), "total": None, "offset": 0}
+            results = (data or {}).get("results", [])
+            return {
+                "sessions": [
+                    session_live_state.project(row)
+                    for row in results
+                    if isinstance(row, dict)
+                ],
+                "total": None,
+                "offset": 0,
+            }
 
         async def _fetch_page(page_offset: int, page_limit: int) -> dict:
             list_query = {
@@ -1016,6 +1029,7 @@ def build_domain_router(
             for row in enriched:
                 if not (row.get("profile") or row.get("profile_name")):
                     row["profile"] = profile
+        enriched = [session_live_state.project(row) for row in enriched]
         logger.info(
             "[subagent] list_sessions complete rows=%d children_attached=%d parents_fetched=%d took=%.1fms",
             len(enriched), len(children), len(fetched_parent_ids),
@@ -1068,7 +1082,8 @@ def build_domain_router(
     @router.get("/sessions/{session_id}")
     async def session_detail(session_id: str, profile: str | None = None) -> Any:
         be = require_backend()
-        return await _session_detail_compat(be, session_id, profile=profile)
+        detail = await _session_detail_compat(be, session_id, profile=profile)
+        return session_live_state.project(detail)
 
     @router.get("/sessions/{session_id}/messages")
     async def session_messages(

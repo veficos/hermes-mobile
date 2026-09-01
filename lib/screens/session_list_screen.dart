@@ -1308,7 +1308,7 @@ class _SessionListScreenState extends State<SessionListScreen> {
                   onTap: () => select({'attention'}),
                 ),
                 pill(
-                  label: context.l10n.sessionFilterCompleted,
+                  label: context.l10n.sessionStatusIdle,
                   selected: filter.length == 1 && filter.contains('idle'),
                   onTap: () => select({'idle'}),
                 ),

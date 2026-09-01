@@ -479,8 +479,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       return (route: owner?.route, durableId: owner?.durableId);
     });
     chat.addListener(_onChatTranscriptChanged);
+    requests.addListener(_onRequestsChanged);
     _eventSub = connection.routedEvents.listen((routed) {
       final e = routed.event;
+      _applyListLiveEvent(e);
       final currentRoute = _owner?.route;
       if (currentRoute != null &&
           routed.route.connectionId != currentRoute.connectionId) {
@@ -527,7 +529,18 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       }
       if (e.type == 'sessions.changed' ||
           e.type == 'session.title' ||
-          e.type == 'message.complete') {
+          e.type == 'message.start' ||
+          e.type == 'message.complete' ||
+          e.type == 'error' ||
+          e.type == 'session.reclaimed' ||
+          e.type == 'approval.request' ||
+          e.type == 'clarify.request' ||
+          e.type == 'secret.request' ||
+          e.type == 'sudo.request' ||
+          e.type == 'terminal.read.request' ||
+          e.type == 'mcp.setup.request' ||
+          e.type == 'interactive.expire' ||
+          e.type == 'interactive.expired') {
         _scheduleListRefresh();
       }
       if (e.type == 'gateway.ready' &&
@@ -546,6 +559,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     });
     _legacyEventSub = connection.events.listen((e) {
       if (connection.registry.runtimes.isNotEmpty) return;
+      _applyListLiveEvent(e);
       if (e.type == 'session.info' &&
           e.sessionId != null &&
           e.sessionId == _runtimeId) {
@@ -572,7 +586,13 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       }
       if (e.type == 'sessions.changed' ||
           e.type == 'session.title' ||
-          e.type == 'message.complete') {
+          e.type == 'message.start' ||
+          e.type == 'message.complete' ||
+          e.type == 'error' ||
+          e.type == 'session.reclaimed' ||
+          e.type.endsWith('.request') ||
+          e.type == 'interactive.expire' ||
+          e.type == 'interactive.expired') {
         _scheduleListRefresh();
       }
     });
@@ -787,7 +807,160 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   bool get readOnly => _readOnly;
 
   List<SessionRow>? _sessions;
-  List<SessionRow>? get sessions => _sessions;
+  List<SessionRow>? get sessions =>
+      _sessions?.map(_projectLiveState).toList(growable: false);
+
+  final Map<String, bool> _liveStreamingById = {};
+  final Map<String, bool> _liveCronRunningById = {};
+  final Map<String, bool> _liveAttentionById = {};
+  final Map<String, String?> _liveActiveStreamIdById = {};
+  Set<String> _requestAttentionIds = {};
+
+  String? _listIdForEvent(GatewayEvent event) {
+    final stored =
+        (event.payload['stored_session_id'] ??
+                event.payload['durable_session_id'])
+            ?.toString()
+            .trim();
+    if (stored?.isNotEmpty == true) return stored;
+    final runtime = event.sessionId?.trim();
+    if (runtime == null || runtime.isEmpty) return null;
+    return connection.sessionOwners.byRuntime(runtime)?.durableId ?? runtime;
+  }
+
+  SessionRow _projectLiveState(SessionRow row) {
+    final currentBusy = row.id == _durableId && chat.busy;
+    return row.copyWith(
+      isStreaming:
+          currentBusy || (_liveStreamingById[row.id] ?? row.isStreaming),
+      cronRunning: _liveCronRunningById[row.id] ?? row.cronRunning,
+      hasPendingUserMessage:
+          _requestAttentionIds.contains(row.id) ||
+          (_liveAttentionById[row.id] ?? row.hasPendingUserMessage),
+      activeStreamId: _liveActiveStreamIdById[row.id],
+      clearActiveStreamId:
+          _liveActiveStreamIdById.containsKey(row.id) &&
+          _liveActiveStreamIdById[row.id] == null,
+    );
+  }
+
+  void _applyListLiveEvent(GatewayEvent event) {
+    final id = _listIdForEvent(event);
+    if (id == null) return;
+    var changed = false;
+    void setStreaming(bool value) {
+      if (_liveStreamingById[id] != value) {
+        _liveStreamingById[id] = value;
+        changed = true;
+      }
+    }
+
+    switch (event.type) {
+      case 'message.start':
+        setStreaming(true);
+        final streamId =
+            event.payload['active_stream_id'] ?? event.payload['stream_id'];
+        if (streamId != null) {
+          _liveActiveStreamIdById[id] = streamId.toString();
+          changed = true;
+        }
+      case 'message.complete':
+      case 'error':
+        setStreaming(false);
+        if (!_liveActiveStreamIdById.containsKey(id) ||
+            _liveActiveStreamIdById[id] != null) {
+          _liveActiveStreamIdById[id] = null;
+          changed = true;
+        }
+      case 'session.info':
+        if (event.payload.containsKey('running')) {
+          final running = parseHermesBool(event.payload['running']);
+          setStreaming(running);
+          if (!running &&
+              (!_liveActiveStreamIdById.containsKey(id) ||
+                  _liveActiveStreamIdById[id] != null)) {
+            _liveActiveStreamIdById[id] = null;
+            changed = true;
+          }
+        }
+        if (event.payload.containsKey('cron_running')) {
+          final value = parseHermesBool(event.payload['cron_running']);
+          if (_liveCronRunningById[id] != value) {
+            _liveCronRunningById[id] = value;
+            changed = true;
+          }
+        }
+        if (event.payload.containsKey('active_stream_id')) {
+          final value = event.payload['active_stream_id']?.toString();
+          if (!_liveActiveStreamIdById.containsKey(id) ||
+              _liveActiveStreamIdById[id] != value) {
+            _liveActiveStreamIdById[id] = value;
+            changed = true;
+          }
+        }
+        if (event.payload.containsKey('pending_user_message') ||
+            event.payload.containsKey('has_pending_user_message')) {
+          final value =
+              parseHermesBool(event.payload['pending_user_message']) ||
+              parseHermesBool(event.payload['has_pending_user_message']);
+          if (_liveAttentionById[id] != value) {
+            _liveAttentionById[id] = value;
+            changed = true;
+          }
+        }
+      case 'cron.start':
+      case 'cron.started':
+        if (_liveCronRunningById[id] != true) {
+          _liveCronRunningById[id] = true;
+          changed = true;
+        }
+      case 'cron.complete':
+      case 'cron.completed':
+      case 'cron.error':
+        if (_liveCronRunningById[id] != false) {
+          _liveCronRunningById[id] = false;
+          changed = true;
+        }
+      case 'approval.request':
+      case 'clarify.request':
+      case 'secret.request':
+      case 'sudo.request':
+      case 'terminal.read.request':
+      case 'mcp.setup.request':
+        final requestId = event.payload['request_id']?.toString();
+        if (requestId?.isNotEmpty == true && _liveAttentionById[id] != true) {
+          _liveAttentionById[id] = true;
+          changed = true;
+        }
+    }
+    if (changed) notifyListeners();
+  }
+
+  void _onRequestsChanged() {
+    final next = <String>{};
+    for (final request in requests.pendingRequests) {
+      final id =
+          request.durableSessionId ??
+          (request.sessionId == null
+              ? null
+              : connection.sessionOwners
+                    .byRuntime(request.sessionId!)
+                    ?.durableId) ??
+          request.sessionId;
+      if (id?.isNotEmpty == true) next.add(id!);
+    }
+    for (final id in _requestAttentionIds.difference(next)) {
+      _liveAttentionById[id] = false;
+    }
+    for (final id in next) {
+      _liveAttentionById[id] = true;
+    }
+    if (!_requestAttentionIds.containsAll(next) ||
+        !next.containsAll(_requestAttentionIds)) {
+      _requestAttentionIds = next;
+      notifyListeners();
+    }
+  }
 
   // ------------------------------------------------------ list pagination
   /// Desktop sidebar parity: offset-window pagination with a "load more" row.
@@ -1754,8 +1927,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       }
       // WebUI parity: snapshot streaming state and reconcile any background
       // completion transitions (streaming -> idle with new messages -> unread).
-      syncStreamingFromRows();
-      unawaited(reconcileStreamingTransitions());
+      await reconcileStreamingTransitions();
       // Record per-profile session count so subsequent profile switches can
       // decide whether to paint a full skeleton (WebUI #4717 honest skeleton).
       unawaited(
@@ -2968,7 +3140,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   /// from streaming → idle with an increased message count and marks a
   /// completion unread for it (WebUI #4946 equivalent on mobile).
   Future<void> reconcileStreamingTransitions() async {
-    final rows = _sessions ?? const [];
+    final rows = sessions ?? const [];
     for (final r in rows) {
       final wasStreaming = _streamingById[r.id] ?? false;
       final nowStreaming = r.effectivelyStreaming;
@@ -3001,6 +3173,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   void dispose() {
     connection.removeListener(_onConnectionChanged);
     chat.removeListener(_onChatTranscriptChanged);
+    requests.removeListener(_onRequestsChanged);
     final sid = _durableId;
     if (sid != null && sid.isNotEmpty) {
       cancelInflightPersistTimer(sid);

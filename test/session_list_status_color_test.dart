@@ -14,6 +14,7 @@ import 'package:hermes_mobile/core/stores/voice_store.dart';
 import 'package:hermes_mobile/screens/session_list_screen.dart';
 import 'package:hermes_mobile/theme/hermes_tokens.dart';
 import 'package:hermes_mobile/widgets/mobile/hermes_mobile_surfaces.dart';
+import 'package:hermes_mobile/widgets/session/session_card.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -128,4 +129,41 @@ void main() {
       expect(chip.color, dark ? HermesSemanticDark.gray : HermesSemantic.gray);
     },
   );
+
+  testWidgets('未结束会话显示空闲，存在结束时间的会话才显示已完成', (tester) async {
+    final idle = SessionRow(id: 'idle', title: 'Idle session');
+    final completed = SessionRow(
+      id: 'completed',
+      title: 'Completed session',
+      endedAt: DateTime.utc(2026, 9, 1),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              SessionCard(
+                session: idle,
+                attention: false,
+                working: false,
+                unread: false,
+              ),
+              SessionCard(
+                session: completed,
+                attention: false,
+                working: false,
+                unread: false,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final chips = tester
+        .widgetList<HermesMobileStatusChip>(find.byType(HermesMobileStatusChip))
+        .toList();
+    expect(chips.map((chip) => chip.label), containsAll(['空闲', '已完成']));
+  });
 }

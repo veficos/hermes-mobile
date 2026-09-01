@@ -12,6 +12,20 @@ int? _parseInt(dynamic value) {
   return null;
 }
 
+bool parseHermesBool(dynamic value) {
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    return const {
+      '1',
+      'true',
+      'yes',
+      'on',
+    }.contains(value.trim().toLowerCase());
+  }
+  return false;
+}
+
 class ServerStatus {
   final String? hermesVersion;
   final String? runtimeKind;
@@ -570,10 +584,10 @@ class SessionRow {
           (json['compression_fallback_streak'] as num?)?.toInt() ?? 0,
       compressionIneffectiveCount:
           (json['compression_ineffective_count'] as num?)?.toInt() ?? 0,
-      isStreaming: json['is_streaming'] == true,
-      cronRunning: json['cron_running'] == true,
-      pendingUserMessage: json['pending_user_message'] == true,
-      hasPendingUserMessage: json['has_pending_user_message'] == true,
+      isStreaming: parseHermesBool(json['is_streaming']),
+      cronRunning: parseHermesBool(json['cron_running']),
+      pendingUserMessage: parseHermesBool(json['pending_user_message']),
+      hasPendingUserMessage: parseHermesBool(json['has_pending_user_message']),
       activeStreamId: json['active_stream_id']?.toString(),
       lastMessageAt: parseHermesEpochMillis(lastMsgAt ?? json['updated_at']),
       archived: json['archived'] == true,
@@ -591,7 +605,15 @@ class SessionRow {
     );
   }
 
-  SessionRow copyWith({String? profile}) => SessionRow(
+  SessionRow copyWith({
+    String? profile,
+    bool? isStreaming,
+    bool? cronRunning,
+    bool? pendingUserMessage,
+    bool? hasPendingUserMessage,
+    String? activeStreamId,
+    bool clearActiveStreamId = false,
+  }) => SessionRow(
     id: id,
     title: title,
     preview: preview,
@@ -656,11 +678,13 @@ class SessionRow {
     compressionFailureError: compressionFailureError,
     compressionFallbackStreak: compressionFallbackStreak,
     compressionIneffectiveCount: compressionIneffectiveCount,
-    isStreaming: isStreaming,
-    cronRunning: cronRunning,
-    pendingUserMessage: pendingUserMessage,
-    hasPendingUserMessage: hasPendingUserMessage,
-    activeStreamId: activeStreamId,
+    isStreaming: isStreaming ?? this.isStreaming,
+    cronRunning: cronRunning ?? this.cronRunning,
+    pendingUserMessage: pendingUserMessage ?? this.pendingUserMessage,
+    hasPendingUserMessage: hasPendingUserMessage ?? this.hasPendingUserMessage,
+    activeStreamId: clearActiveStreamId
+        ? null
+        : activeStreamId ?? this.activeStreamId,
     lastMessageAt: lastMessageAt,
     archived: archived,
     pinned: pinned,

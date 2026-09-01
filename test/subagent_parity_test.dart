@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
+import 'package:hermes_mobile/core/connections/connection_registry.dart';
 import 'package:hermes_mobile/core/gateway.dart';
 import 'package:hermes_mobile/core/models.dart';
 import 'package:hermes_mobile/core/session_tree.dart';
@@ -30,9 +31,26 @@ class _TestConnectionStore extends ConnectionStore {
       StreamController<GatewayEvent>.broadcast();
   final StreamController<void> reconnectController =
       StreamController<void>.broadcast();
+  final StreamController<RoutedGatewayEvent> routedController =
+      StreamController<RoutedGatewayEvent>.broadcast();
+
+  _TestConnectionStore() {
+    eventController.stream.listen((event) {
+      routedController.add(
+        RoutedGatewayEvent(
+          route: const OwnerRoute(connectionId: ConnectionId('primary')),
+          socketGeneration: 1,
+          event: event,
+        ),
+      );
+    });
+  }
 
   @override
   Stream<GatewayEvent> get events => eventController.stream;
+
+  @override
+  Stream<RoutedGatewayEvent> get routedEvents => routedController.stream;
 
   @override
   Stream<void> get reconnected => reconnectController.stream;
@@ -40,6 +58,7 @@ class _TestConnectionStore extends ConnectionStore {
   @override
   void dispose() {
     eventController.close();
+    routedController.close();
     reconnectController.close();
     super.dispose();
   }
@@ -74,6 +93,58 @@ void main() {
       expect(delegated.readOnly, isTrue);
       expect(delegated.isCliSession, isFalse);
       expect(missingParent.isDelegatedChild, isFalse);
+    },
+  );
+
+  test(
+    'terminal events normalize backend status and remain connection scoped',
+    () async {
+      final connection = _TestConnectionStore();
+      connection.api = _ProjectionApi(
+        const SubagentProjection(sessions: [], bySession: {}, total: 0),
+      );
+      final store = SubagentStore(connection: connection);
+      addTearDown(store.dispose);
+      addTearDown(connection.dispose);
+
+      void emit(String connectionId, GatewayEvent event) {
+        connection.routedController.add(
+          RoutedGatewayEvent(
+            route: OwnerRoute(connectionId: ConnectionId(connectionId)),
+            socketGeneration: 1,
+            event: event,
+          ),
+        );
+      }
+
+      emit(
+        'primary',
+        GatewayEvent(
+          type: 'subagent.start',
+          payload: {'parent_id': 'parent', 'subagent_id': 'agent'},
+        ),
+      );
+      emit(
+        'primary',
+        GatewayEvent(
+          type: 'subagent.complete',
+          payload: {
+            'parent_id': 'parent',
+            'subagent_id': 'agent',
+            'status': 'timeout',
+          },
+        ),
+      );
+      emit(
+        'background',
+        GatewayEvent(
+          type: 'subagent.start',
+          payload: {'parent_id': 'parent', 'subagent_id': 'agent'},
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(store.forSession('parent').single.status, 'failed');
     },
   );
 

@@ -19,6 +19,25 @@ class _HangingClient extends http.BaseClient {
   }
 }
 
+class _SequencedClient extends http.BaseClient {
+  final List<Object> outcomes;
+  int sends = 0;
+
+  _SequencedClient(this.outcomes);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final outcome = outcomes[sends++];
+    if (outcome is! int) throw outcome;
+    final status = outcome;
+    return http.StreamedResponse(
+      Stream.value(const <int>[123, 125]),
+      status,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
 class _CapabilityApi extends ApiClient {
   _CapabilityApi() : super(baseUrl: 'http://contract.invalid', apiKey: 'key');
 
@@ -31,6 +50,13 @@ class _CapabilityApi extends ApiClient {
       'resources': ['/api/v1/sessions', '/api/v1/files/upload'],
     },
   };
+}
+
+class _GatedCapabilityApi extends _CapabilityApi {
+  final statusGate = Completer<Map<String, dynamic>>();
+
+  @override
+  Future<Map<String, dynamic>> status() => statusGate.future;
 }
 
 void main() {
@@ -59,6 +85,48 @@ void main() {
     expect(transport.closed, isTrue);
   });
 
+  test('GET retries one transient weak-network failure', () async {
+    final transport = _SequencedClient([
+      http.ClientException('network changed'),
+      200,
+    ]);
+    final delays = <Duration>[];
+    final api = ApiClient(
+      baseUrl: 'http://contract.invalid',
+      apiKey: 'key',
+      client: transport,
+      retryDelay: (delay) async => delays.add(delay),
+    );
+    addTearDown(api.close);
+
+    expect(await api.get('/status'), isA<Map>());
+    expect(transport.sends, 2);
+    expect(delays, [const Duration(milliseconds: 250)]);
+  });
+
+  test(
+    'POST is never automatically replayed after a network failure',
+    () async {
+      final transport = _SequencedClient([
+        http.ClientException('network changed'),
+        200,
+      ]);
+      final api = ApiClient(
+        baseUrl: 'http://contract.invalid',
+        apiKey: 'key',
+        client: transport,
+        retryDelay: (_) async {},
+      );
+      addTearDown(api.close);
+
+      await expectLater(
+        api.post('/mutate', body: const {'value': true}),
+        throwsA(isA<http.ClientException>()),
+      );
+      expect(transport.sends, 1);
+    },
+  );
+
   test('ConnectionStore negotiates runtime and REST capabilities', () async {
     final connection = ConnectionStore()..api = _CapabilityApi();
     addTearDown(connection.dispose);
@@ -69,4 +137,21 @@ void main() {
     expect(connection.supportsRest('/api/v1/sessions'), isTrue);
     expect(connection.supportsRest('/api/v1/billing'), isFalse);
   });
+
+  test(
+    'stale capability response cannot overwrite a replacement API',
+    () async {
+      final stale = _GatedCapabilityApi();
+      final connection = ConnectionStore()..api = stale;
+      addTearDown(connection.dispose);
+
+      final refresh = connection.refreshCapabilities();
+      connection.api = _CapabilityApi();
+      stale.statusGate.complete({'capability': 'legacy'});
+      await refresh;
+
+      expect(connection.capability, isNull);
+      expect(connection.restCapabilities, isEmpty);
+    },
+  );
 }

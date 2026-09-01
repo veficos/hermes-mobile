@@ -18,6 +18,11 @@ abstract interface class WakeAudioCapture {
   Future<void> dispose();
 }
 
+/// Signals that an active microphone stream ended without an explicit stop.
+class WakeAudioStreamEnded implements Exception {
+  const WakeAudioStreamEnded();
+}
+
 class RecordWakeAudioCapture implements WakeAudioCapture {
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Uint8List>? _subscription;
@@ -57,7 +62,7 @@ class RecordWakeAudioCapture implements WakeAudioCapture {
           final endedUnexpectedly = _active;
           _active = false;
           if (endedUnexpectedly) {
-            onError(StateError('wake microphone stream ended'));
+            onError(const WakeAudioStreamEnded());
           }
         },
       );

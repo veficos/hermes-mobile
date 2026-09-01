@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../gateway.dart';
+import '../connections/connection_registry.dart';
 import '../../l10n/runtime_l10n.dart';
 import 'connection_store.dart';
 
@@ -26,6 +27,7 @@ class NotificationItem {
   final String? sessionId;
   final String? connectionId;
   final String? profile;
+  final String? requestId;
   final DateTime time;
   bool read;
   bool systemShown;
@@ -38,6 +40,7 @@ class NotificationItem {
     this.sessionId,
     this.connectionId,
     this.profile,
+    this.requestId,
     required this.time,
     this.read = false,
     this.systemShown = false,
@@ -57,6 +60,7 @@ class NotificationItem {
       sessionId: json['session_id']?.toString(),
       connectionId: json['connection_id']?.toString(),
       profile: json['profile']?.toString(),
+      requestId: json['request_id']?.toString(),
       time: DateTime.tryParse(json['time']?.toString() ?? '') ?? DateTime.now(),
       read: json['read'] == true,
       systemShown: json['system_shown'] == true,
@@ -71,6 +75,7 @@ class NotificationItem {
     'session_id': sessionId,
     'connection_id': connectionId,
     'profile': profile,
+    'request_id': requestId,
     'time': time.toIso8601String(),
     'read': read,
     'system_shown': systemShown,
@@ -87,7 +92,7 @@ class NotificationStore extends ChangeNotifier {
   Future<void> _persistTail = Future.value();
 
   NotificationStore({required this.connection}) {
-    _sub = connection.events.listen(_onEvent);
+    _sub = connection.routedEvents.listen(_onEvent);
     initialized = _load();
   }
 
@@ -102,6 +107,7 @@ class NotificationStore extends ChangeNotifier {
     String? sessionId,
     String? connectionId,
     String? profile,
+    String? requestId,
   }) => _add(
     kind: kind,
     title: title,
@@ -109,22 +115,33 @@ class NotificationStore extends ChangeNotifier {
     sessionId: sessionId,
     connectionId: connectionId,
     profile: profile,
+    requestId: requestId,
     key: key,
   );
 
-  void _onEvent(GatewayEvent e) {
+  void _onEvent(RoutedGatewayEvent routed) {
+    final e = routed.event;
+    final connectionId = routed.route.connectionId.value;
     switch (e.type) {
       case 'notification.show':
-        _fromNotice(e);
+        _fromNotice(e, connectionId, routed.route.profile);
+      case 'notification.clear':
+        final key = e.payload['key']?.toString();
+        if (key != null && key.isNotEmpty) {
+          _removeGatewayKey(connectionId, key);
+        }
       case 'background.complete':
         _add(
           kind: NotificationKind.success,
           title: runtimeL10n.notificationBackgroundCompleted,
           message: runtimeL10n.notificationBackgroundCompletedBody,
           sessionId: e.sessionId,
-          profile: e.profile,
-          key:
-              'background.complete:${e.sessionId ?? e.payload['id'] ?? DateTime.now().millisecondsSinceEpoch}',
+          connectionId: connectionId,
+          profile: e.profile ?? routed.route.profile,
+          key: _gatewayKey(
+            connectionId,
+            'background.complete:${e.sessionId ?? e.payload['id'] ?? DateTime.now().millisecondsSinceEpoch}',
+          ),
         );
       case 'approval.request':
         final payload = e.payload;
@@ -134,15 +151,19 @@ class NotificationStore extends ChangeNotifier {
           title: title ?? runtimeL10n.notificationApprovalRequired,
           message: runtimeL10n.notificationApprovalRequiredBody,
           sessionId: e.sessionId,
-          profile: e.profile,
-          key:
-              'approval.request:${payload['request_id'] ?? e.sessionId ?? DateTime.now().millisecondsSinceEpoch}',
+          connectionId: connectionId,
+          profile: e.profile ?? routed.route.profile,
+          requestId: payload['request_id']?.toString(),
+          key: _gatewayKey(
+            connectionId,
+            'approval.request:${payload['request_id'] ?? e.sessionId ?? DateTime.now().millisecondsSinceEpoch}',
+          ),
         );
     }
   }
 
   /// `notification.show` payload: {text, level, kind, ttl_ms, key, id}.
-  void _fromNotice(GatewayEvent e) {
+  void _fromNotice(GatewayEvent e, String connectionId, String? routeProfile) {
     final p = e.payload;
     final text = (p['text']?.toString() ?? '').replaceFirst(
       RegExp(r'^[•⚠✕✗✓]\uFE0F?\s*'),
@@ -166,9 +187,33 @@ class NotificationStore extends ChangeNotifier {
       title: title,
       message: message,
       sessionId: e.sessionId,
-      profile: e.profile,
-      key: p['key']?.toString() ?? 'notification.show',
+      connectionId: connectionId,
+      profile: e.profile ?? routeProfile,
+      key: _gatewayKey(
+        connectionId,
+        p['key']?.toString() ?? 'notification.show',
+      ),
     );
+  }
+
+  String _gatewayKey(String connectionId, String key) =>
+      '$connectionId\u0000$key';
+
+  void _removeGatewayKey(String connectionId, String key) {
+    final scoped = _gatewayKey(connectionId, key);
+    final removed = _items
+        .where(
+          (item) =>
+              item.id == scoped ||
+              (item.id == key && item.connectionId == connectionId),
+        )
+        .map((item) => item.id)
+        .toSet();
+    if (removed.isEmpty) return;
+    _items.removeWhere((item) => removed.contains(item.id));
+    _seenKeys.removeAll(removed);
+    notifyListeners();
+    unawaited(_persist());
   }
 
   void _add({
@@ -178,6 +223,7 @@ class NotificationStore extends ChangeNotifier {
     String? sessionId,
     String? connectionId,
     String? profile,
+    String? requestId,
     required String key,
   }) {
     // Dedupe: a repeated key replaces the earlier entry instead of stacking.
@@ -199,6 +245,7 @@ class NotificationStore extends ChangeNotifier {
                 existing.connectionId ??
                 connection.activeConnectionId.value,
             profile: profile ?? existing.profile,
+            requestId: requestId ?? existing.requestId,
             time: DateTime.now(),
             read: false,
             systemShown: false,
@@ -220,6 +267,7 @@ class NotificationStore extends ChangeNotifier {
         sessionId: sessionId,
         connectionId: connectionId ?? connection.activeConnectionId.value,
         profile: profile,
+        requestId: requestId,
         time: DateTime.now(),
       ),
     );

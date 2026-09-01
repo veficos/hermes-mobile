@@ -11,11 +11,24 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 
 import '../models.dart';
+import '../connections/connection_registry.dart';
 import 'connection_store.dart';
+
+const slashGroupSkills = 'Skills';
+const slashGroupCommands = 'Commands';
 
 class CommandStore extends ChangeNotifier {
   final ConnectionStore connection;
-  CommandStore({required this.connection});
+  CommandStore({required this.connection})
+    : _connectionId = connection.activeConnectionId,
+      _gateway = connection.gateway {
+    connection.addListener(_onConnectionChanged);
+  }
+
+  ConnectionId _connectionId;
+  Object? _gateway;
+  String? _profile;
+  int _generation = 0;
 
   List<SlashCommand> _catalog = [];
   List<SlashCommand> get catalog => _catalog;
@@ -35,11 +48,44 @@ class CommandStore extends ChangeNotifier {
   bool _lastCompletionFailed = false;
   bool get lastCompletionFailed => _lastCompletionFailed;
 
+  void bindProfile(String? profile) {
+    if (_profile == profile) return;
+    _profile = profile;
+    _invalidateScope();
+  }
+
+  void _onConnectionChanged() {
+    final id = connection.activeConnectionId;
+    final gateway = connection.gateway;
+    if (id == _connectionId && identical(gateway, _gateway)) return;
+    _connectionId = id;
+    _gateway = gateway;
+    _invalidateScope();
+    if (connection.isConnected) unawaited(loadCatalog());
+  }
+
+  void _invalidateScope() {
+    _generation++;
+    _completionCache.clear();
+    _catalogSuggestions = [];
+    _catalog = [];
+    _skillUsage.clear();
+    _lastCompletionFailed = false;
+    notifyListeners();
+  }
+
   /// Load the slash-command catalog (called once after connect).
   Future<void> loadCatalog() async {
+    final generation = _generation;
     await connection.ensureConnected();
     try {
-      final result = await connection.gateway!.request('commands.catalog', {});
+      final gateway = connection.gateway;
+      if (gateway == null) return;
+      final result = await gateway.request('commands.catalog', {});
+      if (generation != _generation ||
+          !identical(gateway, connection.gateway)) {
+        return;
+      }
       final suggestions = <SlashSuggestion>[];
       final categorized = <String>{};
       final categories = (result['categories'] as List?) ?? const [];
@@ -78,8 +124,8 @@ class CommandStore extends ChangeNotifier {
             display: suggestion.display,
             meta: suggestion.meta,
             group: skills?.containsKey(suggestion.text) == true
-                ? 'Skills'
-                : 'Commands',
+                ? slashGroupSkills
+                : slashGroupCommands,
           ),
         );
       }
@@ -98,7 +144,9 @@ class CommandStore extends ChangeNotifier {
             display: suggestion.display,
             meta: suggestion.meta,
             group:
-                suggestion.group ?? json['category']?.toString() ?? 'Commands',
+                suggestion.group ??
+                json['category']?.toString() ??
+                slashGroupCommands,
             action: suggestion.action,
           ),
         );
@@ -145,11 +193,16 @@ class CommandStore extends ChangeNotifier {
         DateTime.now().difference(cached.at) < _completionTtl) {
       return cached.result;
     }
+    final generation = _generation;
     try {
       await connection.ensureConnected();
-      final result = await connection.gateway!.request('complete.slash', {
-        'text': text,
-      });
+      final gateway = connection.gateway;
+      if (gateway == null) return const SlashCompletionResult(items: []);
+      final result = await gateway.request('complete.slash', {'text': text});
+      if (generation != _generation ||
+          !identical(gateway, connection.gateway)) {
+        return const SlashCompletionResult(items: []);
+      }
       final items = (result['items'] as List?) ?? [];
       final suggestions = items
           .whereType<Map>()
@@ -172,6 +225,9 @@ class CommandStore extends ChangeNotifier {
       }
       return completion;
     } catch (_) {
+      if (generation != _generation) {
+        return const SlashCompletionResult(items: []);
+      }
       if (!_lastCompletionFailed) {
         _lastCompletionFailed = true;
         notifyListeners();
@@ -191,8 +247,8 @@ class CommandStore extends ChangeNotifier {
   }
 
   int _compareSuggestions(SlashSuggestion left, SlashSuggestion right) {
-    final leftSkill = left.group == 'Skills';
-    final rightSkill = right.group == 'Skills';
+    final leftSkill = left.group == slashGroupSkills;
+    final rightSkill = right.group == slashGroupSkills;
     if (leftSkill != rightSkill) return leftSkill ? 1 : -1;
     if (!leftSkill) return 0;
     final leftUsage = _skillUsage[left.text.toLowerCase()] ?? 0;
@@ -202,11 +258,16 @@ class CommandStore extends ChangeNotifier {
 
   /// Path completion for `@mentions` (file / dir paths on the server cwd).
   Future<List<PathSuggestion>> completePath(String word) async {
+    final generation = _generation;
     try {
       await connection.ensureConnected();
-      final result = await connection.gateway!.request('complete.path', {
-        'word': word,
-      });
+      final gateway = connection.gateway;
+      if (gateway == null) return const [];
+      final result = await gateway.request('complete.path', {'word': word});
+      if (generation != _generation ||
+          !identical(gateway, connection.gateway)) {
+        return const [];
+      }
       final items = (result['items'] as List?) ?? [];
       if (_lastCompletionFailed) {
         _lastCompletionFailed = false;
@@ -218,6 +279,7 @@ class CommandStore extends ChangeNotifier {
           )
           .toList();
     } catch (_) {
+      if (generation != _generation) return const [];
       if (!_lastCompletionFailed) {
         _lastCompletionFailed = true;
         notifyListeners();
@@ -232,13 +294,16 @@ class CommandStore extends ChangeNotifier {
     required String sessionId,
   }) async {
     await connection.ensureConnected();
+    final gateway = connection.gateway;
+    if (gateway == null) return const {};
     final invocation = command.replaceFirst(RegExp(r'^/+'), '').trim();
     try {
-      return await connection.gateway!.request('slash.exec', {
+      return await gateway.request('slash.exec', {
         'session_id': sessionId,
         'command': invocation,
       });
     } catch (error) {
+      if (!identical(gateway, connection.gateway)) rethrow;
       developer.log(
         'slash.exec failed for /$invocation; falling back to command.dispatch',
         name: 'hermes.command',
@@ -248,7 +313,7 @@ class CommandStore extends ChangeNotifier {
       final name = parts.first;
       final arg = invocation.substring(name.length).trim();
       try {
-        return await connection.gateway!.request('command.dispatch', {
+        return await gateway.request('command.dispatch', {
           'session_id': sessionId,
           'name': name,
           'arg': arg,
@@ -271,10 +336,20 @@ class CommandStore extends ChangeNotifier {
     String arg = '',
   }) async {
     await connection.ensureConnected();
-    return await connection.gateway!.request('command.dispatch', {
+    final gateway = connection.gateway;
+    if (gateway == null) return const {};
+    final result = await gateway.request('command.dispatch', {
       'name': command,
       'arg': arg,
       'session_id': ?sessionId,
     });
+    if (!identical(gateway, connection.gateway)) return const {};
+    return result;
+  }
+
+  @override
+  void dispose() {
+    connection.removeListener(_onConnectionChanged);
+    super.dispose();
   }
 }

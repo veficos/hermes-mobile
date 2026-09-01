@@ -43,7 +43,7 @@ class _MemoryScreenState extends State<MemoryScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    observeConnection(context.read<ConnectionStore>(), _load);
+    observeConnection(context.read<ConnectionStore>(), _reloadForTarget);
     final scope = context.read<ProfileScopeStore>();
     if (identical(scope, _scope)) return;
     _scope?.removeListener(_onScopeChanged);
@@ -57,6 +57,19 @@ class _MemoryScreenState extends State<MemoryScreen>
     final next = _profile;
     if (next == _lastProfile) return;
     _lastProfile = next;
+    _reloadForTarget();
+  }
+
+  void _reloadForTarget() {
+    if (!mounted) return;
+    ++_loadToken;
+    setState(() {
+      _status = null;
+      _curator = null;
+      _curatorError = null;
+      _error = null;
+      _busy = false;
+    });
     unawaited(_load());
   }
 
@@ -538,10 +551,10 @@ class _MemoryScreenState extends State<MemoryScreen>
             children: [
               const Icon(Icons.auto_fix_high_outlined),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Curator',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  context.l10n.memoryCuratorTitle,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
               HermesStatusChip(
@@ -620,7 +633,8 @@ class _MemoryProviderSheet extends StatefulWidget {
   State<_MemoryProviderSheet> createState() => _MemoryProviderSheetState();
 }
 
-class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
+class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
+    with ConnectionReloadMixin<_MemoryProviderSheet> {
   Map<String, dynamic>? _config;
   Map<String, dynamic>? _oauth;
   final Map<String, TextEditingController> _controllers = {};
@@ -631,6 +645,21 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
   bool _pollInFlight = false;
   Timer? _poller;
   DateTime? _pollDeadline;
+  ProfileScopeStore? _scopeStore;
+  int _loadGeneration = 0;
+
+  bool _ownsTarget() {
+    return mounted &&
+        identical(widget.api, context.read<ConnectionStore>().api) &&
+        widget.profile == context.read<ProfileScopeStore>().override;
+  }
+
+  void _requireTarget() {
+    requireActiveApi(context, context.read<ConnectionStore>(), widget.api);
+    if (widget.profile != context.read<ProfileScopeStore>().override) {
+      throw StateError(context.l10n.backendDisconnected);
+    }
+  }
 
   @override
   void initState() {
@@ -638,13 +667,46 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
     unawaited(_load());
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    observeConnection(context.read<ConnectionStore>(), _handleTargetChange);
+    final scope = context.read<ProfileScopeStore>();
+    if (identical(scope, _scopeStore)) return;
+    _scopeStore?.removeListener(_handleTargetChange);
+    _scopeStore = scope..addListener(_handleTargetChange);
+  }
+
+  void _handleTargetChange() {
+    if (!mounted) return;
+    ++_loadGeneration;
+    _poller?.cancel();
+    if (_ownsTarget()) {
+      unawaited(_load());
+      return;
+    }
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    _controllers.clear();
+    setState(() {
+      _config = null;
+      _oauth = null;
+      _saving = false;
+      _configError = context.l10n.backendDisconnected;
+      _oauthError = null;
+    });
+  }
+
   Future<void> _load() async {
+    if (!_ownsTarget()) return;
+    final generation = ++_loadGeneration;
     try {
       final config = await widget.api.memoryProviderConfig(
         widget.provider,
         profile: widget.profile,
       );
-      if (mounted) {
+      if (_ownsTarget() && generation == _loadGeneration) {
         for (final controller in _controllers.values) {
           controller.dispose();
         }
@@ -664,14 +726,16 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
         });
       }
     } catch (error) {
-      if (mounted) setState(() => _configError = '$error');
+      if (_ownsTarget() && generation == _loadGeneration) {
+        setState(() => _configError = '$error');
+      }
     }
     try {
       final oauth = await widget.api.memoryProviderOAuthStatus(
         widget.provider,
         profile: widget.profile,
       );
-      if (!mounted) return;
+      if (!_ownsTarget() || generation != _loadGeneration) return;
       setState(() {
         _oauth = oauth;
         _oauthSupported = true;
@@ -679,13 +743,15 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
       });
       if (oauth['state'] == 'pending') _startPolling();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!_ownsTarget() || generation != _loadGeneration) return;
       setState(() {
         _oauthSupported = error.statusCode != 404;
         _oauthError = error.statusCode == 404 ? null : '$error';
       });
     } catch (error) {
-      if (mounted) setState(() => _oauthError = '$error');
+      if (_ownsTarget() && generation == _loadGeneration) {
+        setState(() => _oauthError = '$error');
+      }
     }
   }
 
@@ -696,6 +762,7 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
           .toList();
 
   Future<void> _save() async {
+    if (!_ownsTarget()) return;
     final values = <String, String>{};
     for (final field in _fields) {
       final key = field['key']?.toString() ?? '';
@@ -717,11 +784,13 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
     }
     setState(() => _saving = true);
     try {
+      _requireTarget();
       await widget.api.saveMemoryProviderConfig(
         widget.provider,
         values,
         profile: widget.profile,
       );
+      _requireTarget();
       if (!mounted) return;
       showHermesToast(
         context,
@@ -730,7 +799,7 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
       );
       Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) {
+      if (_ownsTarget()) {
         showHermesToast(
           context,
           message: context.l10n.memoryProviderSaveFailed('$error'),
@@ -738,20 +807,23 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
         );
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (_ownsTarget()) setState(() => _saving = false);
     }
   }
 
   Future<void> _connect() async {
+    if (!_ownsTarget()) return;
     setState(() {
       _saving = true;
       _oauthError = null;
     });
     try {
+      _requireTarget();
       final result = await widget.api.startMemoryProviderOAuth(
         widget.provider,
         profile: widget.profile,
       );
+      _requireTarget();
       if (!mounted) return;
       setState(() => _oauth = result);
       final rawUrl =
@@ -762,12 +834,12 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
       if (uri != null && uri.hasScheme) {
         if (!await launchExternalOrNotify(context, uri)) return;
       }
-      if (!mounted) return;
+      if (!_ownsTarget()) return;
       _startPolling();
     } catch (error) {
-      if (mounted) setState(() => _oauthError = '$error');
+      if (_ownsTarget()) setState(() => _oauthError = '$error');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (_ownsTarget()) setState(() => _saving = false);
     }
   }
 
@@ -781,7 +853,7 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
   }
 
   Future<void> _pollOAuth() async {
-    if (_pollInFlight) return;
+    if (_pollInFlight || !_ownsTarget()) return;
     if (DateTime.now().isAfter(_pollDeadline ?? DateTime.now())) {
       _poller?.cancel();
       if (mounted) {
@@ -795,11 +867,11 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
         widget.provider,
         profile: widget.profile,
       );
-      if (!mounted) return;
+      if (!_ownsTarget()) return;
       setState(() => _oauth = next);
       if (next['state'] != 'pending') _poller?.cancel();
     } catch (error) {
-      if (mounted) setState(() => _oauthError = '$error');
+      if (_ownsTarget()) setState(() => _oauthError = '$error');
     } finally {
       _pollInFlight = false;
     }
@@ -1003,6 +1075,9 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet> {
 
   @override
   void dispose() {
+    ++_loadGeneration;
+    disposeConnectionObserver();
+    _scopeStore?.removeListener(_handleTargetChange);
     _poller?.cancel();
     for (final controller in _controllers.values) {
       controller.dispose();

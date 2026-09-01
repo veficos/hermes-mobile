@@ -1,3 +1,4 @@
+import '../l10n/runtime_l10n.dart';
 import 'gateway_oauth.dart';
 
 Future<GatewayOAuthTokens> runNativeGatewayLogin({
@@ -6,6 +7,4 @@ Future<GatewayOAuthTokens> runNativeGatewayLogin({
   required Future<bool> Function(Uri uri) openUrl,
   required String provider,
   required Duration timeout,
-}) => throw UnsupportedError(
-  'Native gateway OAuth requires a platform loopback listener',
-);
+}) => throw UnsupportedError(runtimeL10n.gatewayOauthNativeUnsupported);

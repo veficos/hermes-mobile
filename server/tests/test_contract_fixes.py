@@ -11,6 +11,8 @@ Covers the concrete behavior changes from the contract-audit batch:
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -172,6 +174,25 @@ class TestDeleteResponseNormalization:
             resp = client.delete("/api/v1/tasks/t1", headers=AUTH)
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
+
+
+def test_subagent_interrupt_forwards_profile_to_gateway() -> None:
+    be = _Backend()
+    router = build_domain_router(Settings(api_key="contract-key"), be)
+    route = next(
+        item
+        for item in router.routes
+        if item.path == "/api/v1/subagents/{subagent_id}/interrupt"
+    )
+
+    response = asyncio.run(route.endpoint(subagent_id="agent-1", profile="work"))
+
+    assert response == {"ok": True}
+    assert (
+        "RPC",
+        "subagent.interrupt",
+        {"subagent_id": "agent-1", "profile": "work"},
+    ) in be.calls
 
 
 class TestKnowledgeStarmapMcpForwarding:

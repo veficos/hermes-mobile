@@ -18,7 +18,6 @@ class KanbanStore extends ChangeNotifier {
   Timer? _poll;
   WebSocketChannel? _socket;
   StreamSubscription? _events;
-  Uri? _eventsUri;
   Timer? _reconnect;
   int _loadGeneration = 0;
   int _eventGeneration = 0;
@@ -56,27 +55,41 @@ class KanbanStore extends ChangeNotifier {
     _api = api;
     boardData = null;
     boardList = const [];
+    _boardCursors.clear();
     _details.clear();
     selectedIds.clear();
     error = null;
     if (api != null) {
       unawaited(start());
-      connectEvents(_eventUri(api));
+      unawaited(_connectEvents(api));
     }
     notifyListeners();
   }
 
-  Uri _eventUri(KanbanApi api) {
-    final base = Uri.parse(api.client.baseUrl);
-    return base.replace(
-      scheme: base.scheme == 'https' ? 'wss' : 'ws',
-      path: '/api/v1/kanban/events',
-      queryParameters: {
-        'token': api.client.apiKey,
-        if (api.boardSlug.isNotEmpty) 'board': api.boardSlug,
-        'since': '${_boardCursors[api.boardSlug] ?? 0}',
-      },
-    );
+  Future<void> _connectEvents(KanbanApi expectedApi) async {
+    final generation = ++_eventGeneration;
+    _reconnect?.cancel();
+    _socket?.sink.close();
+    await _events?.cancel();
+    final board = expectedApi.boardSlug;
+    Uri uri;
+    try {
+      uri = await expectedApi.client.kanbanEventsUri(
+        board: board,
+        since: _boardCursors[board] ?? 0,
+      );
+    } catch (_) {
+      if (generation == _eventGeneration && identical(expectedApi, _api)) {
+        _scheduleReconnect();
+      }
+      return;
+    }
+    if (generation != _eventGeneration ||
+        !identical(expectedApi, _api) ||
+        board != expectedApi.boardSlug) {
+      return;
+    }
+    _openEvents(uri, generation);
   }
 
   Future<void> load({KanbanApi? expectedApi}) async {
@@ -125,10 +138,13 @@ class KanbanStore extends ChangeNotifier {
 
   void connectEvents(Uri uri) {
     final generation = ++_eventGeneration;
-    _eventsUri = uri;
     _reconnect?.cancel();
     _socket?.sink.close();
     _events?.cancel();
+    _openEvents(uri, generation);
+  }
+
+  void _openEvents(Uri uri, int generation) {
     final channel = connectWs(uri);
     _socket = channel;
     _events = channel.stream.listen(
@@ -159,12 +175,13 @@ class KanbanStore extends ChangeNotifier {
   }
 
   void _scheduleReconnect() {
-    if (_eventsUri == null || _api == null || _reconnect?.isActive == true) {
+    final api = _api;
+    if (api == null || _reconnect?.isActive == true) {
       return;
     }
     _reconnect = Timer(
       const Duration(seconds: 3),
-      () => connectEvents(_eventsUri!),
+      () => unawaited(_connectEvents(api)),
     );
   }
 
@@ -191,12 +208,14 @@ class KanbanStore extends ChangeNotifier {
     final api = requireApi(expectedApi);
     final previous = api.boardSlug;
     api.boardSlug = slug;
-    connectEvents(_eventUri(api));
+    notifyListeners();
+    await _connectEvents(api);
     await load(expectedApi: api);
     if (!identical(api, _api)) return;
     if (error != null) {
       api.boardSlug = previous;
-      connectEvents(_eventUri(api));
+      notifyListeners();
+      await _connectEvents(api);
       return;
     }
     _details.clear();
@@ -245,14 +264,19 @@ class KanbanStore extends ChangeNotifier {
     String id, {
     bool force = false,
     KanbanApi? expectedApi,
+    String? expectedBoardSlug,
   }) async {
-    if (!force && _details[id] != null) return _details[id];
     final api = requireApi(expectedApi);
     final boardSlug = api.boardSlug;
+    if (expectedBoardSlug != null && boardSlug != expectedBoardSlug) {
+      throw StateError(runtimeL10n.backendDisconnected);
+    }
+    final cacheKey = '$boardSlug\u0000$id';
+    if (!force && _details[cacheKey] != null) return _details[cacheKey];
     try {
       final detail = await api.task(id);
       if (!identical(api, _api) || boardSlug != api.boardSlug) return null;
-      _details[id] = detail;
+      _details[cacheKey] = detail;
       notifyListeners();
       return detail;
     } catch (e) {
@@ -263,7 +287,17 @@ class KanbanStore extends ChangeNotifier {
     }
   }
 
-  Future<void> moveTask(String id, String status) async {
+  Future<void> moveTask(
+    String id,
+    String status, {
+    KanbanApi? expectedApi,
+    String? expectedBoardSlug,
+  }) async {
+    final ownerApi = requireApi(expectedApi);
+    final boardSlug = ownerApi.boardSlug;
+    if (expectedBoardSlug != null && boardSlug != expectedBoardSlug) {
+      throw StateError(runtimeL10n.backendDisconnected);
+    }
     final old = boardData;
     if (old != null) {
       boardData = KanbanBoard(
@@ -281,8 +315,12 @@ class KanbanStore extends ChangeNotifier {
       notifyListeners();
     }
     try {
-      await api.patchTask(id, {'status': status});
+      await ownerApi.patchTask(id, {'status': status});
+      if (!identical(ownerApi, _api) || boardSlug != ownerApi.boardSlug) return;
     } catch (e) {
+      if (!identical(ownerApi, _api) || boardSlug != ownerApi.boardSlug) {
+        return;
+      }
       boardData = old;
       error = '$e';
       notifyListeners();
@@ -295,8 +333,13 @@ class KanbanStore extends ChangeNotifier {
     Map<String, dynamic> patch,
   ) async {
     if (ids.isEmpty) return <String>{};
+    final ownerApi = requireApi();
+    final boardSlug = ownerApi.boardSlug;
     try {
-      final raw = await api.bulk(ids.toList(), patch);
+      final raw = await ownerApi.bulk(ids.toList(), patch);
+      if (!identical(ownerApi, _api) || boardSlug != ownerApi.boardSlug) {
+        return ids;
+      }
       final failed = <String>{};
       if (raw is Map && raw['failed'] is List) {
         failed.addAll(
@@ -306,7 +349,7 @@ class KanbanStore extends ChangeNotifier {
         );
       }
       selectedIds.removeWhere((id) => !failed.contains(id));
-      await load();
+      await load(expectedApi: ownerApi);
       notifyListeners();
       return failed;
     } catch (_) {

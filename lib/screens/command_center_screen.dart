@@ -38,16 +38,22 @@ class _CommandCenterScreenState extends State<CommandCenterScreen>
   int _loadGeneration = 0;
   int _mutationGeneration = 0;
   bool _didInitialLoad = false;
+  Timer? _statusTimer;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _statusTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => unawaited(_load(silent: true)),
+    );
   }
 
   @override
   void dispose() {
     disposeConnectionObserver();
+    _statusTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -75,7 +81,7 @@ class _CommandCenterScreenState extends State<CommandCenterScreen>
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool silent = false}) async {
     final l10n = context.l10n;
     final connection = context.read<ConnectionStore>();
     final api = connection.api;
@@ -87,19 +93,22 @@ class _CommandCenterScreenState extends State<CommandCenterScreen>
       });
       return;
     }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     Map<String, dynamic>? status;
     dynamic logs;
     String? error;
     try {
       status = await api.status();
     } catch (e) {
+      if (silent) return;
       error = l10n.commandStatusLoadFailed('$e');
     }
-    if (api.capabilities.serverLogs) {
+    if (!silent && api.capabilities.serverLogs) {
       try {
         logs = await api.getLogs();
       } catch (e) {
@@ -403,6 +412,7 @@ class _UsagePanelState extends State<_UsagePanel>
     final generation = ++_loadGeneration;
     if (api == null) {
       setState(() {
+        _usage = null;
         _loading = false;
         _error = connectionOfflineErrorCode;
       });
@@ -414,13 +424,21 @@ class _UsagePanelState extends State<_UsagePanel>
     });
     try {
       final usage = await api.analyticsUsageTyped(days: _days);
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !identical(api, context.read<ConnectionStore>().api)) {
+        return;
+      }
       setState(() {
         _usage = usage;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !identical(api, context.read<ConnectionStore>().api)) {
+        return;
+      }
       setState(() {
         _error = context.l10n.commandUsageLoadFailed('$e');
         _loading = false;

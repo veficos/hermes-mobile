@@ -23,6 +23,42 @@ final _hanLiteralPatterns = <RegExp>[
   RegExp(r'r?"[^"\n]*[\u3400-\u9fff][^"\n]*"'),
 ];
 
+// Known user-facing fallbacks that previously escaped the widget-literal
+// patterns because they lived behind `??`, in models/stores, or in injected
+// JavaScript. Keep these focused: protocol tokens and brand names are valid in
+// production code and should not be rejected globally.
+const _forbiddenUiCopy = <String>{
+  'Mermaid parse error',
+  'Hermes Pet',
+  'Desktop Session',
+  'background process',
+  'Terminal error:',
+  'Max Tokens',
+};
+
+final _forbiddenEmbeddedCopy = <RegExp>[
+  RegExp(r'''button\(["']Back["']'''),
+  RegExp(r'''["']Done["']\s*:\s*["']Next["']'''),
+];
+
+// Exact shapes that previously hid user-facing copy from the simple
+// widget-constructor scan. Keep this narrow so protocol and brand tokens
+// remain valid production literals.
+const _forbiddenEscapedCopy = <String>{
+  "'Mixture of Agents'",
+  "'Gateway Token'",
+  "'group name is empty'",
+  "'no available group member'",
+  "'Gateway sign-in timed out'",
+  "'Native SSH connections are not supported on web'",
+  "'Local file download is not available on this platform'",
+  "'Local file export is not available on this platform'",
+  "'This plugin requires a canonical key before it can be changed'",
+  "'manifest must be an object'",
+  "'invalid latest version'",
+  "'invalid minimum supported version'",
+};
+
 // Linguistic data used to derive a pet name, never rendered as UI copy.
 const _allowedHanDataLiterals = {
   '一个',
@@ -47,6 +83,7 @@ void main(List<String> args) {
 
   final current = _scan();
   final hanLiterals = _scanHanLiterals();
+  final escapedUiLiterals = _scanEscapedUiLiterals();
   final total = current.values.fold<int>(0, (sum, count) => sum + count);
   if (update) {
     File(_baselinePath).writeAsStringSync(
@@ -80,6 +117,15 @@ void main(List<String> args) {
     exitCode = 1;
     return;
   }
+  if (escapedUiLiterals.isNotEmpty) {
+    stderr.writeln('Known hardcoded UI copy detected outside widget literals:');
+    for (final finding in escapedUiLiterals) {
+      stderr.writeln('  $finding');
+    }
+    stderr.writeln('Use l10n for fallbacks and embedded Web UI controls.');
+    exitCode = 1;
+    return;
+  }
   if (regressions.isNotEmpty) {
     stderr.writeln('New hardcoded UI literals detected:');
     for (final regression in regressions) {
@@ -93,6 +139,23 @@ void main(List<String> args) {
     'No l10n regression: $total existing literal candidates across '
     '${current.length} files (baseline ${(decoded['total'] as num).toInt()}).',
   );
+}
+
+List<String> _scanEscapedUiLiterals() {
+  final findings = <String>[];
+  for (final file in _productionFiles()) {
+    final lines = file.readAsLinesSync();
+    for (var index = 0; index < lines.length; index++) {
+      final line = lines[index];
+      final code = line.split('//').first;
+      if (_forbiddenUiCopy.any(code.contains) ||
+          _forbiddenEmbeddedCopy.any((pattern) => pattern.hasMatch(line)) ||
+          _forbiddenEscapedCopy.any(code.contains)) {
+        findings.add('${file.path}:${index + 1}: ${line.trim()}');
+      }
+    }
+  }
+  return findings;
 }
 
 List<String> _scanHanLiterals() {

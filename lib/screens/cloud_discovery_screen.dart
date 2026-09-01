@@ -165,7 +165,7 @@ class _OrgPicker extends StatelessWidget {
               dense: true,
               leading: const Icon(Icons.apartment_outlined),
               title: Text(org.name),
-              subtitle: Text(org.role),
+              subtitle: Text(_cloudRoleLabel(context, org.role)),
               onTap: () => onSelected(org.selector),
             ),
         ],
@@ -173,6 +173,15 @@ class _OrgPicker extends StatelessWidget {
     ),
   );
 }
+
+String _cloudRoleLabel(BuildContext context, String role) =>
+    switch (role.trim().toLowerCase()) {
+      'owner' => context.l10n.cloudRoleOwner,
+      'admin' || 'administrator' => context.l10n.cloudRoleAdmin,
+      'member' => context.l10n.cloudRoleMember,
+      'viewer' || 'read_only' || 'readonly' => context.l10n.cloudRoleViewer,
+      _ => role,
+    };
 
 class _AgentPicker extends StatelessWidget {
   final HermesCloudDiscoveryResult result;

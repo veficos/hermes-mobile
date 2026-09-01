@@ -10,6 +10,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import '../l10n/runtime_l10n.dart';
 import 'notifications_service.dart';
 import 'settings_store.dart';
 import 'stores/connection_store.dart';
@@ -135,6 +136,11 @@ class RemotePushService extends ChangeNotifier {
   String? _lastFingerprint;
   bool _syncScheduled = false;
   bool _started = false;
+  ApiClient? _observedApi;
+  String? _observedConnectionId;
+  int _connectionGeneration = 0;
+  int _syncGeneration = 0;
+  int _statusGeneration = 0;
   bool enabled = true;
   bool registered = false;
   String? lastError;
@@ -151,8 +157,10 @@ class RemotePushService extends ChangeNotifier {
     platform.onTap = (payload) {
       notifications.handleRemotePayload(payload, tapped: true);
     };
+    _observedApi = connection.api;
+    _observedConnectionId = connection.activeConnectionId.value;
     connection
-      ..addListener(_scheduleSync)
+      ..addListener(_onConnectionChanged)
       ..addBeforeDisconnectHook(_unregisterBeforeDisconnect);
     session.addListener(_scheduleSync);
     locale.addListener(_scheduleSync);
@@ -183,6 +191,28 @@ class RemotePushService extends ChangeNotifier {
     _notify();
   }
 
+  void _onConnectionChanged() {
+    final api = connection.api;
+    final connectionId = connection.activeConnectionId.value;
+    final identityChanged =
+        !identical(api, _observedApi) || connectionId != _observedConnectionId;
+    if (identityChanged) {
+      _observedApi = api;
+      _observedConnectionId = connectionId;
+      _connectionGeneration++;
+      _syncGeneration++;
+      _statusGeneration++;
+      _lastFingerprint = null;
+      registered = false;
+      configuredPlatforms = const [];
+      serverDeviceCount = 0;
+      lastError = null;
+      _notify();
+    }
+    _scheduleSync();
+    if (identityChanged) unawaited(refreshStatus());
+  }
+
   void _scheduleSync() {
     if (_syncScheduled || !_started) return;
     _syncScheduled = true;
@@ -196,6 +226,8 @@ class RemotePushService extends ChangeNotifier {
   Future<void> _sync() async {
     final token = _token;
     final api = connection.api;
+    final connectionGeneration = _connectionGeneration;
+    final syncGeneration = ++_syncGeneration;
     if (token == null ||
         !enabled ||
         _deviceId.isEmpty ||
@@ -222,11 +254,23 @@ class RemotePushService extends ChangeNotifier {
     if (_lastFingerprint == fingerprint) return;
     try {
       await api.registerPushDevice(registration);
+      if (connectionGeneration != _connectionGeneration ||
+          syncGeneration != _syncGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
       _lastFingerprint = fingerprint;
       registered = true;
       lastError = null;
       _notify();
     } catch (error) {
+      if (connectionGeneration != _connectionGeneration ||
+          syncGeneration != _syncGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
       registered = false;
       lastError = '$error';
       _notify();
@@ -261,6 +305,9 @@ class RemotePushService extends ChangeNotifier {
 
   Future<void> refreshStatus() async {
     final api = connection.api;
+    final connectionId = connection.activeConnectionId.value;
+    final connectionGeneration = _connectionGeneration;
+    final statusGeneration = ++_statusGeneration;
     if (api == null || api.directGateway) {
       configuredPlatforms = const [];
       serverDeviceCount = 0;
@@ -269,6 +316,12 @@ class RemotePushService extends ChangeNotifier {
     }
     try {
       final status = await api.pushStatus();
+      if (connectionGeneration != _connectionGeneration ||
+          statusGeneration != _statusGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
       configuredPlatforms =
           (status['configured_platforms'] as List? ?? const [])
               .map((value) => value.toString())
@@ -276,6 +329,12 @@ class RemotePushService extends ChangeNotifier {
       serverDeviceCount = (status['device_count'] as num?)?.toInt() ?? 0;
       lastError = null;
     } catch (error) {
+      if (connectionGeneration != _connectionGeneration ||
+          statusGeneration != _statusGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
       lastError = '$error';
     }
     _notify();
@@ -284,7 +343,7 @@ class RemotePushService extends ChangeNotifier {
   Future<Map<String, dynamic>> sendTest() async {
     final api = connection.api;
     if (api == null || api.directGateway || _deviceId.isEmpty) {
-      throw StateError('Remote push is unavailable for this connection');
+      throw StateError(runtimeL10n.errorRemotePushUnavailable);
     }
     return api.testPushDevice(_deviceId);
   }
@@ -321,7 +380,7 @@ class RemotePushService extends ChangeNotifier {
   void dispose() {
     _started = false;
     connection
-      ..removeListener(_scheduleSync)
+      ..removeListener(_onConnectionChanged)
       ..removeBeforeDisconnectHook(_unregisterBeforeDisconnect);
     session.removeListener(_scheduleSync);
     locale.removeListener(_scheduleSync);

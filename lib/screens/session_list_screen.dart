@@ -9,7 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/api_client.dart';
+import '../core/connection_reload_mixin.dart';
 import '../core/models.dart';
+import '../core/stores/connection_store.dart';
 import '../core/stores/project_tree_store.dart';
 import '../core/stores/pull_request_store.dart';
 import '../core/stores/session_store.dart';
@@ -47,7 +49,8 @@ enum _TimeGroup {
   archived,
 }
 
-class _SessionListScreenState extends State<SessionListScreen> {
+class _SessionListScreenState extends State<SessionListScreen>
+    with ConnectionReloadMixin<SessionListScreen> {
   bool _loading = false;
   String? _error;
   String? _lastSessionId;
@@ -94,7 +97,16 @@ class _SessionListScreenState extends State<SessionListScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    observeConnection(context.read<ConnectionStore>(), () {
+      unawaited(_projectTree.refreshVisible());
+    });
+  }
+
+  @override
   void dispose() {
+    disposeConnectionObserver();
     _pollTimer?.cancel();
     _projectTree.dispose();
     _queryController.dispose();
@@ -134,6 +146,9 @@ class _SessionListScreenState extends State<SessionListScreen> {
       final rows = session.sessions ?? const <SessionRow>[];
       await _refreshSubagents(rows);
       unawaited(pullRequests.refreshForSessions(rows));
+      if (session.groupingMode == 'project') {
+        unawaited(_projectTree.refreshVisible());
+      }
       _lastListLoad = DateTime.now();
       if (mounted) setState(() {});
     } catch (_) {}
@@ -2005,7 +2020,9 @@ class _SessionListScreenState extends State<SessionListScreen> {
         context.l10n.sessionMessageCount(child.messageCount!),
     ].join(' · ');
     return Tooltip(
-      message: title?.isNotEmpty == true ? title! : 'Desktop Session',
+      message: title?.isNotEmpty == true
+          ? title!
+          : context.l10n.sessionDesktopFallback,
       child: InkWell(
         key: ValueKey('subagent-${child.id}'),
         onTap: () => _openSubagent(child),
@@ -2020,7 +2037,9 @@ class _SessionListScreenState extends State<SessionListScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title?.isNotEmpty == true ? title! : 'Desktop Session',
+                      title?.isNotEmpty == true
+                          ? title!
+                          : context.l10n.sessionDesktopFallback,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall,

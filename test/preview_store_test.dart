@@ -86,7 +86,7 @@ void main() {
       final driver = _TourDriver();
       addTearDown(store.dispose);
       addTearDown(connection.dispose);
-      const route = OwnerRoute(connectionId: ConnectionId('remote'));
+      const route = OwnerRoute(connectionId: ConnectionId('primary'));
       store
         ..openUrl('https://example.com', sessionId: 'runtime-a', owner: route)
         ..attachDriver(driver);
@@ -127,7 +127,7 @@ void main() {
       final driver = _TourDriver();
       addTearDown(store.dispose);
       addTearDown(connection.dispose);
-      const route = OwnerRoute(connectionId: ConnectionId('remote'));
+      const route = OwnerRoute(connectionId: ConnectionId('primary'));
       store
         ..openUrl('https://example.com', owner: route)
         ..attachDriver(driver);
@@ -163,7 +163,7 @@ void main() {
     final second = _TourDriver();
     addTearDown(store.dispose);
     addTearDown(connection.dispose);
-    const route = OwnerRoute(connectionId: ConnectionId('remote'));
+    const route = OwnerRoute(connectionId: ConnectionId('primary'));
     store.openUrl('https://one.example', sessionId: 'runtime-a', owner: route);
     final firstTab = store.activeTab!;
     store.openUrl('https://two.example', sessionId: 'runtime-b', owner: route);
@@ -192,5 +192,26 @@ void main() {
 
     expect(first.tours, hasLength(1));
     expect(second.tours, isEmpty);
+  });
+
+  test('same preview URL is partitioned by profile owner', () {
+    final connection = ConnectionStore();
+    final store = PreviewStore(connection);
+    addTearDown(store.dispose);
+    addTearDown(connection.dispose);
+    const first = OwnerRoute(
+      connectionId: ConnectionId('primary'),
+      profile: 'default',
+    );
+    const second = OwnerRoute(
+      connectionId: ConnectionId('primary'),
+      profile: 'work',
+    );
+
+    store.openUrl('https://example.com', owner: first);
+    store.openUrl('https://example.com', owner: second);
+
+    expect(store.tabs, hasLength(2));
+    expect(store.tabs.map((tab) => tab.id).toSet(), hasLength(2));
   });
 }

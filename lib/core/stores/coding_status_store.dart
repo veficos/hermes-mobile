@@ -35,12 +35,26 @@ class CodingStatusSnapshot {
 }
 
 class CodingStatusStore extends ChangeNotifier {
+  CodingStatusStore({this.autoRefreshInterval = _ttl});
+
   ApiClient? _api;
   final Map<String, CodingStatusSnapshot> _byCwd = {};
   final Map<String, Future<void>> _inflight = {};
   final Map<String, DateTime> _refreshedAt = {};
   int _generation = 0;
+  bool _disposed = false;
+  Timer? _timer;
+  final Duration autoRefreshInterval;
   static const _ttl = Duration(seconds: 8);
+
+  void startAutoRefresh() {
+    _timer ??= Timer.periodic(autoRefreshInterval, (_) {
+      if (_disposed) return;
+      for (final cwd in _byCwd.keys.toList(growable: false)) {
+        unawaited(refresh(cwd, force: true));
+      }
+    });
+  }
 
   void bindApi(ApiClient? api) {
     if (identical(_api, api)) return;
@@ -57,12 +71,12 @@ class CodingStatusStore extends ChangeNotifier {
     return key.isEmpty ? null : _byCwd[key];
   }
 
-  Future<void> refresh(String? cwd) {
+  Future<void> refresh(String? cwd, {bool force = false}) {
     final key = cwd?.trim() ?? '';
     final api = _api;
-    if (key.isEmpty || api == null) return Future.value();
+    if (_disposed || key.isEmpty || api == null) return Future.value();
     final last = _refreshedAt[key];
-    if (last != null && DateTime.now().difference(last) < _ttl) {
+    if (!force && last != null && DateTime.now().difference(last) < _ttl) {
       return Future.value();
     }
     final generation = _generation;
@@ -118,8 +132,10 @@ class CodingStatusStore extends ChangeNotifier {
   Future<List<String>> branches(String? cwd) async {
     final key = cwd?.trim() ?? '';
     final api = _api;
+    final generation = _generation;
     if (key.isEmpty || api == null) return const [];
     final rows = await api.gitBranches(key);
+    if (generation != _generation || !identical(api, _api)) return const [];
     return rows
         .map((row) => (row['name'] ?? row['branch'] ?? '').toString())
         .where((name) => name.isNotEmpty)
@@ -152,7 +168,7 @@ class CodingStatusStore extends ChangeNotifier {
       name: name.trim(),
       base: base?.trim(),
     );
-    if (!identical(api, _api)) return result;
+    if (!identical(api, _api)) return null;
     _refreshedAt.remove(key);
     await refresh(key);
     return result;
@@ -166,5 +182,14 @@ class CodingStatusStore extends ChangeNotifier {
       if (parsed != null) return parsed;
     }
     return 0;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _generation++;
+    _api = null;
+    _timer?.cancel();
+    super.dispose();
   }
 }

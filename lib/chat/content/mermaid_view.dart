@@ -20,6 +20,17 @@ class MermaidPreview extends StatelessWidget {
   }
 }
 
+/// Pure-Flutter transcript preview. Unlike [MermaidDiagramView], this never
+/// creates a platform view and is safe to recycle in a scrolling sliver.
+class MermaidStaticDiagramView extends StatelessWidget {
+  final String source;
+  const MermaidStaticDiagramView({super.key, required this.source});
+
+  @override
+  Widget build(BuildContext context) =>
+      _MermaidFallback(source: source, interactive: false);
+}
+
 /// Full Mermaid 11 renderer backed by an offline, CSP-restricted WebView host.
 /// The bundled engine covers flowchart, sequence, class, state, ER, gantt,
 /// journey, mindmap, timeline, quadrant, sankey, XY and newer Mermaid syntax.
@@ -124,7 +135,9 @@ class _MermaidDiagramViewState extends State<MermaidDiagramView> {
     if (!mounted || decoded is! Map) return;
     if (decoded['type'] == 'error') {
       setState(() {
-        _error = decoded['message']?.toString() ?? 'Mermaid parse error';
+        _error =
+            decoded['message']?.toString() ??
+            context.l10n.chatMermaidParseError;
         _rendered = false;
       });
       return;

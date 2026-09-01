@@ -10539,4 +10539,447 @@ class AppLocalizationsAr extends AppLocalizations {
   String billingPaymentMethodKind(String kind) {
     return 'طريقة الدفع · $kind';
   }
+
+  @override
+  String get previewTourBack => 'رجوع';
+
+  @override
+  String get previewTourDone => 'تم';
+
+  @override
+  String get previewTourNext => 'التالي';
+
+  @override
+  String get chatMermaidParseError => 'تعذر تحليل مخطط Mermaid';
+
+  @override
+  String get petDefaultName => 'حيوان Hermes الأليف';
+
+  @override
+  String get sessionDetailProfile => 'الملف الشخصي';
+
+  @override
+  String get profileArchiveType => 'ملف Hermes الشخصي';
+
+  @override
+  String get profilesTemperature => 'درجة الحرارة';
+
+  @override
+  String get profilesTopP => 'Top P';
+
+  @override
+  String get profilesMaxTokens => 'الحد الأقصى للرموز';
+
+  @override
+  String get sessionDesktopFallback => 'جلسة سطح المكتب';
+
+  @override
+  String get backgroundProcessFallback => 'عملية في الخلفية';
+
+  @override
+  String get insightsUnknownModel => 'نموذج غير معروف';
+
+  @override
+  String get billingCard => 'بطاقة';
+
+  @override
+  String get billingLink => 'Link';
+
+  @override
+  String get slashGroupSkills => 'المهارات';
+
+  @override
+  String get slashGroupCommands => 'الأوامر';
+
+  @override
+  String get botAuthorYou => 'أنت';
+
+  @override
+  String get botAuthorSystem => 'النظام';
+
+  @override
+  String get botAuthorFallback => 'Bot';
+
+  @override
+  String terminalErrorMessage(String error) {
+    return 'خطأ في الطرفية: $error';
+  }
+
+  @override
+  String sessionCopyTitle(String title) {
+    return '$title (نسخة)';
+  }
+
+  @override
+  String get gitRemoteFallback => 'المستودع البعيد';
+
+  @override
+  String get gitStashFallback => 'المخزون المؤقت';
+
+  @override
+  String get notificationChannelErrors => 'الأخطاء';
+
+  @override
+  String get notificationChannelWarnings => 'التحذيرات';
+
+  @override
+  String get notificationChannelSuccess => 'النجاح';
+
+  @override
+  String get notificationChannelApprovals => 'الموافقات';
+
+  @override
+  String get notificationChannelInfo => 'المعلومات';
+
+  @override
+  String get memoryCuratorTitle => 'منظّم المحتوى';
+
+  @override
+  String get messageSourceServer => 'الخادم';
+
+  @override
+  String get messageSourceMobile => 'الهاتف';
+
+  @override
+  String get kanbanRunQueued => 'في قائمة الانتظار';
+
+  @override
+  String get kanbanRunCompleted => 'مكتمل';
+
+  @override
+  String get kanbanRunFailed => 'فشل';
+
+  @override
+  String get kanbanRunCancelled => 'ملغى';
+
+  @override
+  String get kanbanEventTaskCreated => 'أُنشئت المهمة';
+
+  @override
+  String get kanbanEventTaskUpdated => 'حُدّثت المهمة';
+
+  @override
+  String get kanbanEventTaskDeleted => 'حُذفت المهمة';
+
+  @override
+  String get kanbanEventRunStarted => 'بدأ التشغيل';
+
+  @override
+  String get kanbanEventRunCompleted => 'اكتمل التشغيل';
+
+  @override
+  String get kanbanEventRunFailed => 'فشل التشغيل';
+
+  @override
+  String get kanbanEventRunCancelled => 'أُلغي التشغيل';
+
+  @override
+  String get kanbanEventCommentCreated => 'أُضيف تعليق';
+
+  @override
+  String get kanbanEventAttachmentAdded => 'أُضيف مرفق';
+
+  @override
+  String get kanbanEventAttachmentDeleted => 'حُذف المرفق';
+
+  @override
+  String get cloudRoleOwner => 'المالك';
+
+  @override
+  String get cloudRoleAdmin => 'المسؤول';
+
+  @override
+  String get cloudRoleMember => 'عضو';
+
+  @override
+  String get cloudRoleViewer => 'مشاهد';
+
+  @override
+  String get chatStatusToolDrafting => 'جارٍ تحضير استدعاء الأداة';
+
+  @override
+  String get chatStatusProvider => 'حالة المزوّد';
+
+  @override
+  String get previewScriptError => 'خطأ في البرنامج النصي';
+
+  @override
+  String get previewUnhandledPromiseRejection => 'رفض Promise غير معالج: ';
+
+  @override
+  String botGroupSessionTitle(String roomId) {
+    return 'المجموعة: $roomId';
+  }
+
+  @override
+  String get errorExpectedObjectResponse =>
+      'أعاد الخادم استجابة كائن غير صالحة';
+
+  @override
+  String get errorTtsNoAudio => 'لم تُعد ميزة تحويل النص إلى كلام أي صوت';
+
+  @override
+  String get errorInvalidDataUrl => 'أعاد الخادم عنوان بيانات غير صالح';
+
+  @override
+  String get errorExportDirectoryMissing => 'لم يحدد الخادم مجلد التصدير';
+
+  @override
+  String get errorImportDirectoryMissing => 'لم يحدد الخادم مجلد الاستيراد';
+
+  @override
+  String get errorRawConfigInvalid => 'أعاد الخادم إعدادًا خامًا غير صالح';
+
+  @override
+  String get errorPluginToggleRejected => 'رفضت الواجهة الخلفية تغيير الملحق';
+
+  @override
+  String get errorConnectionNotConfigured => 'الاتصال غير مهيأ';
+
+  @override
+  String errorSessionOwnerUnknown(String sessionId) {
+    return 'مالك الجلسة غير معروف: $sessionId';
+  }
+
+  @override
+  String get errorRemotePushUnavailable => 'الدفع البعيد غير متاح لهذا الاتصال';
+
+  @override
+  String get sshCommandTimedOut => 'انتهت مهلة أمر SSH';
+
+  @override
+  String get sshRemoteHomeUnsafe => 'مجلد Hermes البعيد غير آمن';
+
+  @override
+  String get sshOwnershipVerificationFailed =>
+      'تعذر التحقق من ملكية عملية Hermes البعيدة';
+
+  @override
+  String sshOwnershipProbeFailed(String status) {
+    return 'فشل فحص الملكية البعيد ($status)';
+  }
+
+  @override
+  String get sshHelperInvalidJson => 'أعادت الأداة البعيدة JSON غير صالح';
+
+  @override
+  String get sshWindowsOwnershipVerificationFailed =>
+      'تعذر التحقق من ملكية عملية Windows البعيدة';
+
+  @override
+  String get sshRemotePathInvalid =>
+      'يجب أن يكون مسار Hermes البعيد مطلقًا أو يبدأ بـ ~/';
+
+  @override
+  String get sshExecutableNotFound =>
+      'لم يُعثر على ملف Hermes التنفيذي المهيأ على المضيف البعيد';
+
+  @override
+  String get sshHermesNotInstalled => 'Hermes غير مثبت على المضيف البعيد';
+
+  @override
+  String get sshBootstrapFlagsUnsupported =>
+      'يجب أن يدعم Hermes البعيد خيارات تمهيد ملكية SSH الآمنة';
+
+  @override
+  String get sshWindowsIdentityInvalid =>
+      'أعادت واجهة Windows الخلفية البعيدة هوية غير صالحة';
+
+  @override
+  String get sshWindowsExitedBeforeReady =>
+      'خرجت واجهة Windows الخلفية البعيدة قبل أن تصبح جاهزة';
+
+  @override
+  String get sshWindowsOwnershipProofFailed => 'فشل إثبات ملكية Windows البعيد';
+
+  @override
+  String get sshProcessIdMissing => 'لم يُعد Hermes البعيد معرّف عملية';
+
+  @override
+  String get sshExitedBeforeReady => 'خرج Hermes البعيد قبل أن يصبح جاهزًا';
+
+  @override
+  String get sshOwnershipProofFailed => 'فشل إثبات ملكية Hermes البعيد';
+
+  @override
+  String get errorSessionBranchIdMissing =>
+      'لم يُعد Hermes معرّفًا دائمًا للجلسة المتفرعة';
+
+  @override
+  String get errorDuplicateImportFailed =>
+      'لم يتمكن Hermes من استيراد الجلسة المنسوخة';
+
+  @override
+  String get errorSessionNoTitleableMessages =>
+      'لا تحتوي الجلسة على رسائل تصلح لإنشاء عنوان';
+
+  @override
+  String get errorTitleGeneratorEmpty => 'أعاد مولّد العنوان عنوانًا فارغًا';
+
+  @override
+  String get errorProjectIdRequired => 'يلزم اختيار مشروع';
+
+  @override
+  String get errorProjectWorkingFolderMissing =>
+      'لا يحتوي المشروع الهدف على مجلد عمل';
+
+  @override
+  String get errorDownloadFailed => 'فشل التنزيل';
+
+  @override
+  String get errorMessagingPlatformNotFound => 'لم يُعثر على منصة المراسلة';
+
+  @override
+  String errorBotGroupSessionStartFailed(String name) {
+    return 'تعذر بدء جلسة المجموعة الخاصة بـ $name';
+  }
+
+  @override
+  String sshRemoteCommandFailed(String code) {
+    return 'فشل الأمر البعيد ($code)';
+  }
+
+  @override
+  String get sshHostAndUserRequired => 'يلزم مضيف SSH ومستخدمه';
+
+  @override
+  String get sshPortInvalid => 'يجب أن يكون منفذ SSH بين 1 و65535';
+
+  @override
+  String sshHostKeyChanged(String host, String expected, String received) {
+    return 'تغير مفتاح مضيف SSH لـ $host. المتوقع $expected؛ والمستلم $received';
+  }
+
+  @override
+  String get sshProfileInvalid => 'اسم الملف الشخصي البعيد غير صالح';
+
+  @override
+  String get errorDirectGatewayFeatureUnavailable =>
+      'تتطلب هذه الميزة Hermes Mobile Server ولا تتوفر عبر اتصال Gateway مباشر';
+
+  @override
+  String errorOperationFailedWithDetail(String error) {
+    return 'فشلت العملية: $error';
+  }
+
+  @override
+  String gatewayOauthRejected(String error) {
+    return 'رفض Gateway تسجيل الدخول: $error';
+  }
+
+  @override
+  String get gatewayOauthCodeMissing => 'تفتقد استجابة Gateway إلى رمز التفويض';
+
+  @override
+  String get gatewayOauthStateMismatch =>
+      'لم تتطابق حالة استجابة Gateway. أُلغي تسجيل الدخول للحماية.';
+
+  @override
+  String get gatewayOauthRefreshTokenMissing =>
+      'انتهت جلسة Gateway ولا يوجد رمز تحديث';
+
+  @override
+  String get gatewayOauthTicketMissing => 'لم يُعد Gateway تذكرة WebSocket';
+
+  @override
+  String get gatewayOauthAccessTokenMissing =>
+      'لا تتضمن استجابة رمز Gateway رمز وصول';
+
+  @override
+  String get gatewayOauthTimedOut => 'انتهت مهلة تسجيل الدخول إلى Gateway';
+
+  @override
+  String get gatewayOauthNativeUnsupported =>
+      'مصادقة Gateway OAuth الأصلية غير مدعومة على هذه المنصة';
+
+  @override
+  String get updateManifestInvalid => 'بيان التحديث غير صالح';
+
+  @override
+  String sshRemotePlatformUnsupported(String error) {
+    return 'المنصة البعيدة غير مدعومة: $error';
+  }
+
+  @override
+  String get sshWebUnsupported => 'اتصالات SSH الأصلية غير مدعومة على الويب';
+
+  @override
+  String get filesDownloadPlatformUnsupported =>
+      'تنزيل الملفات محليًا غير متاح على هذه المنصة';
+
+  @override
+  String get sessionExportPlatformUnsupported =>
+      'تصدير الملفات محليًا غير متاح على هذه المنصة';
+
+  @override
+  String get errorPluginCanonicalKeyRequired =>
+      'يحتاج هذا الملحق إلى مفتاح قياسي قبل تغييره';
+
+  @override
+  String get connectGatewayToken => 'رمز Gateway';
+
+  @override
+  String get modelMoaTitle => 'مزيج الوكلاء';
+
+  @override
+  String get insightsTokens => 'الرموز';
+
+  @override
+  String get messageWebFallback => 'الويب';
+
+  @override
+  String get mcpLogsSourceStdio => 'stdio';
+
+  @override
+  String get mcpLogsSourceAgent => 'الوكيل';
+
+  @override
+  String get projectPrimaryFolder => 'الرئيسي';
+
+  @override
+  String get botGroupNameRequired => 'أدخل اسم المجموعة';
+
+  @override
+  String get botGroupMembersMinimum => 'تحتاج المجموعة إلى روبوتين على الأقل';
+
+  @override
+  String botGroupMembersRange(int max) {
+    return 'تحتاج المجموعة من روبوتين إلى $max';
+  }
+
+  @override
+  String botGroupMembersMaximum(int max) {
+    return 'تدعم المجموعة $max روبوتات كحد أقصى';
+  }
+
+  @override
+  String get botGroupMemberUnavailable => 'لا يوجد عضو مجموعة متاح';
+
+  @override
+  String get botProfileNameUnavailable => 'لا يتوفر اسم ملف شخصي شاغر';
+
+  @override
+  String get botDefaultProfileDeleteForbidden =>
+      'لا يمكن حذف الملف الشخصي الافتراضي';
+
+  @override
+  String get botConnectionUnavailable => 'اتصال Bot غير متاح';
+
+  @override
+  String get botTurnFailed => 'فشلت جولة Bot';
+
+  @override
+  String get mcpInvalidJsonSyntax => 'بنية JSON غير صالحة';
+
+  @override
+  String get mcpJsonObjectRequired => 'يجب أن تكون قيمة JSON العليا كائنًا';
+
+  @override
+  String get voiceWakeMicStreamEnded =>
+      'انتهى تدفق ميكروفون كلمة التنبيه بشكل غير متوقع';
+
+  @override
+  String httpStatusError(int statusCode) {
+    return 'أعاد الخادم HTTP $statusCode';
+  }
 }

@@ -29,12 +29,34 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   bool _initialProjectResolved = false;
   bool _projectBoardMissing = false;
   String? _projectBoardError;
+  KanbanApi? _initialProjectApi;
+  int _initialProjectGeneration = 0;
+
+  @override
+  void didUpdateWidget(covariant KanbanCanonicalScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialProjectId == widget.initialProjectId) return;
+    ++_initialProjectGeneration;
+    _initialProjectScheduled = false;
+    _initialProjectResolved = false;
+    _projectBoardMissing = false;
+    _projectBoardError = null;
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final projectId = widget.initialProjectId;
     final store = context.watch<KanbanStore>();
+    final currentApi = store.ready ? store.api : null;
+    if (!identical(currentApi, _initialProjectApi)) {
+      _initialProjectApi = currentApi;
+      ++_initialProjectGeneration;
+      _initialProjectScheduled = false;
+      _initialProjectResolved = false;
+      _projectBoardMissing = false;
+      _projectBoardError = null;
+    }
     if (_initialProjectScheduled ||
         projectId == null ||
         projectId.isEmpty ||
@@ -42,21 +64,35 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       return;
     }
     _initialProjectScheduled = true;
+    final generation = _initialProjectGeneration;
+    final api = currentApi!;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _selectProjectBoard(store, projectId);
+      if (mounted) _selectProjectBoard(store, projectId, generation, api);
     });
   }
 
-  Future<void> _selectProjectBoard(KanbanStore store, String projectId) async {
+  bool _ownsInitialProjectTarget(KanbanApi api, int generation) {
+    return mounted &&
+        generation == _initialProjectGeneration &&
+        identical(api, _initialProjectApi);
+  }
+
+  Future<void> _selectProjectBoard(
+    KanbanStore store,
+    String projectId,
+    int generation,
+    KanbanApi api,
+  ) async {
+    final noBoardMessage = context.l10n.projectNoKanbanBoard;
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      final api = store.api;
       await store.loadBoards(expectedApi: api);
       store.requireApi(api);
       if (store.error case final error?) {
         throw StateError(error);
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!_ownsInitialProjectTarget(api, generation)) return;
       setState(() {
         _initialProjectResolved = true;
         _projectBoardMissing = false;
@@ -64,7 +100,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       });
       return;
     }
-    if (!mounted) return;
+    if (!_ownsInitialProjectTarget(api, generation)) return;
     final matches = store.boardList
         .where((board) => board.projectId == projectId)
         .toList();
@@ -74,9 +110,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
         _projectBoardMissing = true;
         _projectBoardError = null;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.projectNoKanbanBoard)),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(noBoardMessage)));
       return;
     }
     final selected = matches.firstWhere(
@@ -84,7 +118,6 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       orElse: () => matches.first,
     );
     try {
-      final api = store.api;
       if (api.boardSlug != selected.slug) {
         await store.selectBoard(selected.slug, expectedApi: api);
       }
@@ -93,7 +126,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
         throw StateError(error);
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!_ownsInitialProjectTarget(api, generation)) return;
       setState(() {
         _initialProjectResolved = true;
         _projectBoardMissing = false;
@@ -101,7 +134,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       });
       return;
     }
-    if (!mounted) return;
+    if (!_ownsInitialProjectTarget(api, generation)) return;
     setState(() {
       _initialProjectResolved = true;
       _projectBoardMissing = false;
@@ -110,11 +143,13 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   }
 
   void _retryProjectBoard(KanbanStore store, String projectId) {
+    final api = _initialProjectApi;
+    if (api == null) return;
     setState(() {
       _initialProjectResolved = false;
       _projectBoardError = null;
     });
-    _selectProjectBoard(store, projectId);
+    _selectProjectBoard(store, projectId, _initialProjectGeneration, api);
   }
 
   @override
@@ -261,8 +296,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                     child: ListView(
                       children: [
                         SizedBox(
-                          height:
-                              MediaQuery.sizeOf(context).height * 0.5,
+                          height: MediaQuery.sizeOf(context).height * 0.5,
                           child: HermesEmptyState(
                             icon: Icons.checklist_outlined,
                             title: context.l10n.commonNoData,
@@ -747,200 +781,221 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
     final busyProfiles = <String>{};
     await showModalBottomSheet<void>(
       context: c,
-      builder: (sheet) => StatefulBuilder(
-        builder: (_, setSheet) => ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              context.l10n.taskOrchestration,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            DropdownButtonFormField<String>(
-              initialValue: orchestrator,
-              decoration: InputDecoration(
-                labelText: context.l10n.taskOrchestratorProfile,
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: '',
-                  child: Text(context.l10n.taskDefault),
+      builder: (sheet) => AnimatedBuilder(
+        animation: s,
+        builder: (_, _) {
+          try {
+            s.requireApi(api);
+          } catch (_) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (sheet.mounted) Navigator.pop(sheet);
+            });
+            return const SizedBox.shrink();
+          }
+          return StatefulBuilder(
+            builder: (_, setSheet) => ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text(
+                  context.l10n.taskOrchestration,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                ...profiles.map(
-                  (p) => DropdownMenuItem(value: p.name, child: Text(p.name)),
-                ),
-              ],
-              onChanged: (v) => setSheet(() => orchestrator = v ?? ''),
-            ),
-            DropdownButtonFormField<String>(
-              initialValue: assignee,
-              decoration: InputDecoration(
-                labelText: context.l10n.taskDefaultAssignee,
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: '',
-                  child: Text(context.l10n.taskDefault),
-                ),
-                ...profiles.map(
-                  (p) => DropdownMenuItem(value: p.name, child: Text(p.name)),
-                ),
-              ],
-              onChanged: (v) => setSheet(() => assignee = v ?? ''),
-            ),
-            SwitchListTile(
-              title: Text(context.l10n.taskAutoDecompose),
-              value: auto,
-              onChanged: (v) => setSheet(() => auto = v),
-            ),
-            FilledButton(
-              onPressed: () async {
-                try {
-                  await s.requireApi(api).saveOrchestration({
-                    'orchestrator_profile': orchestrator,
-                    'default_assignee': assignee,
-                    'auto_decompose': auto,
-                  });
-                  if (sheet.mounted) Navigator.pop(sheet);
-                } catch (e) {
-                  if (sheet.mounted) {
-                    ScaffoldMessenger.of(sheet).showSnackBar(
-                      SnackBar(content: Text(sheet.l10n.commonOperationFailed)),
-                    );
-                  }
-                }
-              },
-              child: Text(context.l10n.commonSave),
-            ),
-            const Divider(),
-            Text(
-              context.l10n.taskProfileDescriptions,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            for (final p in profiles)
-              ListTile(
-                title: Text(p.name),
-                subtitle: Text(
-                  p.description.isEmpty
-                      ? context.l10n.taskNoDescription
-                      : p.description,
-                ),
-                onTap: () async {
-                  final ctl = TextEditingController(text: p.description);
-                  final value = await showModalBottomSheet<String>(
-                    context: sheet,
-                    isScrollControlled: true,
-                    builder: (edit) => Padding(
-                      padding: EdgeInsets.only(
-                        left: 16,
-                        right: 16,
-                        top: 16,
-                        bottom: MediaQuery.viewInsetsOf(edit).bottom + 16,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          TextField(
-                            controller: ctl,
-                            minLines: 3,
-                            maxLines: 8,
-                            decoration: InputDecoration(
-                              labelText: context.l10n.taskProfileDescription(
-                                p.name,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          FilledButton(
-                            onPressed: () =>
-                                Navigator.pop(edit, ctl.text.trim()),
-                            child: Text(context.l10n.commonSave),
-                          ),
-                        ],
-                      ),
+                DropdownButtonFormField<String>(
+                  initialValue: orchestrator,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.taskOrchestratorProfile,
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: '',
+                      child: Text(context.l10n.taskDefault),
                     ),
-                  );
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => ctl.dispose(),
-                  );
-                  if (value == null) return;
-                  try {
-                    await s
-                        .requireApi(api)
-                        .saveProfileDescription(p.name, value);
-                    if (!sheet.mounted) return;
-                    final idx = profiles.indexWhere((x) => x.name == p.name);
-                    if (idx != -1) {
-                      profiles[idx] = KanbanProfile(
-                        name: p.name,
-                        description: value,
-                        isDefault: p.isDefault,
-                        descriptionAuto: false,
-                      );
+                    ...profiles.map(
+                      (p) =>
+                          DropdownMenuItem(value: p.name, child: Text(p.name)),
+                    ),
+                  ],
+                  onChanged: (v) => setSheet(() => orchestrator = v ?? ''),
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: assignee,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.taskDefaultAssignee,
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: '',
+                      child: Text(context.l10n.taskDefault),
+                    ),
+                    ...profiles.map(
+                      (p) =>
+                          DropdownMenuItem(value: p.name, child: Text(p.name)),
+                    ),
+                  ],
+                  onChanged: (v) => setSheet(() => assignee = v ?? ''),
+                ),
+                SwitchListTile(
+                  title: Text(context.l10n.taskAutoDecompose),
+                  value: auto,
+                  onChanged: (v) => setSheet(() => auto = v),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    try {
+                      await s.requireApi(api).saveOrchestration({
+                        'orchestrator_profile': orchestrator,
+                        'default_assignee': assignee,
+                        'auto_decompose': auto,
+                      });
+                      if (sheet.mounted) Navigator.pop(sheet);
+                    } catch (e) {
+                      if (sheet.mounted) {
+                        ScaffoldMessenger.of(sheet).showSnackBar(
+                          SnackBar(
+                            content: Text(sheet.l10n.commonOperationFailed),
+                          ),
+                        );
+                      }
                     }
-                    setSheet(() {});
-                  } catch (e) {
-                    if (sheet.mounted) {
-                      ScaffoldMessenger.of(sheet).showSnackBar(
-                        SnackBar(
-                          content: Text(sheet.l10n.commonOperationFailed),
-                        ),
-                      );
-                    }
-                  }
-                },
-                trailing: busyProfiles.contains(p.name)
-                    ? const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : IconButton(
-                        tooltip: context.l10n.taskAutoGenerate,
-                        icon: const Icon(Icons.auto_awesome),
-                        onPressed: () async {
-                          setSheet(() => busyProfiles.add(p.name));
-                          try {
-                            final result = await s
-                                .requireApi(api)
-                                .autoDescribeProfile(p.name);
-                            final description = result is Map
-                                ? (result['description']?.toString() ?? '')
-                                : '';
-                            if (!sheet.mounted) return;
-                            final idx = profiles.indexWhere(
-                              (x) => x.name == p.name,
-                            );
-                            if (idx != -1 && description.isNotEmpty) {
-                              profiles[idx] = KanbanProfile(
-                                name: p.name,
-                                description: description,
-                                isDefault: p.isDefault,
-                                descriptionAuto: true,
-                              );
-                            }
-                          } catch (e) {
-                            if (sheet.mounted) {
-                              ScaffoldMessenger.of(sheet).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    sheet.l10n.commonOperationFailed,
-                                  ),
+                  },
+                  child: Text(context.l10n.commonSave),
+                ),
+                const Divider(),
+                Text(
+                  context.l10n.taskProfileDescriptions,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                for (final p in profiles)
+                  ListTile(
+                    title: Text(p.name),
+                    subtitle: Text(
+                      p.description.isEmpty
+                          ? context.l10n.taskNoDescription
+                          : p.description,
+                    ),
+                    onTap: () async {
+                      final ctl = TextEditingController(text: p.description);
+                      final value = await showModalBottomSheet<String>(
+                        context: sheet,
+                        isScrollControlled: true,
+                        builder: (edit) => Padding(
+                          padding: EdgeInsets.only(
+                            left: 16,
+                            right: 16,
+                            top: 16,
+                            bottom: MediaQuery.viewInsetsOf(edit).bottom + 16,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextField(
+                                controller: ctl,
+                                minLines: 3,
+                                maxLines: 8,
+                                decoration: InputDecoration(
+                                  labelText: context.l10n
+                                      .taskProfileDescription(p.name),
                                 ),
-                              );
-                            }
-                          } finally {
-                            if (sheet.mounted) {
-                              setSheet(() => busyProfiles.remove(p.name));
-                            }
-                          }
-                        },
-                      ),
-              ),
-          ],
-        ),
+                              ),
+                              const SizedBox(height: 12),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.pop(edit, ctl.text.trim()),
+                                child: Text(context.l10n.commonSave),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => ctl.dispose(),
+                      );
+                      if (value == null) return;
+                      try {
+                        await s
+                            .requireApi(api)
+                            .saveProfileDescription(p.name, value);
+                        if (!sheet.mounted) return;
+                        final idx = profiles.indexWhere(
+                          (x) => x.name == p.name,
+                        );
+                        if (idx != -1) {
+                          profiles[idx] = KanbanProfile(
+                            name: p.name,
+                            description: value,
+                            isDefault: p.isDefault,
+                            descriptionAuto: false,
+                          );
+                        }
+                        setSheet(() {});
+                      } catch (e) {
+                        if (sheet.mounted) {
+                          ScaffoldMessenger.of(sheet).showSnackBar(
+                            SnackBar(
+                              content: Text(sheet.l10n.commonOperationFailed),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    trailing: busyProfiles.contains(p.name)
+                        ? const Padding(
+                            padding: EdgeInsets.all(8),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : IconButton(
+                            tooltip: context.l10n.taskAutoGenerate,
+                            icon: const Icon(Icons.auto_awesome),
+                            onPressed: () async {
+                              setSheet(() => busyProfiles.add(p.name));
+                              try {
+                                final result = await s
+                                    .requireApi(api)
+                                    .autoDescribeProfile(p.name);
+                                final description = result is Map
+                                    ? (result['description']?.toString() ?? '')
+                                    : '';
+                                if (!sheet.mounted) return;
+                                final idx = profiles.indexWhere(
+                                  (x) => x.name == p.name,
+                                );
+                                if (idx != -1 && description.isNotEmpty) {
+                                  profiles[idx] = KanbanProfile(
+                                    name: p.name,
+                                    description: description,
+                                    isDefault: p.isDefault,
+                                    descriptionAuto: true,
+                                  );
+                                }
+                              } catch (e) {
+                                if (sheet.mounted) {
+                                  ScaffoldMessenger.of(sheet).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        sheet.l10n.commonOperationFailed,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (sheet.mounted) {
+                                  setSheet(() => busyProfiles.remove(p.name));
+                                }
+                              }
+                            },
+                          ),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

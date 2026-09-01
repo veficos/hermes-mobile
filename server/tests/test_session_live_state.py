@@ -80,3 +80,56 @@ def test_projection_normalizes_rest_fields_without_gateway_events() -> None:
     assert projected["cron_running"] is True
     assert projected["pending_user_message"] is True
     assert projected["has_pending_user_message"] is False
+
+
+def test_backend_reset_discards_stale_runtime_projection_and_aliases() -> None:
+    store = SessionLiveState()
+    dispatch(
+        store,
+        {
+            "type": "session.info",
+            "profile": "work",
+            "session_id": "runtime-1",
+            "payload": {"stored_session_id": "stored-1", "running": True},
+        },
+    )
+    assert store.project({"id": "stored-1", "profile": "work"})[
+        "is_streaming"
+    ] is True
+
+    store.reset()
+
+    projected = store.project(
+        {"id": "stored-1", "profile": "work", "is_streaming": False}
+    )
+    assert projected["is_streaming"] is False
+
+
+def test_profiles_isolate_same_session_and_request_ids() -> None:
+    store = SessionLiveState()
+    for profile in ("default", "work"):
+        dispatch(
+            store,
+            {
+                "type": "approval.request",
+                "profile": profile,
+                "session_id": "same-session",
+                "payload": {"request_id": "same-request"},
+            },
+        )
+    dispatch(
+        store,
+        {
+            "type": "message.complete",
+            "profile": "default",
+            "session_id": "same-session",
+            "payload": {},
+        },
+    )
+
+    assert store.project({"id": "same-session", "profile": "default"})[
+        "has_pending_user_message"
+    ] is False
+    assert store.project({"id": "same-session", "profile": "work"})[
+        "has_pending_user_message"
+    ] is True

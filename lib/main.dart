@@ -76,22 +76,20 @@ class HermesMobileApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ComposerStatusStore()),
         ChangeNotifierProvider(create: (_) => PaneWorkspaceStore()..load()),
         ChangeNotifierProxyProvider<ConnectionStore, BillingStore>(
-          create: (ctx) =>
-              BillingStore()..bindApi(ctx.read<ConnectionStore>().api),
-          update: (_, connection, store) =>
-              (store ?? BillingStore())..bindApi(connection.api),
-        ),
-        ChangeNotifierProxyProvider<ConnectionStore, ProfileScopeStore>(
-          create: (ctx) =>
-              ProfileScopeStore()..bindApi(ctx.read<ConnectionStore>().api),
-          update: (_, connection, store) =>
-              (store ?? ProfileScopeStore())..bindApi(connection.api),
+          create: (ctx) => BillingStore()
+            ..attachConnection(ctx.read<ConnectionStore>())
+            ..bindApi(ctx.read<ConnectionStore>().api),
+          update: (_, connection, store) => (store ?? BillingStore())
+            ..attachConnection(connection)
+            ..bindApi(connection.api),
         ),
         ChangeNotifierProxyProvider<ConnectionStore, CodingStatusStore>(
-          create: (ctx) =>
-              CodingStatusStore()..bindApi(ctx.read<ConnectionStore>().api),
-          update: (_, connection, store) =>
-              (store ?? CodingStatusStore())..bindApi(connection.api),
+          create: (ctx) => CodingStatusStore()
+            ..startAutoRefresh()
+            ..bindApi(ctx.read<ConnectionStore>().api),
+          update: (_, connection, store) => (store ?? CodingStatusStore())
+            ..startAutoRefresh()
+            ..bindApi(connection.api),
         ),
         ChangeNotifierProvider(create: (_) => ToolDismissStore()),
         ChangeNotifierProxyProvider2<
@@ -123,8 +121,9 @@ class HermesMobileApp extends StatelessWidget {
               final payload = event['payload'] is Map
                   ? (event['payload'] as Map).cast<String, dynamic>()
                   : const <String, dynamic>{};
+              final connectionId = connection.activeConnectionId.value;
               notifications.addExternal(
-                key: 'kanban:$board:${event['id'] ?? kind}',
+                key: 'kanban:$connectionId:$board:${event['id'] ?? kind}',
                 kind: kind == 'completed'
                     ? NotificationKind.success
                     : NotificationKind.error,
@@ -135,6 +134,8 @@ class HermesMobileApp extends StatelessWidget {
                     payload['title']?.toString() ??
                     payload['task_id']?.toString() ??
                     kind,
+                connectionId: connectionId,
+                profile: payload['profile']?.toString(),
               );
             };
             return result;
@@ -170,6 +171,28 @@ class HermesMobileApp extends StatelessWidget {
             composer.bindRpc(store);
             return store;
           },
+        ),
+        ChangeNotifierProxyProvider2<
+          ConnectionStore,
+          SessionStore,
+          ProfileScopeStore
+        >(
+          create: (ctx) => ProfileScopeStore()
+            ..bindApi(ctx.read<ConnectionStore>().api)
+            ..bindBackendSnapshotSink(
+              ctx.read<SessionStore>().syncProfilesFromBackend,
+            )
+            ..startAutoRefresh()
+            ..syncFromSession(
+              ctx.read<SessionStore>().profiles,
+              ctx.read<SessionStore>().activeProfile,
+            ),
+          update: (_, connection, session, store) =>
+              (store ?? ProfileScopeStore())
+                ..bindApi(connection.api)
+                ..bindBackendSnapshotSink(session.syncProfilesFromBackend)
+                ..startAutoRefresh()
+                ..syncFromSession(session.profiles, session.activeProfile),
         ),
         ChangeNotifierProxyProvider2<
           ConnectionStore,
@@ -239,11 +262,21 @@ class HermesMobileApp extends StatelessWidget {
           update: (ctx, connection, subagents) =>
               subagents ?? SubagentStore(connection: connection),
         ),
-        ChangeNotifierProxyProvider<ConnectionStore, CommandStore>(
+        ChangeNotifierProxyProvider2<
+          ConnectionStore,
+          SessionStore,
+          CommandStore
+        >(
           create: (ctx) =>
-              CommandStore(connection: ctx.read<ConnectionStore>()),
-          update: (ctx, connection, cmd) =>
-              cmd ?? CommandStore(connection: connection),
+              CommandStore(connection: ctx.read<ConnectionStore>())
+                ..bindProfile(
+                  ctx.read<SessionStore>().sessionListProfile ??
+                      ctx.read<SessionStore>().activeProfile,
+                ),
+          update: (ctx, connection, session, cmd) =>
+              (cmd ?? CommandStore(connection: connection))..bindProfile(
+                session.sessionListProfile ?? session.activeProfile,
+              ),
         ),
         ChangeNotifierProxyProvider<ConnectionStore, PetStore>(
           create: (ctx) => PetStore(connection: ctx.read<ConnectionStore>()),
@@ -291,9 +324,10 @@ class HermesMobileApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => UpdateStore()..initialize()),
         ChangeNotifierProvider(create: (_) => SessionAppearanceStore()..load()),
         ChangeNotifierProxyProvider<ConnectionStore, BotStore>(
-          create: (ctx) => BotStore(ctx.read<ConnectionStore>()),
+          create: (ctx) =>
+              BotStore(ctx.read<ConnectionStore>())..startRosterRefresh(),
           update: (ctx, connection, previous) =>
-              previous ?? BotStore(connection),
+              (previous ?? BotStore(connection))..startRosterRefresh(),
         ),
         ChangeNotifierProxyProvider2<
           ConnectionStore,

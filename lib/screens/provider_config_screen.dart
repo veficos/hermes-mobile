@@ -199,7 +199,7 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
         _loading = false;
       });
       if (_viewingActiveConnection) {
-        _scopeStore?.updateProfiles(profileData);
+        await _scopeStore?.updateProfiles(profileData);
       }
     } catch (e) {
       if (mounted &&

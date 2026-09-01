@@ -48,6 +48,17 @@ class _GitScreenState extends State<GitScreen>
   Map<String, dynamic>? _selectedFile;
   String _selectedDiff = '';
   bool _diffLoading = false;
+
+  String _pullRequestStateLabel(BuildContext context, String? state) {
+    return switch (state?.trim().toLowerCase()) {
+      'closed' => context.l10n.sessionPrClosed,
+      'draft' => context.l10n.sessionPrDraft,
+      'merged' => context.l10n.sessionPrMerged,
+      'open' || null || '' => context.l10n.sessionPrOpen,
+      final value => value,
+    };
+  }
+
   // Git Log
   late final TabController _tabController;
   List<Map<String, dynamic>> _logCommits = [];
@@ -697,7 +708,9 @@ class _GitScreenState extends State<GitScreen>
             for (final remote in _remotes)
               ListTile(
                 leading: const Icon(Icons.cloud_outlined),
-                title: Text((remote['name'] ?? 'remote').toString()),
+                title: Text(
+                  (remote['name'] ?? context.l10n.gitRemoteFallback).toString(),
+                ),
                 subtitle: SelectableText((remote['url'] ?? '').toString()),
               ),
             const Divider(),
@@ -711,7 +724,10 @@ class _GitScreenState extends State<GitScreen>
               ListTile(
                 leading: const Icon(Icons.inventory_2_outlined),
                 title: Text(
-                  (stash['message'] ?? stash['name'] ?? stash['ref'] ?? 'stash')
+                  (stash['message'] ??
+                          stash['name'] ??
+                          stash['ref'] ??
+                          context.l10n.gitStashFallback)
                       .toString(),
                 ),
                 subtitle: Text(
@@ -2299,7 +2315,18 @@ class _GitScreenState extends State<GitScreen>
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              'PR #${pr['number'] ?? ''} · ${(pr['state'] ?? 'open').toString().toLowerCase()}',
+                              context.l10n.sessionPrBadge(
+                                pr['number'] is num
+                                    ? (pr['number'] as num).toInt()
+                                    : int.tryParse(
+                                            pr['number']?.toString() ?? '',
+                                          ) ??
+                                          0,
+                                _pullRequestStateLabel(
+                                  context,
+                                  pr['state']?.toString(),
+                                ),
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),

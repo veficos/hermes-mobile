@@ -33,7 +33,7 @@ class WakeWordStore extends ChangeNotifier with WidgetsBindingObserver {
   ConnectionId? _activeConnection;
   bool _wasConnected = false;
   bool _disposed = false;
-  bool _syncing = false;
+  int? _syncingGeneration;
   bool _lifecyclePaused = false;
   bool _voicePaused = false;
   bool _available = false;
@@ -49,6 +49,7 @@ class WakeWordStore extends ChangeNotifier with WidgetsBindingObserver {
   final List<Uint8List> _frameQueue = [];
   bool _drainingFrames = false;
   WakeDetection? _detection;
+  int _connectionGeneration = 0;
 
   WakeWordStore({required this.connection, WakeAudioCapture? audioCapture})
     : audioCapture = audioCapture ?? RecordWakeAudioCapture() {
@@ -94,6 +95,7 @@ class WakeWordStore extends ChangeNotifier with WidgetsBindingObserver {
     if (_disposed) return;
     final current = connection.activeConnectionId;
     if (_activeConnection != current) {
+      _connectionGeneration++;
       final oldRoute = _ownerRoute;
       _activeConnection = current;
       _ownerRoute = null;
@@ -139,20 +141,43 @@ class WakeWordStore extends ChangeNotifier with WidgetsBindingObserver {
         : const Duration(seconds: 120),
   );
 
-  Future<Map<String, dynamic>> refreshStatus() async {
+  Future<Map<String, dynamic>> refreshStatus() =>
+      _refreshStatus(_activeRoute, _connectionGeneration);
+
+  Future<Map<String, dynamic>> _refreshStatus(
+    OwnerRoute route,
+    int generation,
+  ) async {
     final status = await _request('wake.status', const {
       'surface': 'gui',
       'client_capture': true,
-    });
+    }, route: route);
+    if (_disposed ||
+        generation != _connectionGeneration ||
+        route.connectionId != connection.activeConnectionId) {
+      return status;
+    }
     _applyStatus(status);
     return status;
   }
 
   Future<void> arm() async {
-    if (_disposed || _syncing || _lifecyclePaused || _voicePaused) return;
-    _syncing = true;
+    final generation = _connectionGeneration;
+    if (_disposed ||
+        _syncingGeneration == generation ||
+        _lifecyclePaused ||
+        _voicePaused) {
+      return;
+    }
+    _syncingGeneration = generation;
+    final route = _activeRoute;
     try {
-      final status = await refreshStatus();
+      final status = await _refreshStatus(route, generation);
+      if (_disposed ||
+          generation != _connectionGeneration ||
+          route.connectionId != connection.activeConnectionId) {
+        return;
+      }
       if (!_available || !_enabled) return;
       if (status['listening'] == true) {
         if (_usesClientCapture(status['capture'])) {
@@ -162,11 +187,11 @@ class WakeWordStore extends ChangeNotifier with WidgetsBindingObserver {
         }
         return;
       }
-      await _start(persist: false);
+      await _start(persist: false, route: route, generation: generation);
     } catch (_) {
       // Older gateways do not expose wake.*. The hidden/off state is correct.
     } finally {
-      _syncing = false;
+      if (_syncingGeneration == generation) _syncingGeneration = null;
     }
   }
 
@@ -223,12 +248,23 @@ class WakeWordStore extends ChangeNotifier with WidgetsBindingObserver {
     throw ArgumentError(runtimeL10n.voiceWakeUsage);
   }
 
-  Future<void> _start({required bool persist}) async {
+  Future<void> _start({
+    required bool persist,
+    OwnerRoute? route,
+    int? generation,
+  }) async {
+    final requestRoute = route ?? _activeRoute;
+    final requestGeneration = generation ?? _connectionGeneration;
     final result = await _request('wake.start', {
       'surface': 'gui',
       'client_capture': true,
       if (persist) 'persist': true,
-    });
+    }, route: requestRoute);
+    if (_disposed ||
+        requestGeneration != _connectionGeneration ||
+        requestRoute.connectionId != connection.activeConnectionId) {
+      return;
+    }
     if (result['started'] != true) {
       await _stopClientCapture();
       _listening = false;
@@ -237,7 +273,7 @@ class WakeWordStore extends ChangeNotifier with WidgetsBindingObserver {
       _notify();
       return;
     }
-    _ownerRoute = _activeRoute;
+    _ownerRoute = requestRoute;
     _available = true;
     _enabled = true;
     _listening = true;
@@ -296,7 +332,9 @@ class WakeWordStore extends ChangeNotifier with WidgetsBindingObserver {
         onData: (bytes) => _onPcm(bytes, generation, frameLength),
         onError: (error) {
           if (generation != _captureGeneration) return;
-          _notice = runtimeL10n.voiceWakeMicInterrupted('$error');
+          _notice = error is WakeAudioStreamEnded
+              ? runtimeL10n.voiceWakeMicStreamEnded
+              : runtimeL10n.voiceWakeMicInterrupted('$error');
           _listening = false;
           _notify();
         },

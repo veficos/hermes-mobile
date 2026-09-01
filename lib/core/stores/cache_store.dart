@@ -15,14 +15,25 @@ class CacheStore {
   static const _cwdKey = 'hm_cache_cwd';
   static const _transcriptPrefix = 'hm_cache_tr_';
 
-  Future<void> cacheSessions(List<Map<String, dynamic>> sessions) async {
+  String _scopedKey(String base, String scope) =>
+      '$base:${Uri.encodeComponent(scope)}';
+
+  Future<void> cacheSessions(
+    List<Map<String, dynamic>> sessions, {
+    required String scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_sessionsKey, jsonEncode(sessions));
+    await prefs.setString(
+      _scopedKey(_sessionsKey, scope),
+      jsonEncode(sessions),
+    );
   }
 
-  Future<List<Map<String, dynamic>>> cachedSessions() async {
+  Future<List<Map<String, dynamic>>> cachedSessions({
+    required String scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_sessionsKey);
+    final raw = prefs.getString(_scopedKey(_sessionsKey, scope));
     if (raw == null) return [];
     try {
       final list = jsonDecode(raw) as List;
@@ -32,14 +43,14 @@ class CacheStore {
     }
   }
 
-  Future<void> cacheCwd(String cwd) async {
+  Future<void> cacheCwd(String cwd, {required String scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_cwdKey, cwd);
+    await prefs.setString(_scopedKey(_cwdKey, scope), cwd);
   }
 
-  Future<String> cachedCwd() async {
+  Future<String> cachedCwd({required String scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_cwdKey) ?? '';
+    return prefs.getString(_scopedKey(_cwdKey, scope)) ?? '';
   }
 
   /// Cache a transcript page: messages + the offset of the oldest loaded
@@ -49,6 +60,7 @@ class CacheStore {
     List<Map<String, dynamic>> messages, {
     int startOffset = 0,
     bool hasMore = false,
+    required String scope,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final payload = jsonEncode({
@@ -56,12 +68,20 @@ class CacheStore {
       'hasMore': hasMore,
       'messages': messages,
     });
-    await prefs.setString('$_transcriptPrefix$sessionId', payload);
+    await prefs.setString(
+      _scopedKey('$_transcriptPrefix$sessionId', scope),
+      payload,
+    );
   }
 
-  Future<Map<String, dynamic>?> cachedTranscript(String sessionId) async {
+  Future<Map<String, dynamic>?> cachedTranscript(
+    String sessionId, {
+    required String scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('$_transcriptPrefix$sessionId');
+    final raw = prefs.getString(
+      _scopedKey('$_transcriptPrefix$sessionId', scope),
+    );
     if (raw == null) return null;
     try {
       return (jsonDecode(raw) as Map).cast<String, dynamic>();
@@ -70,8 +90,11 @@ class CacheStore {
     }
   }
 
-  Future<void> clearTranscript(String sessionId) async {
+  Future<void> clearTranscript(
+    String sessionId, {
+    required String scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('$_transcriptPrefix$sessionId');
+    await prefs.remove(_scopedKey('$_transcriptPrefix$sessionId', scope));
   }
 }

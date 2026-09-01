@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
+import '../l10n/runtime_l10n.dart';
 import 'settings_store.dart';
 
 class GatewayOAuthException implements Exception {
@@ -43,9 +44,7 @@ class GatewayOAuthTokens {
     final accessToken = (json['access_token'] ?? json['accessToken'] ?? '')
         .toString();
     if (accessToken.isEmpty) {
-      throw const GatewayOAuthException(
-        'Gateway token response is missing access_token',
-      );
+      throw GatewayOAuthException(runtimeL10n.gatewayOauthAccessTokenMissing);
     }
     final rawExpiresAt = json['expires_at'] ?? json['expiresAt'];
     return GatewayOAuthTokens(
@@ -121,21 +120,18 @@ String parseGatewayOAuthCallback(Uri callback, String expectedState) {
   final error = callback.queryParameters['error'];
   if (error?.isNotEmpty == true) {
     final description = callback.queryParameters['error_description'];
-    throw GatewayOAuthException(
-      'Gateway rejected sign-in: $error${description?.isNotEmpty == true ? ' ($description)' : ''}',
-    );
+    final detail = description?.isNotEmpty == true
+        ? '$error ($description)'
+        : error!;
+    throw GatewayOAuthException(runtimeL10n.gatewayOauthRejected(detail));
   }
   final code = callback.queryParameters['code'] ?? '';
   final state = callback.queryParameters['state'] ?? '';
   if (code.isEmpty) {
-    throw const GatewayOAuthException(
-      'Gateway callback is missing the authorization code',
-    );
+    throw GatewayOAuthException(runtimeL10n.gatewayOauthCodeMissing);
   }
   if (expectedState.isEmpty || state != expectedState) {
-    throw const GatewayOAuthException(
-      'Gateway callback state mismatch (possible CSRF)',
-    );
+    throw GatewayOAuthException(runtimeL10n.gatewayOauthStateMismatch);
   }
   return code;
 }
@@ -214,9 +210,7 @@ class GatewayOAuthClient {
 
   Future<GatewayOAuthTokens> refresh(GatewayOAuthTokens current) async {
     if (current.refreshToken.isEmpty) {
-      throw const GatewayOAuthException(
-        'Gateway session expired and has no refresh token',
-      );
+      throw GatewayOAuthException(runtimeL10n.gatewayOauthRefreshTokenMissing);
     }
     return GatewayOAuthTokens.fromJson(
       await _post('/auth/native/refresh', {
@@ -234,9 +228,7 @@ class GatewayOAuthClient {
     );
     final ticket = body['ticket']?.toString() ?? '';
     if (ticket.isEmpty) {
-      throw const GatewayOAuthException(
-        'Gateway did not return a WebSocket ticket',
-      );
+      throw GatewayOAuthException(runtimeL10n.gatewayOauthTicketMissing);
     }
     return ticket;
   }

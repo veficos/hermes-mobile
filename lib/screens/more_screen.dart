@@ -280,7 +280,7 @@ class _MoreScreenState extends State<MoreScreen> {
       [
         _MenuEntry(
           Icons.auto_awesome_outlined,
-          'Agent',
+          context.l10n.featureAgent,
           context.l10n.featureAgentDesc,
           () => _push(const AgentScreen()),
         ),
@@ -358,7 +358,7 @@ class _MoreScreenState extends State<MoreScreen> {
         ),
         _MenuEntry(
           Icons.webhook_outlined,
-          'Webhooks',
+          context.l10n.featureWebhooks,
           context.l10n.featureWebhooksDesc,
           () => _push(const WebhooksScreen()),
         ),

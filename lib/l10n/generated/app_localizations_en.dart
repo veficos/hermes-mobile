@@ -10726,4 +10726,461 @@ class AppLocalizationsEn extends AppLocalizations {
   String billingPaymentMethodKind(String kind) {
     return 'Payment method · $kind';
   }
+
+  @override
+  String get previewTourBack => 'Back';
+
+  @override
+  String get previewTourDone => 'Done';
+
+  @override
+  String get previewTourNext => 'Next';
+
+  @override
+  String get chatMermaidParseError => 'Could not parse Mermaid diagram';
+
+  @override
+  String get petDefaultName => 'Hermes Pet';
+
+  @override
+  String get sessionDetailProfile => 'Profile';
+
+  @override
+  String get profileArchiveType => 'Hermes profile';
+
+  @override
+  String get profilesTemperature => 'Temperature';
+
+  @override
+  String get profilesTopP => 'Top P';
+
+  @override
+  String get profilesMaxTokens => 'Max tokens';
+
+  @override
+  String get sessionDesktopFallback => 'Desktop session';
+
+  @override
+  String get backgroundProcessFallback => 'Background process';
+
+  @override
+  String get insightsUnknownModel => 'Unknown model';
+
+  @override
+  String get billingCard => 'Card';
+
+  @override
+  String get billingLink => 'Link';
+
+  @override
+  String get slashGroupSkills => 'Skills';
+
+  @override
+  String get slashGroupCommands => 'Commands';
+
+  @override
+  String get botAuthorYou => 'You';
+
+  @override
+  String get botAuthorSystem => 'System';
+
+  @override
+  String get botAuthorFallback => 'Bot';
+
+  @override
+  String terminalErrorMessage(String error) {
+    return 'Terminal error: $error';
+  }
+
+  @override
+  String sessionCopyTitle(String title) {
+    return '$title (copy)';
+  }
+
+  @override
+  String get gitRemoteFallback => 'Remote';
+
+  @override
+  String get gitStashFallback => 'Stash';
+
+  @override
+  String get notificationChannelErrors => 'Errors';
+
+  @override
+  String get notificationChannelWarnings => 'Warnings';
+
+  @override
+  String get notificationChannelSuccess => 'Success';
+
+  @override
+  String get notificationChannelApprovals => 'Approvals';
+
+  @override
+  String get notificationChannelInfo => 'Info';
+
+  @override
+  String get memoryCuratorTitle => 'Curator';
+
+  @override
+  String get messageSourceServer => 'Server';
+
+  @override
+  String get messageSourceMobile => 'Mobile';
+
+  @override
+  String get kanbanRunQueued => 'Queued';
+
+  @override
+  String get kanbanRunCompleted => 'Completed';
+
+  @override
+  String get kanbanRunFailed => 'Failed';
+
+  @override
+  String get kanbanRunCancelled => 'Cancelled';
+
+  @override
+  String get kanbanEventTaskCreated => 'Task created';
+
+  @override
+  String get kanbanEventTaskUpdated => 'Task updated';
+
+  @override
+  String get kanbanEventTaskDeleted => 'Task deleted';
+
+  @override
+  String get kanbanEventRunStarted => 'Run started';
+
+  @override
+  String get kanbanEventRunCompleted => 'Run completed';
+
+  @override
+  String get kanbanEventRunFailed => 'Run failed';
+
+  @override
+  String get kanbanEventRunCancelled => 'Run cancelled';
+
+  @override
+  String get kanbanEventCommentCreated => 'Comment added';
+
+  @override
+  String get kanbanEventAttachmentAdded => 'Attachment added';
+
+  @override
+  String get kanbanEventAttachmentDeleted => 'Attachment deleted';
+
+  @override
+  String get cloudRoleOwner => 'Owner';
+
+  @override
+  String get cloudRoleAdmin => 'Administrator';
+
+  @override
+  String get cloudRoleMember => 'Member';
+
+  @override
+  String get cloudRoleViewer => 'Viewer';
+
+  @override
+  String get chatStatusToolDrafting => 'Preparing tool call';
+
+  @override
+  String get chatStatusProvider => 'Provider status';
+
+  @override
+  String get previewScriptError => 'Script error';
+
+  @override
+  String get previewUnhandledPromiseRejection =>
+      'Unhandled promise rejection: ';
+
+  @override
+  String botGroupSessionTitle(String roomId) {
+    return 'Group: $roomId';
+  }
+
+  @override
+  String get errorExpectedObjectResponse =>
+      'The server returned an invalid object response';
+
+  @override
+  String get errorTtsNoAudio => 'Text-to-speech returned no audio';
+
+  @override
+  String get errorInvalidDataUrl => 'The server returned an invalid data URL';
+
+  @override
+  String get errorExportDirectoryMissing =>
+      'The server did not provide an export directory';
+
+  @override
+  String get errorImportDirectoryMissing =>
+      'The server did not provide an import directory';
+
+  @override
+  String get errorRawConfigInvalid =>
+      'The server returned an invalid raw configuration';
+
+  @override
+  String get errorPluginToggleRejected =>
+      'The backend rejected the plugin change';
+
+  @override
+  String get errorConnectionNotConfigured => 'The connection is not configured';
+
+  @override
+  String errorSessionOwnerUnknown(String sessionId) {
+    return 'The session owner is unknown: $sessionId';
+  }
+
+  @override
+  String get errorRemotePushUnavailable =>
+      'Remote push is unavailable for this connection';
+
+  @override
+  String get sshCommandTimedOut => 'SSH command timed out';
+
+  @override
+  String get sshRemoteHomeUnsafe => 'The remote Hermes home is unsafe';
+
+  @override
+  String get sshOwnershipVerificationFailed =>
+      'Could not verify remote Hermes process ownership';
+
+  @override
+  String sshOwnershipProbeFailed(String status) {
+    return 'Remote ownership probe failed ($status)';
+  }
+
+  @override
+  String get sshHelperInvalidJson => 'The remote helper returned invalid JSON';
+
+  @override
+  String get sshWindowsOwnershipVerificationFailed =>
+      'Could not verify remote Windows process ownership';
+
+  @override
+  String get sshRemotePathInvalid =>
+      'The remote Hermes path must be absolute or start with ~/';
+
+  @override
+  String get sshExecutableNotFound =>
+      'The configured Hermes executable was not found on the remote host';
+
+  @override
+  String get sshHermesNotInstalled =>
+      'Hermes is not installed on the remote host';
+
+  @override
+  String get sshBootstrapFlagsUnsupported =>
+      'Remote Hermes must support secure SSH ownership bootstrap flags';
+
+  @override
+  String get sshWindowsIdentityInvalid =>
+      'The remote Windows backend returned an invalid identity';
+
+  @override
+  String get sshWindowsExitedBeforeReady =>
+      'The remote Windows backend exited before becoming ready';
+
+  @override
+  String get sshWindowsOwnershipProofFailed =>
+      'Remote Windows ownership proof failed';
+
+  @override
+  String get sshProcessIdMissing => 'Remote Hermes did not return a process ID';
+
+  @override
+  String get sshExitedBeforeReady =>
+      'Remote Hermes exited before becoming ready';
+
+  @override
+  String get sshOwnershipProofFailed => 'Remote Hermes ownership proof failed';
+
+  @override
+  String get errorSessionBranchIdMissing =>
+      'Hermes did not return a durable branched session ID';
+
+  @override
+  String get errorDuplicateImportFailed =>
+      'Hermes did not import the duplicated session';
+
+  @override
+  String get errorSessionNoTitleableMessages =>
+      'The session has no messages that can be used to generate a title';
+
+  @override
+  String get errorTitleGeneratorEmpty =>
+      'The title generator returned an empty title';
+
+  @override
+  String get errorProjectIdRequired => 'A project is required';
+
+  @override
+  String get errorProjectWorkingFolderMissing =>
+      'The target project has no working folder';
+
+  @override
+  String get errorDownloadFailed => 'Download failed';
+
+  @override
+  String get errorMessagingPlatformNotFound => 'Messaging platform not found';
+
+  @override
+  String errorBotGroupSessionStartFailed(String name) {
+    return '$name\'s group session did not start';
+  }
+
+  @override
+  String sshRemoteCommandFailed(String code) {
+    return 'Remote command failed ($code)';
+  }
+
+  @override
+  String get sshHostAndUserRequired => 'SSH host and user are required';
+
+  @override
+  String get sshPortInvalid => 'SSH port must be between 1 and 65535';
+
+  @override
+  String sshHostKeyChanged(String host, String expected, String received) {
+    return 'The SSH host key for $host changed. Expected $expected; received $received';
+  }
+
+  @override
+  String get sshProfileInvalid => 'The remote profile name is invalid';
+
+  @override
+  String get errorDirectGatewayFeatureUnavailable =>
+      'This feature requires Hermes Mobile Server and is unavailable on a direct Gateway connection';
+
+  @override
+  String errorOperationFailedWithDetail(String error) {
+    return 'Operation failed: $error';
+  }
+
+  @override
+  String gatewayOauthRejected(String error) {
+    return 'Gateway rejected sign-in: $error';
+  }
+
+  @override
+  String get gatewayOauthCodeMissing =>
+      'The Gateway callback is missing the authorization code';
+
+  @override
+  String get gatewayOauthStateMismatch =>
+      'The Gateway callback state did not match. Sign-in was cancelled for security.';
+
+  @override
+  String get gatewayOauthRefreshTokenMissing =>
+      'The Gateway session expired and has no refresh token';
+
+  @override
+  String get gatewayOauthTicketMissing =>
+      'The Gateway did not return a WebSocket ticket';
+
+  @override
+  String get gatewayOauthAccessTokenMissing =>
+      'The Gateway token response did not include an access token';
+
+  @override
+  String get gatewayOauthTimedOut => 'Gateway sign-in timed out';
+
+  @override
+  String get gatewayOauthNativeUnsupported =>
+      'Native Gateway OAuth is not supported on this platform';
+
+  @override
+  String get updateManifestInvalid => 'The update manifest is invalid';
+
+  @override
+  String sshRemotePlatformUnsupported(String error) {
+    return 'The remote platform is unsupported: $error';
+  }
+
+  @override
+  String get sshWebUnsupported =>
+      'Native SSH connections are not supported on web';
+
+  @override
+  String get filesDownloadPlatformUnsupported =>
+      'Local file download is unavailable on this platform';
+
+  @override
+  String get sessionExportPlatformUnsupported =>
+      'Local file export is unavailable on this platform';
+
+  @override
+  String get errorPluginCanonicalKeyRequired =>
+      'This plugin needs a canonical key before it can be changed';
+
+  @override
+  String get connectGatewayToken => 'Gateway token';
+
+  @override
+  String get modelMoaTitle => 'Mixture of Agents';
+
+  @override
+  String get insightsTokens => 'Tokens';
+
+  @override
+  String get messageWebFallback => 'Web';
+
+  @override
+  String get mcpLogsSourceStdio => 'stdio';
+
+  @override
+  String get mcpLogsSourceAgent => 'Agent';
+
+  @override
+  String get projectPrimaryFolder => 'Main';
+
+  @override
+  String get botGroupNameRequired => 'Enter a group name';
+
+  @override
+  String get botGroupMembersMinimum => 'A group needs at least two bots';
+
+  @override
+  String botGroupMembersRange(int max) {
+    return 'A group needs 2–$max bots';
+  }
+
+  @override
+  String botGroupMembersMaximum(int max) {
+    return 'A group supports at most $max bots';
+  }
+
+  @override
+  String get botGroupMemberUnavailable => 'No group member is available';
+
+  @override
+  String get botProfileNameUnavailable => 'No free profile name is available';
+
+  @override
+  String get botDefaultProfileDeleteForbidden =>
+      'The default profile cannot be deleted';
+
+  @override
+  String get botConnectionUnavailable => 'The bot connection is unavailable';
+
+  @override
+  String get botTurnFailed => 'The bot turn failed';
+
+  @override
+  String get mcpInvalidJsonSyntax => 'The JSON syntax is invalid';
+
+  @override
+  String get mcpJsonObjectRequired =>
+      'The top-level JSON value must be an object';
+
+  @override
+  String get voiceWakeMicStreamEnded =>
+      'The wake word microphone stream ended unexpectedly';
+
+  @override
+  String httpStatusError(int statusCode) {
+    return 'The server returned HTTP $statusCode';
+  }
 }

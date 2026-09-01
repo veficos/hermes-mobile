@@ -26,10 +26,18 @@ bool _promotesToArtifact(String language, String code) {
       code.length >= _artifactCharThreshold;
 }
 
-Widget codeBlockOrArtifact(String code, String language) {
+Widget codeBlockOrArtifact(
+  String code,
+  String language, {
+  bool enableHighlight = true,
+}) {
   return _promotesToArtifact(language, code)
       ? HermesArtifactCard(code: code, language: language)
-      : HermesCodeBlock(code: code, language: language);
+      : HermesCodeBlock(
+          code: code,
+          language: language,
+          enableHighlight: enableHighlight,
+        );
 }
 
 /// `<pre>` → highlighted code block / artifact card. Pass to
@@ -138,11 +146,9 @@ class HermesArtifactCard extends StatelessWidget {
   }
 }
 
-/// Prototype parity (`.mmdbox` in scenarioD): the diagram itself renders
-/// inline in the transcript inside a bordered box, not just a tappable
-/// "open to view" row. Tapping the box still opens the full-screen pan/zoom
-/// viewer, since the mini flowchart parser benefits from more room on
-/// anything non-trivial.
+/// Lightweight transcript representation. The platform WebView is created
+/// only after the user opens the full-screen preview; merely scrolling past a
+/// diagram must not start an HTML/JavaScript runtime.
 class _MermaidArtifactCard extends StatelessWidget {
   final String code;
   final String title;
@@ -219,7 +225,9 @@ class _MermaidArtifactCard extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(HermesRadius.smallCard),
-                child: MermaidDiagramView(source: code, interactive: false),
+                child: IgnorePointer(
+                  child: MermaidStaticDiagramView(source: code),
+                ),
               ),
             ),
           ],
@@ -266,12 +274,14 @@ class HermesCodeBlock extends StatefulWidget {
 
   /// When false, drops the card chrome (used inside a full-screen viewer).
   final bool framed;
+  final bool enableHighlight;
 
   const HermesCodeBlock({
     super.key,
     required this.code,
     required this.language,
     this.framed = true,
+    this.enableHighlight = true,
   });
 
   @override
@@ -280,18 +290,38 @@ class HermesCodeBlock extends StatefulWidget {
 
 class _HermesCodeBlockState extends State<HermesCodeBlock> {
   bool _justCopied = false;
+  TextSpan? _highlighted;
+  bool? _highlightDark;
+  String? _highlightCode;
+  String? _highlightLanguage;
 
-  @override
-  Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final highlighted =
+  TextSpan _highlight(bool isDark) {
+    if (!widget.enableHighlight) {
+      return TextSpan(text: widget.code);
+    }
+    if (_highlighted != null &&
+        _highlightDark == isDark &&
+        _highlightCode == widget.code &&
+        _highlightLanguage == widget.language) {
+      return _highlighted!;
+    }
+    _highlightDark = isDark;
+    _highlightCode = widget.code;
+    _highlightLanguage = widget.language;
+    return _highlighted =
         CodeHighlighter.instance.highlight(
           widget.code,
           widget.language,
           isDark,
         ) ??
         HermesSyntaxHighlighter.highlight(widget.code, widget.language, isDark);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final highlighted = _highlight(isDark);
 
     final body = SingleChildScrollView(
       scrollDirection: Axis.horizontal,

@@ -4,8 +4,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import '../api_client.dart';
+import '../connections/connection_registry.dart';
 import '../models.dart';
 import '../../l10n/runtime_l10n.dart';
+import 'connection_store.dart';
 
 @immutable
 class BillingGateSnapshot {
@@ -21,9 +23,30 @@ class BillingStore extends ChangeNotifier {
   Future<void>? _inflight;
   DateTime? _refreshedAt;
   int _generation = 0;
+  ConnectionStore? _connection;
+  StreamSubscription<RoutedGatewayEvent>? _events;
+  Timer? _timer;
   static const _ttl = Duration(seconds: 30);
   BillingState? get state => _state;
   BillingGateSnapshot get gate => _gate;
+
+  void attachConnection(ConnectionStore connection) {
+    if (identical(_connection, connection)) return;
+    _events?.cancel();
+    _timer?.cancel();
+    _connection = connection;
+    _events = connection.routedEvents.listen((routed) {
+      if (routed.route.connectionId != connection.activeConnectionId ||
+          routed.event.type != 'notification.show') {
+        return;
+      }
+      final key = routed.event.payload['key']?.toString() ?? '';
+      if (!key.startsWith('credits.')) return;
+      _refreshedAt = null;
+      unawaited(refresh());
+    });
+    _timer = Timer.periodic(_ttl, (_) => unawaited(refresh()));
+  }
 
   void bindApi(ApiClient? api) {
     if (identical(_api, api)) return;
@@ -69,5 +92,12 @@ class BillingStore extends ChangeNotifier {
     }();
     _inflight = request;
     return request;
+  }
+
+  @override
+  void dispose() {
+    _events?.cancel();
+    _timer?.cancel();
+    super.dispose();
   }
 }

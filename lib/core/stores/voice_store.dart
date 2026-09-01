@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api_client.dart';
+import '../connections/connection_registry.dart';
 import '../../l10n/runtime_l10n.dart';
 import 'connection_store.dart';
 import 'wake_word_store.dart';
@@ -68,7 +69,22 @@ class VoiceStore extends ChangeNotifier {
   WakeWordStore? _wakeWord;
 
   VoiceStore({required this.connection}) {
+    connection.addListener(_onConnectionChanged);
+    _connectionId = connection.activeConnectionId;
+    _connectionApi = connection.api;
     _loadPreferences();
+  }
+
+  late ConnectionId _connectionId;
+  ApiClient? _connectionApi;
+
+  void _onConnectionChanged() {
+    final id = connection.activeConnectionId;
+    final api = connection.api;
+    if (id == _connectionId && identical(api, _connectionApi)) return;
+    _connectionId = id;
+    _connectionApi = api;
+    unawaited(bindConversationScope('connection:${id.value}'));
   }
 
   bool get recording => _recording;
@@ -194,6 +210,7 @@ class VoiceStore extends ChangeNotifier {
       }
       return null;
     } catch (e) {
+      if (operation != _generation) return null;
       _recording = false;
       _voiceError = runtimeL10n.voiceRecordingFailed('$e');
       notifyListeners();
@@ -229,6 +246,7 @@ class VoiceStore extends ChangeNotifier {
       }
       return text;
     } catch (e) {
+      if (operation != _generation) return null;
       _recording = false;
       // 409 = STT not configured on the server; surface a friendly hint.
       _voiceError = e is ApiException && e.statusCode == 409
@@ -237,7 +255,7 @@ class VoiceStore extends ChangeNotifier {
       notifyListeners();
       return null;
     } finally {
-      if (!_recording && !_continuousConversation) {
+      if (operation == _generation && !_recording && !_continuousConversation) {
         unawaited(_wakeWord?.resumeAfterVoice());
       }
     }
@@ -248,8 +266,8 @@ class VoiceStore extends ChangeNotifier {
     final api = connection.api;
     if (api == null || text.trim().isEmpty) return;
     await _wakeWord?.pauseForVoice();
+    final operation = _generation;
     try {
-      final operation = _generation;
       _resetStreamingSpeech();
       if (_recording) {
         await _recorder.stop();
@@ -272,17 +290,21 @@ class VoiceStore extends ChangeNotifier {
       await completed.future.timeout(const Duration(minutes: 5));
       await subscription.cancel();
     } catch (e) {
-      _voiceError = runtimeL10n.voiceSpeechFailed('$e');
-      notifyListeners();
+      if (operation == _generation) {
+        _voiceError = runtimeL10n.voiceSpeechFailed('$e');
+        notifyListeners();
+      }
     } finally {
-      _speaking = false;
-      _playbackEndedAt = DateTime.now();
-      _phase = _continuousConversation
-          ? VoiceConversationPhase.listening
-          : VoiceConversationPhase.idle;
-      notifyListeners();
-      if (!_continuousConversation) {
-        unawaited(_wakeWord?.resumeAfterVoice());
+      if (operation == _generation) {
+        _speaking = false;
+        _playbackEndedAt = DateTime.now();
+        _phase = _continuousConversation
+            ? VoiceConversationPhase.listening
+            : VoiceConversationPhase.idle;
+        notifyListeners();
+        if (!_continuousConversation) {
+          unawaited(_wakeWord?.resumeAfterVoice());
+        }
       }
     }
   }
@@ -457,6 +479,7 @@ class VoiceStore extends ChangeNotifier {
   @override
   void dispose() {
     _generation++;
+    connection.removeListener(_onConnectionChanged);
     _wakeWord?.removeListener(_onWakeChanged);
     _recorder.dispose();
     _player.dispose();

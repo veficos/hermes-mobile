@@ -37,6 +37,9 @@ class _Gateway extends GatewayClient {
   final List<(String, Map<String, dynamic>)> calls = [];
   bool connected = false;
   Completer<Map<String, dynamic>>? resumeGate;
+  Object? connectError;
+  int connectCount = 0;
+  int disconnectCount = 0;
 
   _Gateway(String name)
     : super(serverBaseUrl: 'http://$name.invalid', apiKey: 'test-key');
@@ -51,7 +54,12 @@ class _Gateway extends GatewayClient {
   bool get isConnected => connected;
 
   @override
-  Future<void> connect() async => connected = true;
+  Future<void> connect() async {
+    connectCount++;
+    final error = connectError;
+    if (error != null) throw error;
+    connected = true;
+  }
 
   @override
   Future<Map<String, dynamic>> request(
@@ -68,6 +76,7 @@ class _Gateway extends GatewayClient {
 
   @override
   Future<void> disconnect() async {
+    disconnectCount++;
     connected = false;
   }
 }
@@ -142,6 +151,81 @@ void main() {
     expect(registry.active, same(b));
     expect(registry.runtime(const ConnectionId('a')), same(a));
   });
+
+  test('failed candidate connection preserves the active runtime', () async {
+    final gatewayA = _Gateway('a')..connected = true;
+    final gatewayB = _Gateway('b')..connectError = StateError('offline');
+    final store = ConnectionStore(
+      clientFactory: (id, settings) async =>
+          (api: _Api(id.value), gateway: id.value == 'b' ? gatewayB : gatewayA),
+    );
+    addTearDown(store.dispose);
+    await store.addConnection(
+      const ConnectionId('a'),
+      const ConnectionSettings(
+        serverUrl: 'http://a.invalid',
+        apiKey: 'test-key',
+      ),
+      makeActive: true,
+    );
+    final runtimeA = store.registry.runtime(const ConnectionId('a'))!;
+
+    await expectLater(
+      store.addConnection(
+        const ConnectionId('b'),
+        const ConnectionSettings(
+          serverUrl: 'http://b.invalid',
+          apiKey: 'test-key',
+        ),
+        makeActive: true,
+      ),
+      throwsStateError,
+    );
+
+    expect(store.activeConnectionId, const ConnectionId('a'));
+    expect(store.registry.active, same(runtimeA));
+    expect(store.registry.runtime(const ConnectionId('b')), isNull);
+    expect(store.api, same(runtimeA.api));
+  });
+
+  test(
+    'failed primary replacement preserves the old runtime and settings',
+    () async {
+      final oldGateway = _Gateway('old');
+      final failedGateway = _Gateway('new')
+        ..connectError = StateError('offline');
+      final store = ConnectionStore(
+        clientFactory: (id, settings) async => (
+          api: _Api(settings.serverUrl.contains('new') ? 'new' : 'old'),
+          gateway: settings.serverUrl.contains('new')
+              ? failedGateway
+              : oldGateway,
+        ),
+      );
+      addTearDown(store.dispose);
+      const oldSettings = ConnectionSettings(
+        serverUrl: 'http://old.invalid',
+        apiKey: 'old-key',
+      );
+      const newSettings = ConnectionSettings(
+        serverUrl: 'http://new.invalid',
+        apiKey: 'new-key',
+      );
+      await store.saveConnection(oldSettings);
+      final oldRuntime = store.registry.runtime(
+        ConnectionStore.primaryConnectionId,
+      );
+
+      await expectLater(store.saveConnection(newSettings), throwsStateError);
+
+      expect(store.settings, oldSettings);
+      expect(
+        store.registry.runtime(ConnectionStore.primaryConnectionId),
+        same(oldRuntime),
+      );
+      expect(store.api, same(oldRuntime!.api));
+    },
+  );
 
   test(
     'session request is routed to its owner, never the active runtime',
@@ -248,6 +332,49 @@ void main() {
 
       expect(runtime.phase, RuntimePhase.connected);
       expect(runtime.socketGeneration, 2);
+    },
+  );
+
+  test('foreground resume refreshes a potentially stale socket', () async {
+    final gateway = _Gateway('remote');
+    var reclaimed = 0;
+    final runtime = ConnectionRuntime(
+      id: const ConnectionId('remote'),
+      settings: const ConnectionSettings(
+        serverUrl: 'http://remote.invalid',
+        apiKey: 'test-key',
+      ),
+      api: _Api('remote'),
+      gateway: gateway,
+      onReconnected: (_) => reclaimed++,
+    );
+    addTearDown(runtime.dispose);
+    await runtime.connect();
+
+    await runtime.reconnectAfterResume(refreshSocket: true);
+
+    expect(gateway.disconnectCount, 1);
+    expect(gateway.connectCount, 2);
+    expect(runtime.phase, RuntimePhase.connected);
+    expect(runtime.socketGeneration, 2);
+    expect(reclaimed, 1);
+  });
+
+  test(
+    'foreground resume restarts retries after an immediate failure',
+    () async {
+      final gateway = _Gateway('remote');
+      final runtime = _runtime('remote', gateway);
+      addTearDown(runtime.dispose);
+      gateway.connectError = StateError('offline');
+
+      await expectLater(runtime.reconnectAfterResume(), throwsStateError);
+      expect(runtime.phase, RuntimePhase.reconnecting);
+
+      gateway.connectError = null;
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(runtime.phase, RuntimePhase.connected);
+      expect(gateway.connectCount, 2);
     },
   );
 

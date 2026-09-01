@@ -127,6 +127,7 @@ List<ChatTimelineItem> buildChatTimeline(
   final source = messages.toList(growable: false);
   var toolOrdinal = 0;
   ChatTimelineToolGroup? openGroup;
+  final assistantRun = <ChatMessage>[];
 
   void flushTools() => openGroup = null;
   void appendTool(ChatMessage message, int sourceIndex, ChatPart part) {
@@ -149,6 +150,12 @@ List<ChatTimelineItem> buildChatTimeline(
 
   for (var sourceIndex = 0; sourceIndex < source.length; sourceIndex++) {
     final message = source[sourceIndex];
+    final assistantLike = message.role == 'assistant' || message.interim;
+    if (assistantLike) {
+      assistantRun.add(message);
+    } else {
+      assistantRun.clear();
+    }
     if (message.id == preserveMessageId) {
       flushTools();
       rows.add(ChatTimelineMessage(message, message, sourceIndex));
@@ -209,13 +216,8 @@ List<ChatTimelineItem> buildChatTimeline(
         : null;
     final assistantRunEnds =
         (next == null || (next.role != 'assistant' && !next.interim));
-    if (assistantRunEnds && (message.role == 'assistant' || message.interim)) {
-      final run = <ChatMessage>[];
-      for (var i = sourceIndex; i >= 0; i--) {
-        final candidate = source[i];
-        if (candidate.role != 'assistant' && !candidate.interim) break;
-        run.insert(0, candidate);
-      }
+    if (assistantRunEnds && assistantLike) {
+      final run = assistantRun;
       final files = deriveTurnChangedFilesAcrossMessages(run);
       final allParts = run.expand((item) => item.parts).toList(growable: false);
       final startedAt = run
@@ -247,6 +249,7 @@ List<ChatTimelineItem> buildChatTimeline(
       if (files.isNotEmpty) {
         rows.add(ChatTimelineChangedFiles(files, message, sourceIndex));
       }
+      assistantRun.clear();
     }
   }
   return _unwrapSingletonGroups(rows);

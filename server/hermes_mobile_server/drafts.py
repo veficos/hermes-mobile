@@ -24,24 +24,49 @@ class DraftStore:
         except (OSError, ValueError):
             return {}
 
-    def get(self, session_id: str) -> dict[str, Any]:
+    @staticmethod
+    def _key(session_id: str, profile: str | None) -> str:
+        return f"{profile or ''}\0{session_id}"
+
+    def get(self, session_id: str, *, profile: str | None = None) -> dict[str, Any]:
         with self._lock:
-            value = self._load().get(session_id, {})
+            data = self._load()
+            scoped_key = self._key(session_id, profile)
+            value = data.get(scoped_key)
+            # One-way compatibility: an unscoped legacy draft may be adopted
+            # by the first scoped read, but scoped drafts never fall back to
+            # another profile.
+            if value is None and session_id in data:
+                value = data.pop(session_id)
+                data[scoped_key] = value
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                temp = self._path.with_suffix(".tmp")
+                temp.write_text(
+                    json.dumps(data, ensure_ascii=False), encoding="utf-8"
+                )
+                temp.replace(self._path)
+            if value is None:
+                value = {}
         return value if isinstance(value, dict) else {}
 
     def save(
-        self, session_id: str, *, text: str | None, files: list[Any] | None
+        self,
+        session_id: str,
+        *,
+        text: str | None,
+        files: list[Any] | None,
+        profile: str | None = None,
     ) -> dict[str, Any]:
         with self._lock:
             data = self._load()
-            draft = self.get(session_id)
+            draft = self.get(session_id, profile=profile)
             if text is not None:
                 draft["text"] = text
             if files is not None:
                 draft["files"] = files
             draft.setdefault("text", "")
             draft.setdefault("files", [])
-            data[session_id] = draft
+            data[self._key(session_id, profile)] = draft
             self._path.parent.mkdir(parents=True, exist_ok=True)
             temp = self._path.with_suffix(".tmp")
             temp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")

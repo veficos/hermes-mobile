@@ -1,0 +1,2 @@
+"NSLocalNetworkUsageDescription" = "يحتاج Hermes Mobile إلى الوصول إلى الشبكة المحلية للاتصال بخادم hermes-mobile-server المحلي.";
+"NSMicrophoneUsageDescription" = "يستخدم Hermes Mobile الميكروفون للإدخال الصوتي، وللاستماع إلى كلمة تنبيه Hermes عند تفعيلها أثناء وجود التطبيق في الواجهة.";

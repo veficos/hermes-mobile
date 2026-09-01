@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
 import 'package:hermes_mobile/kanban/api.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations_en.dart';
+import 'package:hermes_mobile/l10n/runtime_l10n.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -29,6 +31,8 @@ ApiClient _client(
 );
 
 void main() {
+  setUp(() => RuntimeL10n.use(AppLocalizationsEn()));
+
   test(
     'direct sessions use dashboard paging, bulk delete and patch pin',
     () async {
@@ -1061,4 +1065,38 @@ void main() {
     expect(companion.capabilities.fileReveal, isTrue);
     expect(companion.capabilities.terminalExecute, isTrue);
   });
+
+  test(
+    'Kanban event URI follows transport path and refreshes OAuth token',
+    () async {
+      var tokenGeneration = 0;
+      final direct = ApiClient(
+        baseUrl: 'https://gateway.example',
+        apiKey: 'stale-key',
+        directGateway: true,
+        accessTokenProvider: () async => 'fresh-${++tokenGeneration}',
+        client: MockClient((_) async => _json({'ok': true})),
+      );
+      final companion = ApiClient(
+        baseUrl: 'http://mobile.example',
+        apiKey: 'mobile-key',
+        client: MockClient((_) async => _json({'ok': true})),
+      );
+      addTearDown(direct.close);
+      addTearDown(companion.close);
+
+      final first = await direct.kanbanEventsUri(board: 'team', since: 4);
+      final second = await direct.kanbanEventsUri(board: 'team', since: 5);
+      final proxied = await companion.kanbanEventsUri(board: 'team', since: 6);
+
+      expect(first.scheme, 'wss');
+      expect(first.path, '/api/plugins/kanban/events');
+      expect(first.queryParameters['token'], 'fresh-1');
+      expect(second.queryParameters['token'], 'fresh-2');
+      expect(second.queryParameters['since'], '5');
+      expect(proxied.scheme, 'ws');
+      expect(proxied.path, '/api/v1/kanban/events');
+      expect(proxied.queryParameters['token'], 'mobile-key');
+    },
+  );
 }

@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/models.dart';
 import '../../core/clipboard.dart';
 import '../../core/connection_reload_mixin.dart';
+import '../../core/http_status_exception.dart';
 import '../../core/stores/connection_store.dart';
 import '../../core/stores/session_store.dart';
 import '../../screens/artifacts_screen.dart' show resolveArtifactFile;
@@ -445,8 +446,11 @@ class _ArtifactDetailDialogState extends State<ArtifactDetailDialog> {
       }
     } catch (e) {
       if (mounted) {
+        final detail = e is HttpStatusException
+            ? context.l10n.httpStatusError(e.statusCode)
+            : '$e';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.artifactExportFailed('$e'))),
+          SnackBar(content: Text(context.l10n.artifactExportFailed(detail))),
         );
       }
     } finally {

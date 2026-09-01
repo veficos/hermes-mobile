@@ -10355,6 +10355,428 @@ class AppLocalizationsZh extends AppLocalizations {
   String billingPaymentMethodKind(String kind) {
     return '支付方式 · $kind';
   }
+
+  @override
+  String get previewTourBack => '上一步';
+
+  @override
+  String get previewTourDone => '完成';
+
+  @override
+  String get previewTourNext => '下一步';
+
+  @override
+  String get chatMermaidParseError => '无法解析 Mermaid 图表';
+
+  @override
+  String get petDefaultName => 'Hermes 宠物';
+
+  @override
+  String get sessionDetailProfile => '配置档案';
+
+  @override
+  String get profileArchiveType => 'Hermes 配置档案';
+
+  @override
+  String get profilesTemperature => '温度';
+
+  @override
+  String get profilesTopP => 'Top P';
+
+  @override
+  String get profilesMaxTokens => '最大 Token 数';
+
+  @override
+  String get sessionDesktopFallback => '桌面会话';
+
+  @override
+  String get backgroundProcessFallback => '后台进程';
+
+  @override
+  String get insightsUnknownModel => '未知模型';
+
+  @override
+  String get billingCard => '银行卡';
+
+  @override
+  String get billingLink => 'Link';
+
+  @override
+  String get slashGroupSkills => '技能';
+
+  @override
+  String get slashGroupCommands => '命令';
+
+  @override
+  String get botAuthorYou => '你';
+
+  @override
+  String get botAuthorSystem => '系统';
+
+  @override
+  String get botAuthorFallback => 'Bot';
+
+  @override
+  String terminalErrorMessage(String error) {
+    return '终端错误：$error';
+  }
+
+  @override
+  String sessionCopyTitle(String title) {
+    return '$title（副本）';
+  }
+
+  @override
+  String get gitRemoteFallback => '远程仓库';
+
+  @override
+  String get gitStashFallback => '暂存项';
+
+  @override
+  String get notificationChannelErrors => '错误';
+
+  @override
+  String get notificationChannelWarnings => '警告';
+
+  @override
+  String get notificationChannelSuccess => '成功';
+
+  @override
+  String get notificationChannelApprovals => '审批';
+
+  @override
+  String get notificationChannelInfo => '信息';
+
+  @override
+  String get memoryCuratorTitle => '内容整理器';
+
+  @override
+  String get messageSourceServer => '服务器';
+
+  @override
+  String get messageSourceMobile => '移动端';
+
+  @override
+  String get kanbanRunQueued => '排队中';
+
+  @override
+  String get kanbanRunCompleted => '已完成';
+
+  @override
+  String get kanbanRunFailed => '失败';
+
+  @override
+  String get kanbanRunCancelled => '已取消';
+
+  @override
+  String get kanbanEventTaskCreated => '任务已创建';
+
+  @override
+  String get kanbanEventTaskUpdated => '任务已更新';
+
+  @override
+  String get kanbanEventTaskDeleted => '任务已删除';
+
+  @override
+  String get kanbanEventRunStarted => '运行已开始';
+
+  @override
+  String get kanbanEventRunCompleted => '运行已完成';
+
+  @override
+  String get kanbanEventRunFailed => '运行失败';
+
+  @override
+  String get kanbanEventRunCancelled => '运行已取消';
+
+  @override
+  String get kanbanEventCommentCreated => '已添加评论';
+
+  @override
+  String get kanbanEventAttachmentAdded => '已添加附件';
+
+  @override
+  String get kanbanEventAttachmentDeleted => '已删除附件';
+
+  @override
+  String get cloudRoleOwner => '所有者';
+
+  @override
+  String get cloudRoleAdmin => '管理员';
+
+  @override
+  String get cloudRoleMember => '成员';
+
+  @override
+  String get cloudRoleViewer => '查看者';
+
+  @override
+  String get chatStatusToolDrafting => '正在准备工具调用';
+
+  @override
+  String get chatStatusProvider => '提供商状态';
+
+  @override
+  String get previewScriptError => '脚本错误';
+
+  @override
+  String get previewUnhandledPromiseRejection => '未处理的 Promise 拒绝：';
+
+  @override
+  String botGroupSessionTitle(String roomId) {
+    return '群组：$roomId';
+  }
+
+  @override
+  String get errorExpectedObjectResponse => '服务器返回了无效的对象响应';
+
+  @override
+  String get errorTtsNoAudio => '文本转语音未返回音频';
+
+  @override
+  String get errorInvalidDataUrl => '服务器返回了无效的数据 URL';
+
+  @override
+  String get errorExportDirectoryMissing => '服务器未提供导出目录';
+
+  @override
+  String get errorImportDirectoryMissing => '服务器未提供导入目录';
+
+  @override
+  String get errorRawConfigInvalid => '服务器返回了无效的原始配置';
+
+  @override
+  String get errorPluginToggleRejected => '后端拒绝了插件变更';
+
+  @override
+  String get errorConnectionNotConfigured => '连接尚未配置';
+
+  @override
+  String errorSessionOwnerUnknown(String sessionId) {
+    return '会话所有者未知：$sessionId';
+  }
+
+  @override
+  String get errorRemotePushUnavailable => '此连接不支持远程推送';
+
+  @override
+  String get sshCommandTimedOut => 'SSH 命令超时';
+
+  @override
+  String get sshRemoteHomeUnsafe => '远程 Hermes 主目录不安全';
+
+  @override
+  String get sshOwnershipVerificationFailed => '无法验证远程 Hermes 进程的所有权';
+
+  @override
+  String sshOwnershipProbeFailed(String status) {
+    return '远程所有权探测失败（$status）';
+  }
+
+  @override
+  String get sshHelperInvalidJson => '远程辅助程序返回了无效 JSON';
+
+  @override
+  String get sshWindowsOwnershipVerificationFailed => '无法验证远程 Windows 进程的所有权';
+
+  @override
+  String get sshRemotePathInvalid => '远程 Hermes 路径必须是绝对路径或以 ~/ 开头';
+
+  @override
+  String get sshExecutableNotFound => '在远程主机上找不到配置的 Hermes 可执行文件';
+
+  @override
+  String get sshHermesNotInstalled => '远程主机未安装 Hermes';
+
+  @override
+  String get sshBootstrapFlagsUnsupported => '远程 Hermes 必须支持安全 SSH 所有权引导参数';
+
+  @override
+  String get sshWindowsIdentityInvalid => '远程 Windows 后端返回了无效身份';
+
+  @override
+  String get sshWindowsExitedBeforeReady => '远程 Windows 后端在就绪前退出';
+
+  @override
+  String get sshWindowsOwnershipProofFailed => '远程 Windows 所有权证明失败';
+
+  @override
+  String get sshProcessIdMissing => '远程 Hermes 未返回进程 ID';
+
+  @override
+  String get sshExitedBeforeReady => '远程 Hermes 在就绪前退出';
+
+  @override
+  String get sshOwnershipProofFailed => '远程 Hermes 所有权证明失败';
+
+  @override
+  String get errorSessionBranchIdMissing => 'Hermes 未返回分支会话的持久 ID';
+
+  @override
+  String get errorDuplicateImportFailed => 'Hermes 未能导入复制的会话';
+
+  @override
+  String get errorSessionNoTitleableMessages => '会话中没有可用于生成标题的消息';
+
+  @override
+  String get errorTitleGeneratorEmpty => '标题生成器返回了空标题';
+
+  @override
+  String get errorProjectIdRequired => '请选择项目';
+
+  @override
+  String get errorProjectWorkingFolderMissing => '目标项目没有工作目录';
+
+  @override
+  String get errorDownloadFailed => '下载失败';
+
+  @override
+  String get errorMessagingPlatformNotFound => '找不到消息平台';
+
+  @override
+  String errorBotGroupSessionStartFailed(String name) {
+    return '$name 的群组会话未能启动';
+  }
+
+  @override
+  String sshRemoteCommandFailed(String code) {
+    return '远程命令失败（$code）';
+  }
+
+  @override
+  String get sshHostAndUserRequired => 'SSH 主机和用户不能为空';
+
+  @override
+  String get sshPortInvalid => 'SSH 端口必须在 1 到 65535 之间';
+
+  @override
+  String sshHostKeyChanged(String host, String expected, String received) {
+    return '$host 的 SSH 主机密钥已更改。预期为 $expected，实际为 $received';
+  }
+
+  @override
+  String get sshProfileInvalid => '远程配置档案名称无效';
+
+  @override
+  String get errorDirectGatewayFeatureUnavailable =>
+      '此功能需要 Hermes Mobile Server，直接 Gateway 连接无法使用';
+
+  @override
+  String errorOperationFailedWithDetail(String error) {
+    return '操作失败：$error';
+  }
+
+  @override
+  String gatewayOauthRejected(String error) {
+    return 'Gateway 拒绝登录：$error';
+  }
+
+  @override
+  String get gatewayOauthCodeMissing => 'Gateway 回调缺少授权码';
+
+  @override
+  String get gatewayOauthStateMismatch => 'Gateway 回调状态不匹配。为确保安全，登录已取消。';
+
+  @override
+  String get gatewayOauthRefreshTokenMissing => 'Gateway 会话已过期且没有刷新令牌';
+
+  @override
+  String get gatewayOauthTicketMissing => 'Gateway 未返回 WebSocket 票据';
+
+  @override
+  String get gatewayOauthAccessTokenMissing => 'Gateway 令牌响应未包含访问令牌';
+
+  @override
+  String get gatewayOauthTimedOut => 'Gateway 登录超时';
+
+  @override
+  String get gatewayOauthNativeUnsupported => '此平台不支持原生 Gateway OAuth';
+
+  @override
+  String get updateManifestInvalid => '更新清单无效';
+
+  @override
+  String sshRemotePlatformUnsupported(String error) {
+    return '不支持远程平台：$error';
+  }
+
+  @override
+  String get sshWebUnsupported => 'Web 端不支持原生 SSH 连接';
+
+  @override
+  String get filesDownloadPlatformUnsupported => '此平台不支持下载到本地文件';
+
+  @override
+  String get sessionExportPlatformUnsupported => '此平台不支持导出到本地文件';
+
+  @override
+  String get errorPluginCanonicalKeyRequired => '此插件需要规范键才能更改';
+
+  @override
+  String get connectGatewayToken => 'Gateway 令牌';
+
+  @override
+  String get modelMoaTitle => '多智能体混合';
+
+  @override
+  String get insightsTokens => 'Token';
+
+  @override
+  String get messageWebFallback => '网页';
+
+  @override
+  String get mcpLogsSourceStdio => 'stdio';
+
+  @override
+  String get mcpLogsSourceAgent => '智能体';
+
+  @override
+  String get projectPrimaryFolder => '主目录';
+
+  @override
+  String get botGroupNameRequired => '请输入群组名称';
+
+  @override
+  String get botGroupMembersMinimum => '群组至少需要两个 Bot';
+
+  @override
+  String botGroupMembersRange(int max) {
+    return '群组需要 2～$max 个 Bot';
+  }
+
+  @override
+  String botGroupMembersMaximum(int max) {
+    return '群组最多支持 $max 个 Bot';
+  }
+
+  @override
+  String get botGroupMemberUnavailable => '没有可用的群组成员';
+
+  @override
+  String get botProfileNameUnavailable => '没有可用的配置档案名称';
+
+  @override
+  String get botDefaultProfileDeleteForbidden => '无法删除默认配置档案';
+
+  @override
+  String get botConnectionUnavailable => 'Bot 连接不可用';
+
+  @override
+  String get botTurnFailed => 'Bot 回合失败';
+
+  @override
+  String get mcpInvalidJsonSyntax => 'JSON 语法无效';
+
+  @override
+  String get mcpJsonObjectRequired => 'JSON 顶层内容必须是对象';
+
+  @override
+  String get voiceWakeMicStreamEnded => '唤醒词麦克风流意外结束';
+
+  @override
+  String httpStatusError(int statusCode) {
+    return '服务器返回 HTTP $statusCode';
+  }
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hant`).
@@ -20707,5 +21129,427 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   @override
   String billingPaymentMethodKind(String kind) {
     return '付款方式 · $kind';
+  }
+
+  @override
+  String get previewTourBack => '上一步';
+
+  @override
+  String get previewTourDone => '完成';
+
+  @override
+  String get previewTourNext => '下一步';
+
+  @override
+  String get chatMermaidParseError => '無法解析 Mermaid 圖表';
+
+  @override
+  String get petDefaultName => 'Hermes 寵物';
+
+  @override
+  String get sessionDetailProfile => '設定檔';
+
+  @override
+  String get profileArchiveType => 'Hermes 設定檔';
+
+  @override
+  String get profilesTemperature => '溫度';
+
+  @override
+  String get profilesTopP => 'Top P';
+
+  @override
+  String get profilesMaxTokens => '最大 Token 數';
+
+  @override
+  String get sessionDesktopFallback => '桌面工作階段';
+
+  @override
+  String get backgroundProcessFallback => '背景程序';
+
+  @override
+  String get insightsUnknownModel => '未知模型';
+
+  @override
+  String get billingCard => '信用卡';
+
+  @override
+  String get billingLink => 'Link';
+
+  @override
+  String get slashGroupSkills => '技能';
+
+  @override
+  String get slashGroupCommands => '命令';
+
+  @override
+  String get botAuthorYou => '你';
+
+  @override
+  String get botAuthorSystem => '系統';
+
+  @override
+  String get botAuthorFallback => 'Bot';
+
+  @override
+  String terminalErrorMessage(String error) {
+    return '終端機錯誤：$error';
+  }
+
+  @override
+  String sessionCopyTitle(String title) {
+    return '$title（副本）';
+  }
+
+  @override
+  String get gitRemoteFallback => '遠端儲存庫';
+
+  @override
+  String get gitStashFallback => '暫存項';
+
+  @override
+  String get notificationChannelErrors => '錯誤';
+
+  @override
+  String get notificationChannelWarnings => '警告';
+
+  @override
+  String get notificationChannelSuccess => '成功';
+
+  @override
+  String get notificationChannelApprovals => '核准';
+
+  @override
+  String get notificationChannelInfo => '資訊';
+
+  @override
+  String get memoryCuratorTitle => '內容整理器';
+
+  @override
+  String get messageSourceServer => '伺服器';
+
+  @override
+  String get messageSourceMobile => '行動端';
+
+  @override
+  String get kanbanRunQueued => '排隊中';
+
+  @override
+  String get kanbanRunCompleted => '已完成';
+
+  @override
+  String get kanbanRunFailed => '失敗';
+
+  @override
+  String get kanbanRunCancelled => '已取消';
+
+  @override
+  String get kanbanEventTaskCreated => '任務已建立';
+
+  @override
+  String get kanbanEventTaskUpdated => '任務已更新';
+
+  @override
+  String get kanbanEventTaskDeleted => '任務已刪除';
+
+  @override
+  String get kanbanEventRunStarted => '執行已開始';
+
+  @override
+  String get kanbanEventRunCompleted => '執行已完成';
+
+  @override
+  String get kanbanEventRunFailed => '執行失敗';
+
+  @override
+  String get kanbanEventRunCancelled => '執行已取消';
+
+  @override
+  String get kanbanEventCommentCreated => '已新增留言';
+
+  @override
+  String get kanbanEventAttachmentAdded => '已新增附件';
+
+  @override
+  String get kanbanEventAttachmentDeleted => '已刪除附件';
+
+  @override
+  String get cloudRoleOwner => '擁有者';
+
+  @override
+  String get cloudRoleAdmin => '管理員';
+
+  @override
+  String get cloudRoleMember => '成員';
+
+  @override
+  String get cloudRoleViewer => '檢視者';
+
+  @override
+  String get chatStatusToolDrafting => '正在準備工具呼叫';
+
+  @override
+  String get chatStatusProvider => '供應商狀態';
+
+  @override
+  String get previewScriptError => '指令碼錯誤';
+
+  @override
+  String get previewUnhandledPromiseRejection => '未處理的 Promise 拒絕：';
+
+  @override
+  String botGroupSessionTitle(String roomId) {
+    return '群組：$roomId';
+  }
+
+  @override
+  String get errorExpectedObjectResponse => '伺服器傳回了無效的物件回應';
+
+  @override
+  String get errorTtsNoAudio => '文字轉語音未傳回音訊';
+
+  @override
+  String get errorInvalidDataUrl => '伺服器傳回了無效的資料 URL';
+
+  @override
+  String get errorExportDirectoryMissing => '伺服器未提供匯出目錄';
+
+  @override
+  String get errorImportDirectoryMissing => '伺服器未提供匯入目錄';
+
+  @override
+  String get errorRawConfigInvalid => '伺服器傳回了無效的原始設定';
+
+  @override
+  String get errorPluginToggleRejected => '後端拒絕了外掛程式變更';
+
+  @override
+  String get errorConnectionNotConfigured => '連線尚未設定';
+
+  @override
+  String errorSessionOwnerUnknown(String sessionId) {
+    return '工作階段擁有者未知：$sessionId';
+  }
+
+  @override
+  String get errorRemotePushUnavailable => '此連線不支援遠端推送';
+
+  @override
+  String get sshCommandTimedOut => 'SSH 命令逾時';
+
+  @override
+  String get sshRemoteHomeUnsafe => '遠端 Hermes 主目錄不安全';
+
+  @override
+  String get sshOwnershipVerificationFailed => '無法驗證遠端 Hermes 程序的擁有權';
+
+  @override
+  String sshOwnershipProbeFailed(String status) {
+    return '遠端擁有權探測失敗（$status）';
+  }
+
+  @override
+  String get sshHelperInvalidJson => '遠端輔助程式傳回了無效 JSON';
+
+  @override
+  String get sshWindowsOwnershipVerificationFailed => '無法驗證遠端 Windows 程序的擁有權';
+
+  @override
+  String get sshRemotePathInvalid => '遠端 Hermes 路徑必須是絕對路徑或以 ~/ 開頭';
+
+  @override
+  String get sshExecutableNotFound => '在遠端主機找不到設定的 Hermes 執行檔';
+
+  @override
+  String get sshHermesNotInstalled => '遠端主機未安裝 Hermes';
+
+  @override
+  String get sshBootstrapFlagsUnsupported => '遠端 Hermes 必須支援安全 SSH 擁有權啟動參數';
+
+  @override
+  String get sshWindowsIdentityInvalid => '遠端 Windows 後端傳回了無效身分';
+
+  @override
+  String get sshWindowsExitedBeforeReady => '遠端 Windows 後端在就緒前結束';
+
+  @override
+  String get sshWindowsOwnershipProofFailed => '遠端 Windows 擁有權證明失敗';
+
+  @override
+  String get sshProcessIdMissing => '遠端 Hermes 未傳回程序 ID';
+
+  @override
+  String get sshExitedBeforeReady => '遠端 Hermes 在就緒前結束';
+
+  @override
+  String get sshOwnershipProofFailed => '遠端 Hermes 擁有權證明失敗';
+
+  @override
+  String get errorSessionBranchIdMissing => 'Hermes 未傳回分支工作階段的持久 ID';
+
+  @override
+  String get errorDuplicateImportFailed => 'Hermes 未能匯入複製的工作階段';
+
+  @override
+  String get errorSessionNoTitleableMessages => '工作階段中沒有可用於產生標題的訊息';
+
+  @override
+  String get errorTitleGeneratorEmpty => '標題產生器傳回了空標題';
+
+  @override
+  String get errorProjectIdRequired => '請選擇專案';
+
+  @override
+  String get errorProjectWorkingFolderMissing => '目標專案沒有工作目錄';
+
+  @override
+  String get errorDownloadFailed => '下載失敗';
+
+  @override
+  String get errorMessagingPlatformNotFound => '找不到訊息平台';
+
+  @override
+  String errorBotGroupSessionStartFailed(String name) {
+    return '$name 的群組工作階段未能啟動';
+  }
+
+  @override
+  String sshRemoteCommandFailed(String code) {
+    return '遠端命令失敗（$code）';
+  }
+
+  @override
+  String get sshHostAndUserRequired => 'SSH 主機和使用者不能為空';
+
+  @override
+  String get sshPortInvalid => 'SSH 連接埠必須介於 1 到 65535 之間';
+
+  @override
+  String sshHostKeyChanged(String host, String expected, String received) {
+    return '$host 的 SSH 主機金鑰已變更。預期為 $expected，實際為 $received';
+  }
+
+  @override
+  String get sshProfileInvalid => '遠端設定檔名稱無效';
+
+  @override
+  String get errorDirectGatewayFeatureUnavailable =>
+      '此功能需要 Hermes Mobile Server，直接 Gateway 連線無法使用';
+
+  @override
+  String errorOperationFailedWithDetail(String error) {
+    return '操作失敗：$error';
+  }
+
+  @override
+  String gatewayOauthRejected(String error) {
+    return 'Gateway 拒絕登入：$error';
+  }
+
+  @override
+  String get gatewayOauthCodeMissing => 'Gateway 回呼缺少授權碼';
+
+  @override
+  String get gatewayOauthStateMismatch => 'Gateway 回呼狀態不相符。為確保安全，登入已取消。';
+
+  @override
+  String get gatewayOauthRefreshTokenMissing => 'Gateway 工作階段已過期且沒有重新整理權杖';
+
+  @override
+  String get gatewayOauthTicketMissing => 'Gateway 未傳回 WebSocket 票證';
+
+  @override
+  String get gatewayOauthAccessTokenMissing => 'Gateway 權杖回應未包含存取權杖';
+
+  @override
+  String get gatewayOauthTimedOut => 'Gateway 登入逾時';
+
+  @override
+  String get gatewayOauthNativeUnsupported => '此平台不支援原生 Gateway OAuth';
+
+  @override
+  String get updateManifestInvalid => '更新資訊清單無效';
+
+  @override
+  String sshRemotePlatformUnsupported(String error) {
+    return '不支援遠端平台：$error';
+  }
+
+  @override
+  String get sshWebUnsupported => 'Web 端不支援原生 SSH 連線';
+
+  @override
+  String get filesDownloadPlatformUnsupported => '此平台不支援下載至本機檔案';
+
+  @override
+  String get sessionExportPlatformUnsupported => '此平台不支援匯出至本機檔案';
+
+  @override
+  String get errorPluginCanonicalKeyRequired => '此外掛程式需要標準鍵才能變更';
+
+  @override
+  String get connectGatewayToken => 'Gateway 權杖';
+
+  @override
+  String get modelMoaTitle => '多代理混合';
+
+  @override
+  String get insightsTokens => 'Token';
+
+  @override
+  String get messageWebFallback => '網頁';
+
+  @override
+  String get mcpLogsSourceStdio => 'stdio';
+
+  @override
+  String get mcpLogsSourceAgent => '代理';
+
+  @override
+  String get projectPrimaryFolder => '主目錄';
+
+  @override
+  String get botGroupNameRequired => '請輸入群組名稱';
+
+  @override
+  String get botGroupMembersMinimum => '群組至少需要兩個 Bot';
+
+  @override
+  String botGroupMembersRange(int max) {
+    return '群組需要 2～$max 個 Bot';
+  }
+
+  @override
+  String botGroupMembersMaximum(int max) {
+    return '群組最多支援 $max 個 Bot';
+  }
+
+  @override
+  String get botGroupMemberUnavailable => '沒有可用的群組成員';
+
+  @override
+  String get botProfileNameUnavailable => '沒有可用的設定檔名稱';
+
+  @override
+  String get botDefaultProfileDeleteForbidden => '無法刪除預設設定檔';
+
+  @override
+  String get botConnectionUnavailable => 'Bot 連線無法使用';
+
+  @override
+  String get botTurnFailed => 'Bot 回合失敗';
+
+  @override
+  String get mcpInvalidJsonSyntax => 'JSON 語法無效';
+
+  @override
+  String get mcpJsonObjectRequired => 'JSON 最上層內容必須是物件';
+
+  @override
+  String get voiceWakeMicStreamEnded => '喚醒詞麥克風串流意外結束';
+
+  @override
+  String httpStatusError(int statusCode) {
+    return '伺服器傳回 HTTP $statusCode';
   }
 }

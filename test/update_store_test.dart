@@ -4,6 +4,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/stores/update_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations_en.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -145,7 +146,7 @@ void main() {
       valid = false;
       expect(await store.check(force: true), isFalse);
       expect(store.manifest?.latestVersion, '1.1.0');
-      expect(store.error, contains('invalid latest version'));
+      expect(store.error, AppLocalizationsEn().updateManifestInvalid);
       store.dispose();
     },
   );
@@ -167,9 +168,9 @@ void main() {
     );
 
     expect(await store.check(force: true), isFalse);
-    expect(store.error, contains('HTTPS URL'));
+    expect(store.error, AppLocalizationsEn().updateManifestInvalid);
     expect(await store.check(force: true), isFalse);
-    expect(store.error, contains('HTTPS URL'));
+    expect(store.error, AppLocalizationsEn().updateManifestInvalid);
     store.dispose();
   });
 
@@ -186,7 +187,7 @@ void main() {
     );
 
     expect(await store.check(force: true), isFalse);
-    expect(store.error, contains('cannot exceed'));
+    expect(store.error, AppLocalizationsEn().updateManifestInvalid);
     store.dispose();
   });
 
@@ -261,7 +262,7 @@ void main() {
     );
 
     expect(await store.check(force: true), isFalse);
-    expect(store.error, contains('signature invalid'));
+    expect(store.error, AppLocalizationsEn().updateManifestInvalid);
     store.dispose();
   });
 
@@ -299,7 +300,7 @@ void main() {
       );
 
       expect(await store.check(force: true), isFalse);
-      expect(store.error, contains('signed update manifest required'));
+      expect(store.error, AppLocalizationsEn().updateManifestInvalid);
       store.dispose();
     },
   );

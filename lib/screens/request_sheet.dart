@@ -14,21 +14,36 @@ import '../l10n/l10n.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/clarify_choice.dart';
+import '../core/connections/connection_registry.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/request_store.dart';
 import '../core/stores/session_store.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
 
-Future<void> showRequestSheet(BuildContext context) async {
+Future<void> showRequestSheet(
+  BuildContext context, {
+  String? requestId,
+  OwnerRoute? ownerRoute,
+  String? sessionId,
+}) async {
   final width = MediaQuery.sizeOf(context).width;
   if (width >= 1200) {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const PopScope(
+      builder: (_) => PopScope(
         canPop: false,
-        child: Dialog(child: SizedBox(width: 560, child: RequestSheet())),
+        child: Dialog(
+          child: SizedBox(
+            width: 560,
+            child: RequestSheet(
+              requestId: requestId,
+              ownerRoute: ownerRoute,
+              sessionId: sessionId,
+            ),
+          ),
+        ),
       ),
     );
     return;
@@ -44,7 +59,11 @@ Future<void> showRequestSheet(BuildContext context) async {
         constraints: BoxConstraints(
           maxWidth: width >= 840 ? 640 : double.infinity,
         ),
-        child: const RequestSheet(),
+        child: RequestSheet(
+          requestId: requestId,
+          ownerRoute: ownerRoute,
+          sessionId: sessionId,
+        ),
       ),
     ),
   );
@@ -53,8 +72,16 @@ Future<void> showRequestSheet(BuildContext context) async {
 class RequestSheet extends StatefulWidget {
   final bool embedded;
   final String? requestId;
+  final OwnerRoute? ownerRoute;
+  final String? sessionId;
 
-  const RequestSheet({super.key, this.embedded = false, this.requestId});
+  const RequestSheet({
+    super.key,
+    this.embedded = false,
+    this.requestId,
+    this.ownerRoute,
+    this.sessionId,
+  });
 
   @override
   State<RequestSheet> createState() => _RequestSheetState();
@@ -69,7 +96,19 @@ class _RequestSheetState extends State<RequestSheet> {
   final _clarifyOtherCtrl = TextEditingController();
   bool _busy = false;
 
-  PendingRequest? _selected(RequestStore store) => store.byId(widget.requestId);
+  OwnerRoute? get _effectiveOwnerRoute =>
+      widget.ownerRoute ??
+      (widget.embedded ? context.read<SessionStore>().owner?.route : null);
+
+  String? get _effectiveSessionId =>
+      widget.sessionId ??
+      (widget.embedded ? context.read<SessionStore>().durableId : null);
+
+  PendingRequest? _selected(RequestStore store) => store.byId(
+    widget.requestId,
+    ownerRoute: _effectiveOwnerRoute,
+    sessionId: _effectiveSessionId,
+  );
 
   @override
   void dispose() {
@@ -125,6 +164,7 @@ class _RequestSheetState extends State<RequestSheet> {
 
   Future<void> _respond({String? choice, String? text}) async {
     final requests = context.read<RequestStore>();
+    final target = _selected(requests);
     final session = context.read<SessionStore>();
     final connection = context.read<ConnectionStore>();
     final runtimeId = session.runtimeId;
@@ -198,6 +238,9 @@ class _RequestSheetState extends State<RequestSheet> {
               });
           }
         },
+        ownerRoute: _effectiveOwnerRoute,
+        sessionId: _effectiveSessionId,
+        kind: target?.kind,
         resolution: {
           'choice': ?choice,
           if (text != null && text.isNotEmpty) 'answer': text,
@@ -256,6 +299,9 @@ class _RequestSheetState extends State<RequestSheet> {
           }
           return const {};
         },
+        ownerRoute: _effectiveOwnerRoute,
+        sessionId: _effectiveSessionId,
+        kind: request.kind,
         resolution: {
           'status': 'completed',
           'answers': {
@@ -347,10 +393,13 @@ class _RequestSheetState extends State<RequestSheet> {
           final started = await api.mcpStartAuth(name, profile: profile);
           flowId = (started['flow_id'] ?? '').toString();
           url = (started['authorization_url'] ?? '').toString();
-          requests.updatePayload(request.requestId, {
-            'oauth_flow_id': flowId,
-            'authorization_url': url,
-          });
+          requests.updatePayload(
+            request.requestId,
+            {'oauth_flow_id': flowId, 'authorization_url': url},
+            ownerRoute: request.ownerRoute,
+            sessionId: request.sessionId,
+            kind: request.kind,
+          );
         }
         if (flowId.isEmpty || url.isEmpty) {
           throw StateError(l10n.mcpOAuthMissingUrl);
@@ -381,10 +430,13 @@ class _RequestSheetState extends State<RequestSheet> {
         if (approved == null) {
           throw TimeoutException(l10n.requestOAuthTimeout);
         }
-        requests.updatePayload(request.requestId, {
-          'oauth_flow_id': null,
-          'authorization_url': null,
-        });
+        requests.updatePayload(
+          request.requestId,
+          {'oauth_flow_id': null, 'authorization_url': null},
+          ownerRoute: request.ownerRoute,
+          sessionId: request.sessionId,
+          kind: request.kind,
+        );
         test = await api.mcpTest(name, profile: profile);
       }
       if (test['ok'] != true && test['reachable'] != true) {
@@ -518,7 +570,12 @@ class _RequestSheetState extends State<RequestSheet> {
       ),
     );
     if (confirmed == true && mounted) {
-      requests.dismissById(widget.requestId);
+      requests.dismissById(
+        widget.requestId,
+        ownerRoute: _effectiveOwnerRoute,
+        sessionId: _effectiveSessionId,
+        kind: req.kind,
+      );
     }
   }
 
@@ -528,7 +585,11 @@ class _RequestSheetState extends State<RequestSheet> {
     final req = _selected(requests);
     if (req == null) {
       if (widget.embedded && widget.requestId != null) {
-        final resolved = requests.resolution(widget.requestId);
+        final resolved = requests.resolution(
+          widget.requestId,
+          ownerRoute: _effectiveOwnerRoute,
+          sessionId: _effectiveSessionId,
+        );
         final detail =
             resolved?.result['choice'] ??
             resolved?.result['answer'] ??

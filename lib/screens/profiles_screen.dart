@@ -17,6 +17,7 @@ import '../core/clipboard.dart';
 import '../core/connection_reload_mixin.dart';
 import '../core/models.dart';
 import '../core/stores/connection_store.dart';
+import '../core/stores/profile_scope_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
@@ -24,6 +25,16 @@ import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+
+extension _OptionalProfileScope on BuildContext {
+  ProfileScopeStore? get profileScopeOrNull {
+    try {
+      return read<ProfileScopeStore>();
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+}
 
 class ProfilesScreen extends StatefulWidget {
   final bool embedded;
@@ -114,6 +125,10 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       } catch (error) {
         optionErrors.add('tools: $error');
       }
+      if (!mounted || generation != _loadGeneration || !identical(api, _api)) {
+        return;
+      }
+      await context.profileScopeOrNull?.updateProfiles(payload);
       if (!mounted || generation != _loadGeneration || !identical(api, _api)) {
         return;
       }
@@ -469,8 +484,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     setState(() => _transferring = true);
     try {
       final file = await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(label: 'Hermes Profile', extensions: ['gz', 'tgz']),
+        acceptedTypeGroups: [
+          XTypeGroup(
+            label: context.l10n.profileArchiveType,
+            extensions: const ['gz', 'tgz'],
+          ),
         ],
       );
       if (file == null || !mounted) return;
@@ -486,7 +504,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         showHermesToast(
           context,
           message: context.l10n.profilesImported(
-            '${result['name'] ?? 'Profile'}',
+            '${result['name'] ?? context.l10n.sessionDetailProfile}',
           ),
           kind: HermesToastKind.success,
         );
@@ -900,7 +918,7 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
               ),
             const SizedBox(height: HermesSpacing.sm),
             _SliderRow(
-              label: 'Temperature',
+              label: context.l10n.profilesTemperature,
               value: _temperature,
               min: 0,
               max: 2,
@@ -909,7 +927,7 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
               onChanged: (v) => setState(() => _temperature = v),
             ),
             _SliderRow(
-              label: 'Top P',
+              label: context.l10n.profilesTopP,
               value: _topP,
               min: 0,
               max: 1,
@@ -918,7 +936,7 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
               onChanged: (v) => setState(() => _topP = v),
             ),
             _SliderRow(
-              label: 'Max Tokens',
+              label: context.l10n.profilesMaxTokens,
               value: _maxTokens.toDouble(),
               min: 512,
               max: 32768,

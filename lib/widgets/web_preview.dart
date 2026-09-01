@@ -336,7 +336,12 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
       return {'success': false, 'error': 'No live page is open.'};
     }
     final result = await controller.runJavaScriptReturningResult(
-      previewTourScript(action),
+      previewTourScript(
+        action,
+        backLabel: context.l10n.previewTourBack,
+        doneLabel: context.l10n.previewTourDone,
+        nextLabel: context.l10n.previewTourNext,
+      ),
     );
     return _decodeResult(result);
   }
@@ -465,7 +470,15 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
             'HermesPreviewBridge',
             onMessageReceived: _onBridgeMessage,
           )
-          ..loadHtmlString(withPreviewBridge(html, _bridgeToken));
+          ..loadHtmlString(
+            withPreviewBridge(
+              html,
+              _bridgeToken,
+              scriptErrorLabel: context.l10n.previewScriptError,
+              unhandledPromiseRejectionLabel:
+                  context.l10n.previewUnhandledPromiseRejection,
+            ),
+          );
       } else {
         _address.text = url;
         controller.loadRequest(Uri.parse(url));

@@ -165,6 +165,35 @@ class _NamedKnowledgeApi extends _ReloadApi {
   };
 }
 
+class _NamedPluginApi extends _ReloadApi {
+  @override
+  Future<List<Map<String, dynamic>>> plugins({String? profile}) async => [
+    {'name': 'server-a-plugin', 'key': 'server-a/plugin', 'enabled': true},
+  ];
+}
+
+class _NamedMcpApi extends _ReloadApi {
+  @override
+  Future<List<Map<String, dynamic>>> mcpServers({String? profile}) async => [
+    {'name': 'server-a-mcp', 'transport': 'stdio', 'enabled': true},
+  ];
+}
+
+class _NamedMemoryApi extends _ReloadApi {
+  @override
+  Future<Map<String, dynamic>> memoryStatus({String? profile}) async => {
+    'active': 'server-a-memory',
+    'providers': <dynamic>[
+      {
+        'name': 'server-a-memory',
+        'label': 'server-a-memory',
+        'available': true,
+      },
+    ],
+    'builtin_files': <String, dynamic>{},
+  };
+}
+
 class _DeferredCronApi extends _ReloadApi {
   final jobs = Completer<List<CronJob>>();
 
@@ -458,6 +487,33 @@ void main() {
     expect(find.text('current-node'), findsOneWidget);
     expect(find.text('stale-node'), findsNothing);
   });
+
+  for (final entry in <(String, Widget, ApiClient Function(), String)>[
+    ('plugins', const PluginsScreen(), _NamedPluginApi.new, 'server-a-plugin'),
+    ('mcp', const McpScreen(), _NamedMcpApi.new, 'server-a-mcp'),
+    ('memory', const MemoryScreen(), _NamedMemoryApi.new, 'server-a-memory'),
+    (
+      'knowledge',
+      const KnowledgeScreen(),
+      () => _NamedKnowledgeApi('server-a-node'),
+      'server-a-node',
+    ),
+  ]) {
+    testWidgets('${entry.$1} clears server data immediately on disconnect', (
+      tester,
+    ) async {
+      final connection = _ReloadConnection()..exposeApi(entry.$3());
+      addTearDown(connection.dispose);
+      await _pump(tester, entry.$2, connection);
+      expect(find.text(entry.$4), findsWidgets);
+
+      connection.exposeApi(null);
+      await tester.pump();
+
+      expect(find.text(entry.$4), findsNothing);
+      expect(find.text('后端未连接'), findsWidgets);
+    });
+  }
 
   testWidgets('late cron response cannot overwrite reconnected jobs', (
     tester,

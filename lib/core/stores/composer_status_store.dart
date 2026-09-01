@@ -11,6 +11,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../l10n/runtime_l10n.dart';
+
 /// Status of a process or task row shown above the composer.
 enum ComposerStatusState { running, done, failed }
 
@@ -512,7 +514,7 @@ class ComposerStatusStore extends ChangeNotifier {
       id: proc.sessionId!,
       type: ComposerStatusType.background,
       state: state,
-      title: title.isEmpty ? 'background process' : title,
+      title: title.isEmpty ? runtimeL10n.backgroundProcessFallback : title,
       exitCode: exitCode,
       output: proc.outputTail?.isNotEmpty == true ? proc.outputTail : null,
     );

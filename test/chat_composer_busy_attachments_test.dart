@@ -100,7 +100,7 @@ class _FakeApi extends ApiClient {
   Future<List<Map<String, dynamic>>> listProjects() async => const [];
 
   @override
-  Future<ComposerDraft> getDraft(String sessionId) async =>
+  Future<ComposerDraft> getDraft(String sessionId, {String? profile}) async =>
       const ComposerDraft();
 
   @override
@@ -108,6 +108,7 @@ class _FakeApi extends ApiClient {
     String sessionId, {
     String? text,
     List<dynamic>? files,
+    String? profile,
   }) async => const ComposerDraft();
 }
 

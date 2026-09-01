@@ -3,6 +3,8 @@
 /// detail/edit/archive for learned skills and a hub marketplace entry point.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -36,6 +38,8 @@ class _SkillsScreenState extends State<SkillsScreen>
   ProfileScopeStore? _scopeStore;
   int _loadGeneration = 0;
   int _mutationGeneration = 0;
+  bool _detailOpen = false;
+  String? _observedProfile;
 
   String? get _profile => _scopeStore?.override;
 
@@ -53,11 +57,16 @@ class _SkillsScreenState extends State<SkillsScreen>
     if (identical(scope, _scopeStore)) return;
     _scopeStore?.removeListener(_onScopeChanged);
     _scopeStore = scope..addListener(_onScopeChanged);
+    _observedProfile = _profile;
     scope.ensureLoaded();
   }
 
   void _onScopeChanged() {
     if (!mounted) return;
+    final profile = _profile;
+    if (profile == _observedProfile) return;
+    _observedProfile = profile;
+    _closeDetailForTargetChange();
     _mutationGeneration++;
     setState(() {
       _skills = null;
@@ -70,6 +79,7 @@ class _SkillsScreenState extends State<SkillsScreen>
 
   void _reloadForTarget() {
     if (!mounted) return;
+    _closeDetailForTargetChange();
     _mutationGeneration++;
     setState(() {
       _skills = null;
@@ -78,6 +88,12 @@ class _SkillsScreenState extends State<SkillsScreen>
       _bulkBusy = false;
     });
     _load();
+  }
+
+  void _closeDetailForTargetChange() {
+    if (!_detailOpen) return;
+    _detailOpen = false;
+    unawaited(Navigator.of(context).maybePop());
   }
 
   @override
@@ -196,22 +212,27 @@ class _SkillsScreenState extends State<SkillsScreen>
     final api = connectedApiOrNotify(context, connection);
     if (api == null || !mounted) return;
     final profile = _profile;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(HermesRadius.sheet),
+    _detailOpen = true;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(HermesRadius.sheet),
+          ),
         ),
-      ),
-      builder: (_) => _SkillDetailSheet(
-        skill: s,
-        ownerApi: api,
-        profile: profile,
-        onChanged: _load,
-      ),
-    );
+        builder: (_) => _SkillDetailSheet(
+          skill: s,
+          ownerApi: api,
+          profile: profile,
+          onChanged: _load,
+        ),
+      );
+    } finally {
+      _detailOpen = false;
+    }
   }
 
   Future<void> _openHub() async {

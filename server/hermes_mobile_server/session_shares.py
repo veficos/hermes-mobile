@@ -43,18 +43,24 @@ class SessionShareStore:
         session_id: str,
         session: dict[str, Any],
         messages: list[Any],
+        *,
+        profile: str | None = None,
     ) -> dict[str, Any]:
         with self._lock:
             data = self._load()
             # Refreshing a share revokes the old bearer token atomically.
             for token, snapshot in list(data.items()):
-                if str(snapshot.get("session_id") or "") == session_id:
+                if (
+                    str(snapshot.get("session_id") or "") == session_id
+                    and (snapshot.get("profile") or None) == profile
+                ):
                     data.pop(token, None)
             token = secrets.token_urlsafe(32)
             now = time.time()
             snapshot = {
                 "token": token,
                 "session_id": session_id,
+                "profile": profile,
                 "title": str(session.get("title") or "Untitled"),
                 "created_at": now,
                 "message_count": len(messages),
@@ -70,22 +76,30 @@ class SessionShareStore:
             snapshot = self._load().get(token)
         return snapshot if isinstance(snapshot, dict) else None
 
-    def for_session(self, session_id: str) -> dict[str, Any] | None:
+    def for_session(
+        self, session_id: str, *, profile: str | None = None
+    ) -> dict[str, Any] | None:
         with self._lock:
             values = self._load().values()
             snapshot = next(
-                (row for row in values if str(row.get("session_id") or "") == session_id),
+                (
+                    row
+                    for row in values
+                    if str(row.get("session_id") or "") == session_id
+                    and (row.get("profile") or None) == profile
+                ),
                 None,
             )
         return snapshot if isinstance(snapshot, dict) else None
 
-    def revoke(self, session_id: str) -> bool:
+    def revoke(self, session_id: str, *, profile: str | None = None) -> bool:
         with self._lock:
             data = self._load()
             tokens = [
                 token
                 for token, row in data.items()
                 if str(row.get("session_id") or "") == session_id
+                and (row.get("profile") or None) == profile
             ]
             for token in tokens:
                 data.pop(token, None)

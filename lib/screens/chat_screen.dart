@@ -84,6 +84,15 @@ import 'skills_screen.dart';
 import 'pet_generate_screen.dart';
 import 'starmap_screen.dart';
 
+String _chatStatusKindLabel(BuildContext context, String kind) =>
+    switch (kind.trim().toLowerCase()) {
+      'compacting' => context.l10n.chatCompactingThread,
+      'tool-drafting' || 'tool_drafting' => context.l10n.chatStatusToolDrafting,
+      'notification' => context.l10n.chatHermesNotification,
+      'provider' => context.l10n.chatStatusProvider,
+      _ => kind,
+    };
+
 extension _MaybeRead on BuildContext {
   /// Reads a provider if it exists in the tree, otherwise returns null.
   /// Keeps the screen usable in test harnesses that don't wire every store.
@@ -172,10 +181,13 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ComposerAttachment> _editAttachments = const [];
   final _scrollCoordinator = ChatScrollCoordinator();
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
+  final Set<String> _mountedUserMessageIds = <String>{};
+  final ValueNotifier<String?> _activeTopic = ValueNotifier<String?>(null);
+  final ValueNotifier<bool> _stuckToBottom = ValueNotifier<bool>(true);
+  bool _activeTopicUpdateScheduled = false;
 
   /// Id of the user turn nearest the top of the viewport — highlights its dot
   /// in the topic rail (desktop timeline "active tick" parity).
-  String? _activeTopicId;
   final Set<String> _markedMessageIds = <String>{};
   String? _markerSessionId;
   String? _locatorHighlightId;
@@ -444,9 +456,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       final session = context.read<SessionStore>();
       final runtimeId = session.runtimeId;
-      if (runtimeId != null &&
-          runtimeId.isNotEmpty &&
-          composer.hasRunningFor(runtimeId)) {
+      if (runtimeId != null && runtimeId.isNotEmpty) {
         unawaited(composer.refreshBackgroundProcesses(runtimeId));
       }
     });
@@ -493,13 +503,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final session = context.read<SessionStore>();
     final runtimeId = session.runtimeId;
     final api = session.api;
+    final profile = session.profile ?? session.activeProfile;
 
     final sessionRequest = runtimeId == null
         ? Future<List<ToolsetInfo>?>.value(null)
         : session.sessionToolsets().then<List<ToolsetInfo>?>((value) => value);
     final globalRequest = api == null
         ? Future<List<ToolsetInfo>?>.value(null)
-        : api.toolsets().then<List<ToolsetInfo>?>((value) => value);
+        : api
+              .toolsets(profile: profile)
+              .then<List<ToolsetInfo>?>((value) => value);
 
     List<ToolsetInfo>? sessionToolsets;
     List<ToolsetInfo>? globalToolsets;
@@ -708,12 +721,27 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  GlobalKey _keyForMessage(ChatMessage message) =>
-      _messageKeys.putIfAbsent(message.id, GlobalKey.new);
+  GlobalKey _keyForMessage(ChatMessage message) {
+    return _messageKeys.putIfAbsent(message.id, GlobalKey.new);
+  }
+
+  void _onUserMessageMountChanged(String id, bool mounted) {
+    if (mounted) {
+      _mountedUserMessageIds.add(id);
+    } else {
+      _mountedUserMessageIds.remove(id);
+    }
+  }
 
   void _pruneMessageKeys(List<ChatMessage> messages) {
     final live = messages.map((m) => m.id).toSet();
     _messageKeys.removeWhere((id, _) => !live.contains(id));
+    _mountedUserMessageIds.removeWhere((id) => !live.contains(id));
+  }
+
+  void _setStuckToBottom(bool value) {
+    _scrollCoordinator.updateStuck(value);
+    if (_stuckToBottom.value != value) _stuckToBottom.value = value;
   }
 
   void _onTranscriptChanged(
@@ -721,6 +749,7 @@ class _ChatScreenState extends State<ChatScreen> {
     int streamTick,
     bool isStreaming,
   ) {
+    _pruneMessageKeys(context.read<ChatStore>().messages);
     if (_scrollCoordinator.messagesChanged(messageCount)) {
       _scrollToBottom();
     }
@@ -922,7 +951,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final messageIndex = _messageIndex(messages, message);
     if (messageIndex < 0) return;
 
-    _scrollCoordinator.updateStuck(false);
+    _setStuckToBottom(false);
 
     await _scrollTowardMessageIndex(messageIndex, messages.length);
     if (!mounted) return;
@@ -992,49 +1021,52 @@ class _ChatScreenState extends State<ChatScreen> {
         ? topics
         : <ChatMessage>[topics.first, ...topics.sublist(topics.length - 6)];
     final theme = Theme.of(context);
-    return Semantics(
-      label: context.l10n.chatTopicRailSemantics(topics.length),
-      child: Material(
-        elevation: 1,
-        color: theme.colorScheme.surface.withValues(alpha: .92),
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final topic in visible)
-                Tooltip(
-                  message: topic.plainText.isEmpty
-                      ? context.l10n.chatLocateTopic
-                      : topic.plainText.split('\n').first,
-                  child: InkWell(
-                    key: ValueKey('topic-rail-${topic.id}'),
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () => _locateMessage(topic),
-                    // I1: long-press shows the full prompt preview before
-                    // deciding to jump (desktop tick-hover popover parity).
-                    onLongPress: () => _showTopicPreview(topic),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 4,
-                        horizontal: 5,
-                      ),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        width: topic.id == _activeTopicId ? 14 : 7,
-                        height: topic.id == _activeTopicId ? 4 : 7,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: topic.id == _activeTopicId ? 1 : .45,
+    return ValueListenableBuilder<String?>(
+      valueListenable: _activeTopic,
+      builder: (context, activeTopicId, _) => Semantics(
+        label: context.l10n.chatTopicRailSemantics(topics.length),
+        child: Material(
+          elevation: 1,
+          color: theme.colorScheme.surface.withValues(alpha: .92),
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final topic in visible)
+                  Tooltip(
+                    message: topic.plainText.isEmpty
+                        ? context.l10n.chatLocateTopic
+                        : topic.plainText.split('\n').first,
+                    child: InkWell(
+                      key: ValueKey('topic-rail-${topic.id}'),
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _locateMessage(topic),
+                      // I1: long-press shows the full prompt preview before
+                      // deciding to jump (desktop tick-hover popover parity).
+                      onLongPress: () => _showTopicPreview(topic),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 4,
+                          horizontal: 5,
+                        ),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: topic.id == activeTopicId ? 14 : 7,
+                          height: topic.id == activeTopicId ? 4 : 7,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: topic.id == activeTopicId ? 1 : .45,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          borderRadius: BorderRadius.circular(4),
                         ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1440,18 +1472,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _draftRestoreInProgress = true;
     final restoreGeneration = ++_draftRestoreGeneration;
-    final draftApi = session.connection.api;
-    if (draftApi == null) {
-      _draftRestoreInProgress = false;
-      return;
-    }
     try {
-      final draft = await draftApi.getDraft(sid);
+      final draft = await session.loadStoredDraft(sid);
       if (!mounted ||
           restoreGeneration != _draftRestoreGeneration ||
           _lastDraftSid != sid ||
-          session.durableId != sid ||
-          !identical(draftApi, session.connection.api)) {
+          session.durableId != sid) {
         return;
       }
       _rememberedServerDraft = draft;
@@ -1460,8 +1486,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted ||
           restoreGeneration != _draftRestoreGeneration ||
           _lastDraftSid != sid ||
-          session.durableId != sid ||
-          !identical(draftApi, session.connection.api)) {
+          session.durableId != sid) {
         return;
       }
       // 30-second suppression + signature check (WebUI
@@ -1579,6 +1604,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _findCtrl.dispose();
     _findFocus.dispose();
     _scrollCtrl.dispose();
+    _activeTopic.dispose();
+    _stuckToBottom.dispose();
     _editCtrl.dispose();
     _editFocus.dispose();
     super.dispose();
@@ -1586,33 +1613,42 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Pick the user turn whose bubble sits just above the viewport top; cheap
   /// (user turns are few) and only setState()s when the winner changes.
+  void _scheduleActiveTopicUpdate() {
+    if (_activeTopicUpdateScheduled) return;
+    _activeTopicUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _activeTopicUpdateScheduled = false;
+      if (mounted) _recomputeActiveTopic();
+    });
+  }
+
   void _recomputeActiveTopic() {
-    final chat = context.maybeRead<ChatStore>();
-    if (chat == null) return;
     final scrollBox = context.findRenderObject();
     if (scrollBox is! RenderBox) return;
     final viewportTop = scrollBox.localToGlobal(Offset.zero).dy + 80;
     String? winner;
-    for (final message in chat.messages) {
-      if (message.role != 'user') continue;
-      final ctx = _messageKeys[message.id]?.currentContext;
+    double winnerTop = double.negativeInfinity;
+    String? firstMounted;
+    double firstTop = double.infinity;
+    // Only mounted user rows can affect the viewport result. This set is
+    // bounded by the sliver viewport/cache instead of transcript length.
+    for (final id in _mountedUserMessageIds) {
+      final ctx = _messageKeys[id]?.currentContext;
       final box = ctx?.findRenderObject();
       if (box is! RenderBox || !box.attached) continue;
       final top = box.localToGlobal(Offset.zero).dy;
-      if (top <= viewportTop) {
-        winner = message.id;
-      } else {
-        break;
+      if (top < firstTop) {
+        firstTop = top;
+        firstMounted = id;
+      }
+      if (top <= viewportTop && top > winnerTop) {
+        winnerTop = top;
+        winner = id;
       }
     }
-    winner ??= chat.messages
-        .firstWhere(
-          (m) => m.role == 'user',
-          orElse: () => ChatMessage(id: '', role: 'user', parts: const []),
-        )
-        .id;
-    if (winner.isNotEmpty && winner != _activeTopicId && mounted) {
-      setState(() => _activeTopicId = winner);
+    if (_activeTopic.value == null) winner ??= firstMounted;
+    if (winner != null && winner != _activeTopic.value) {
+      _activeTopic.value = winner;
     }
   }
 
@@ -1629,9 +1665,9 @@ class _ChatScreenState extends State<ChatScreen> {
           'distance_to_bottom=${(position.maxScrollExtent - position.pixels).toStringAsFixed(1)}',
         );
       }
-      setState(() => _scrollCoordinator.updateStuck(nextStuck));
+      _setStuckToBottom(nextStuck);
     }
-    _recomputeActiveTopic();
+    _scheduleActiveTopicUpdate();
     if (_scrollCoordinator.allowPagination &&
         position.pixels < 160 &&
         !_loadingOlderViewport &&
@@ -1914,7 +1950,7 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         _composerCtrl.clear();
         if (mounted) setState(() => _attachments = const []);
-        _scrollCoordinator.updateStuck(true);
+        _setStuckToBottom(true);
         if (sid.isNotEmpty) {
           session.suppressDraftRestoreAfterSubmit(
             sid,
@@ -3837,7 +3873,7 @@ class _ChatScreenState extends State<ChatScreen> {
               }.contains(item.state),
             )
             .toList(growable: false);
-        if (billing?.state == null && billing != null) {
+        if (billing != null) {
           WidgetsBinding.instance.addPostFrameCallback(
             (_) => billing.refresh(),
           );
@@ -3857,7 +3893,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ? null
             : pullRequests?.forSession(currentRow);
         final codingStatus = coding?.forCwd(info?.cwd);
-        if (info?.cwd?.isNotEmpty == true && codingStatus == null) {
+        if (info?.cwd?.isNotEmpty == true) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             coding?.refresh(info?.cwd);
           });
@@ -4116,7 +4152,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                subtitle: Text(item.kind),
+                                subtitle: Text(
+                                  _chatStatusKindLabel(context, item.kind),
+                                ),
                                 trailing: IconButton(
                                   tooltip: context.l10n.chatHideStatus,
                                   onPressed: () => chat.dismissStatus(item.id),
@@ -4772,7 +4810,7 @@ class _ChatScreenState extends State<ChatScreen> {
             SlashSuggestion(
               name: '/$name',
               description: desc,
-              group: 'Commands',
+              group: slashGroupCommands,
             ),
           );
         }
@@ -4980,7 +5018,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
                       child: Text(
-                        _slashSuggestions[i].group!,
+                        _slashSuggestions[i].group == slashGroupSkills
+                            ? context.l10n.slashGroupSkills
+                            : _slashSuggestions[i].group == slashGroupCommands
+                            ? context.l10n.slashGroupCommands
+                            : _slashSuggestions[i].group!,
                         style: HermesType.onSurfaceVariant(
                           HermesType.caption,
                           theme,
@@ -4992,7 +5034,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     dense: true,
                     selected: i == _slashSuggestionIndex,
                     leading: Icon(
-                      _slashSuggestions[i].group == 'Skills'
+                      _slashSuggestions[i].group == slashGroupSkills
                           ? Icons.auto_awesome_outlined
                           : Icons.bolt,
                       size: 18,
@@ -5311,9 +5353,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
     List<MessagingPlatform> platforms;
     try {
-      platforms = (await api.messagingPlatforms())
-          .where((platform) => platform.canHandoff)
-          .toList(growable: false);
+      platforms = (await api.messagingPlatforms(
+        profile: session.profile ?? session.activeProfile,
+      )).where((platform) => platform.canHandoff).toList(growable: false);
     } catch (error) {
       if (mounted && identical(api, session.api)) {
         messenger.showSnackBar(
@@ -6158,7 +6200,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (detection.startNewSession || session.runtimeId == null) {
         await session.newChat();
       }
-      await voice.bindConversationScope(session.durableId);
+      final route = session.owner?.route;
+      await voice.bindConversationScope(
+        '${route?.connectionId.value ?? 'active'}|'
+        '${route?.profile ?? session.activeProfile ?? ''}|'
+        '${session.durableId ?? ''}',
+      );
       if (!voice.continuousConversation) {
         voice.toggleContinuousConversation();
       }
@@ -6564,8 +6611,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final sid = session.durableId;
     final runtimeId = session.runtimeId;
-    final api = session.api;
     if (sid == null) return;
+    final api = session.api;
     if (api == null) {
       messenger.showSnackBar(
         SnackBar(content: Text(l10n.chatServerNotConnected)),
@@ -6573,9 +6620,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     try {
-      final result = await api.createSessionShare(sid);
-      final share = (result['share'] as Map?)?.cast<String, dynamic>();
-      final url = share?['url']?.toString() ?? '';
+      final url = await session.createStoredSessionShare(sid);
       if (url.isEmpty) throw StateError(l10n.chatShareUrlMissing);
       if (!mounted ||
           !identical(api, session.api) ||
@@ -6823,6 +6868,12 @@ class _ChatScreenState extends State<ChatScreen> {
     // ── Draft session lifecycle: durable id transitions. ──
     final sid = session.durableId ?? '';
     if (_scrollCoordinator.enterSession(sid)) {
+      _mountedUserMessageIds.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _setStuckToBottom(true);
+        _activeTopic.value = null;
+      });
       if (_diagnosticLogging) {
         _logScroll(
           'event=session.enter session_id=$sid message_count=${chat.messages.length} '
@@ -7114,6 +7165,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 onJumpToQuestion: _locateMessage,
                 onQuoteMessage: session.readOnly ? null : _quoteMessage,
                 keyForMessage: _keyForMessage,
+                onUserMessageMountChanged: _onUserMessageMountChanged,
                 highlightMessageId: _locatorHighlightId,
                 editingMessageId: _editingMessageId,
                 editController: _editCtrl,
@@ -7149,51 +7201,56 @@ class _ChatScreenState extends State<ChatScreen> {
               Positioned(
                 right: 12,
                 bottom: 8,
-                child: AnimatedOpacity(
-                  duration: MediaQuery.disableAnimationsOf(context)
-                      ? Duration.zero
-                      : HermesMotion.standard,
-                  opacity: _scrollCoordinator.stuckToBottom ? 0.0 : 1.0,
-                  child: IgnorePointer(
-                    ignoring: _scrollCoordinator.stuckToBottom,
-                    child: FloatingActionButton.small(
-                      heroTag: 'scroll_to_bottom:${widget.surfaceId ?? 'main'}',
-                      tooltip: context.l10n.chatScrollToBottom,
-                      onPressed: () {
-                        if (_diagnosticLogging) {
-                          if (_scrollCtrl.hasClients) {
-                            final position = _scrollCtrl.position;
-                            _logScroll(
-                              'event=scroll_to_bottom.clicked '
-                              'pixels=${position.pixels.toStringAsFixed(1)} '
-                              'max_extent=${position.maxScrollExtent.toStringAsFixed(1)} '
-                              'distance_to_bottom=${(position.maxScrollExtent - position.pixels).toStringAsFixed(1)} '
-                              'message_count=${chat.messages.length}',
-                            );
-                          } else {
-                            _logScroll(
-                              'event=scroll_to_bottom.clicked has_clients=false '
-                              'message_count=${chat.messages.length}',
-                            );
-                          }
-                        }
-                        _scrollCoordinator.updateStuck(true);
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (_scrollCtrl.hasClients) {
-                            final target = _scrollCtrl.position.maxScrollExtent;
-                            if (MediaQuery.disableAnimationsOf(context)) {
-                              _scrollCtrl.jumpTo(target);
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _stuckToBottom,
+                  builder: (context, stuckToBottom, _) => AnimatedOpacity(
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : HermesMotion.standard,
+                    opacity: stuckToBottom ? 0.0 : 1.0,
+                    child: IgnorePointer(
+                      ignoring: stuckToBottom,
+                      child: FloatingActionButton.small(
+                        heroTag:
+                            'scroll_to_bottom:${widget.surfaceId ?? 'main'}',
+                        tooltip: context.l10n.chatScrollToBottom,
+                        onPressed: () {
+                          if (_diagnosticLogging) {
+                            if (_scrollCtrl.hasClients) {
+                              final position = _scrollCtrl.position;
+                              _logScroll(
+                                'event=scroll_to_bottom.clicked '
+                                'pixels=${position.pixels.toStringAsFixed(1)} '
+                                'max_extent=${position.maxScrollExtent.toStringAsFixed(1)} '
+                                'distance_to_bottom=${(position.maxScrollExtent - position.pixels).toStringAsFixed(1)} '
+                                'message_count=${chat.messages.length}',
+                              );
                             } else {
-                              _scrollCtrl.animateTo(
-                                target,
-                                duration: HermesMotion.deliberate,
-                                curve: Curves.easeOutCubic,
+                              _logScroll(
+                                'event=scroll_to_bottom.clicked has_clients=false '
+                                'message_count=${chat.messages.length}',
                               );
                             }
                           }
-                        });
-                      },
-                      child: const Icon(Icons.arrow_downward_outlined),
+                          _setStuckToBottom(true);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (_scrollCtrl.hasClients) {
+                              final target =
+                                  _scrollCtrl.position.maxScrollExtent;
+                              if (MediaQuery.disableAnimationsOf(context)) {
+                                _scrollCtrl.jumpTo(target);
+                              } else {
+                                _scrollCtrl.animateTo(
+                                  target,
+                                  duration: HermesMotion.deliberate,
+                                  curve: Curves.easeOutCubic,
+                                );
+                              }
+                            }
+                          });
+                        },
+                        child: const Icon(Icons.arrow_downward_outlined),
+                      ),
                     ),
                   ),
                 ),
@@ -7646,7 +7703,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     try {
-      await api.setSessionWorkspace(sessionId, picked);
+      await session.setStoredSessionWorkspace(sessionId, picked);
       if (!mounted ||
           !identical(api, session.api) ||
           runtimeId != session.runtimeId ||
@@ -8016,7 +8073,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                       enabled,
                                     );
                                   } else {
-                                    await api.toggleToolset(t.name, enabled);
+                                    await api.toggleToolset(
+                                      t.name,
+                                      enabled,
+                                      profile:
+                                          session.profile ??
+                                          session.activeProfile,
+                                    );
                                   }
                                 } catch (e) {
                                   if (!mounted ||
@@ -8277,6 +8340,7 @@ class _ChatTranscriptPanel extends StatefulWidget {
   final void Function(ChatMessage) onJumpToQuestion;
   final void Function(ChatMessage)? onQuoteMessage;
   final GlobalKey Function(ChatMessage) keyForMessage;
+  final void Function(String id, bool mounted) onUserMessageMountChanged;
   final String? highlightMessageId;
   final String? editingMessageId;
   final TextEditingController? editController;
@@ -8310,6 +8374,7 @@ class _ChatTranscriptPanel extends StatefulWidget {
     required this.onJumpToQuestion,
     this.onQuoteMessage,
     required this.keyForMessage,
+    required this.onUserMessageMountChanged,
     required this.highlightMessageId,
     this.editingMessageId,
     this.editController,
@@ -8331,6 +8396,34 @@ class _ChatTranscriptPanel extends StatefulWidget {
 
 class _ChatTranscriptPanelState extends State<_ChatTranscriptPanel> {
   int _lastMessageCount = -1;
+  List<ChatTimelineItem> _timeline = const [];
+  int _timelineMessageCount = -1;
+  ChatMessage? _timelineFirst;
+  ChatMessage? _timelineLast;
+  String? _timelineStreamingId;
+  String? _timelineVersionSignature;
+
+  List<ChatTimelineItem> _timelineFor(_ChatTranscriptSnapshot snapshot) {
+    final messages = snapshot.messages;
+    final first = messages.firstOrNull;
+    final last = messages.lastOrNull;
+    if (_timelineMessageCount == messages.length &&
+        identical(_timelineFirst, first) &&
+        identical(_timelineLast, last) &&
+        _timelineStreamingId == snapshot.streamingMessageId &&
+        _timelineVersionSignature == snapshot.versionPreviewSignature) {
+      return _timeline;
+    }
+    _timelineMessageCount = messages.length;
+    _timelineFirst = first;
+    _timelineLast = last;
+    _timelineStreamingId = snapshot.streamingMessageId;
+    _timelineVersionSignature = snapshot.versionPreviewSignature;
+    return _timeline = buildChatTimeline(
+      messages,
+      preserveMessageId: snapshot.streamingMessageId,
+    );
+  }
 
   void _notifyTranscriptChanged(_ChatTranscriptSnapshot snapshot) {
     if (_lastMessageCount != snapshot.messages.length) {
@@ -8373,6 +8466,7 @@ class _ChatTranscriptPanelState extends State<_ChatTranscriptPanel> {
             Expanded(
               child: _MessageList(
                 snapshot: snapshot,
+                timeline: _timelineFor(snapshot),
                 scrollCtrl: widget.scrollCtrl,
                 onTranscriptChanged: widget.onTranscriptChanged,
                 onMessageLongPress: widget.onMessageLongPress,
@@ -8381,6 +8475,7 @@ class _ChatTranscriptPanelState extends State<_ChatTranscriptPanel> {
                 onJumpToQuestion: widget.onJumpToQuestion,
                 onQuoteMessage: widget.onQuoteMessage,
                 keyForMessage: widget.keyForMessage,
+                onUserMessageMountChanged: widget.onUserMessageMountChanged,
                 highlightMessageId: widget.highlightMessageId,
                 editingMessageId: widget.editingMessageId,
                 editController: widget.editController,
@@ -8461,6 +8556,7 @@ class _BackgroundResumeNotice extends StatelessWidget {
 /// date" chip is inserted whenever the message day changes.
 class _MessageList extends StatelessWidget {
   final _ChatTranscriptSnapshot snapshot;
+  final List<ChatTimelineItem> timeline;
   final ScrollController scrollCtrl;
   final void Function(int messageCount, int streamTick, bool isStreaming)
   onTranscriptChanged;
@@ -8470,6 +8566,7 @@ class _MessageList extends StatelessWidget {
   final void Function(ChatMessage userMessage) onJumpToQuestion;
   final void Function(ChatMessage)? onQuoteMessage;
   final GlobalKey Function(ChatMessage) keyForMessage;
+  final void Function(String id, bool mounted) onUserMessageMountChanged;
   final String? highlightMessageId;
   final String? editingMessageId;
   final TextEditingController? editController;
@@ -8483,6 +8580,7 @@ class _MessageList extends StatelessWidget {
 
   const _MessageList({
     required this.snapshot,
+    required this.timeline,
     required this.scrollCtrl,
     required this.onTranscriptChanged,
     required this.onMessageLongPress,
@@ -8491,6 +8589,7 @@ class _MessageList extends StatelessWidget {
     required this.onJumpToQuestion,
     this.onQuoteMessage,
     required this.keyForMessage,
+    required this.onUserMessageMountChanged,
     required this.highlightMessageId,
     this.editingMessageId,
     this.editController,
@@ -8580,104 +8679,108 @@ class _MessageList extends StatelessWidget {
         ),
       );
     }
-    children.add(
-      AnimatedContainer(
-        key: firstForSource
-            ? keyForMessage(logical)
-            : ValueKey('timeline-row-${item.key}'),
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : HermesMotion.standard,
-        decoration: BoxDecoration(
-          color: highlightMessageId == logical.id
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: .14)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: isEditing
-            ? _InlineMessageEditor(
-                controller: editController!,
-                focusNode: editFocusNode,
-                onSubmit: () => onEditSubmit?.call(logical),
-                onCancel: onEditCancel,
-                suggestions: editSuggestions,
-                onAttach: onEditAttach,
-                attachmentCount: editAttachmentCount,
-              )
-            : Dismissible(
-                key: ValueKey('msg_dismiss_${item.key}'),
-                direction: onQuoteMessage != null
-                    ? DismissDirection.endToStart
-                    : DismissDirection.none,
-                dismissThresholds: const {DismissDirection.endToStart: .45},
-                confirmDismiss: (_) async {
-                  HapticFeedback.lightImpact();
-                  onQuoteMessage?.call(logical);
-                  return false;
-                },
-                background: const SizedBox.shrink(),
-                secondaryBackground: Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  child: Icon(
-                    Icons.reply,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                child: GestureDetector(
-                  onLongPress: () {
-                    HapticFeedback.mediumImpact();
-                    onMessageLongPress(logical);
-                  },
-                  child: isStreaming
-                      ? _StreamingBubble(
-                          fallback: rowMessage,
-                          showRoleHeader:
-                              firstForSource && assistantLike && !continues,
-                          onRegenerate: onRegenerate,
-                          onJumpToQuestion: question == null
-                              ? null
-                              : () => onJumpToQuestion(question),
-                          onTick: (tick) =>
-                              onTranscriptChanged(messages.length, tick, true),
-                        )
-                      : MessageBubble(
-                          message: rowMessage,
-                          showFooter: lastForSource,
-                          showRoleHeader:
-                              firstForSource && assistantLike && !continues,
-                          onRegenerate: onRegenerate,
-                          onBranch: assistantLike ? onBranch : null,
-                          onMore: () => onMessageLongPress(logical),
-                          onJumpToQuestion: question == null
-                              ? null
-                              : () => onJumpToQuestion(question),
-                          isActivelyStreaming: false,
-                          agentReplySender:
-                              (assistantLike &&
-                                  firstForSource &&
-                                  lastForSource &&
-                                  question != null)
-                              ? agentDeliverySender(question.fullText)
-                              : null,
-                          turnVersionTotal: versionTotal,
-                          turnVersionIndex: versionIndex,
-                          onSelectTurnVersion: versionAnchor == null
-                              ? null
-                              : (i) => chatStore.selectTurnVersion(
-                                  versionAnchor,
-                                  i,
-                                ),
-                          onRestoreTurnVersion:
-                              (versionAnchor == null ||
-                                  versionIndex >= versionTotal - 1)
-                              ? null
-                              : onRestoreVersion,
-                        ),
+    Widget messageRow = AnimatedContainer(
+      key: firstForSource
+          ? keyForMessage(logical)
+          : ValueKey('timeline-row-${item.key}'),
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : HermesMotion.standard,
+      decoration: BoxDecoration(
+        color: highlightMessageId == logical.id
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: .14)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: isEditing
+          ? _InlineMessageEditor(
+              controller: editController!,
+              focusNode: editFocusNode,
+              onSubmit: () => onEditSubmit?.call(logical),
+              onCancel: onEditCancel,
+              suggestions: editSuggestions,
+              onAttach: onEditAttach,
+              attachmentCount: editAttachmentCount,
+            )
+          : Dismissible(
+              key: ValueKey('msg_dismiss_${item.key}'),
+              direction: onQuoteMessage != null
+                  ? DismissDirection.endToStart
+                  : DismissDirection.none,
+              dismissThresholds: const {DismissDirection.endToStart: .45},
+              confirmDismiss: (_) async {
+                HapticFeedback.lightImpact();
+                onQuoteMessage?.call(logical);
+                return false;
+              },
+              background: const SizedBox.shrink(),
+              secondaryBackground: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20),
+                child: Icon(
+                  Icons.reply,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
-      ),
+              child: GestureDetector(
+                onLongPress: () {
+                  HapticFeedback.mediumImpact();
+                  onMessageLongPress(logical);
+                },
+                child: isStreaming
+                    ? _StreamingBubble(
+                        fallback: rowMessage,
+                        showRoleHeader:
+                            firstForSource && assistantLike && !continues,
+                        onRegenerate: onRegenerate,
+                        onJumpToQuestion: question == null
+                            ? null
+                            : () => onJumpToQuestion(question),
+                        onTick: (tick) =>
+                            onTranscriptChanged(messages.length, tick, true),
+                      )
+                    : MessageBubble(
+                        message: rowMessage,
+                        showFooter: lastForSource,
+                        showRoleHeader:
+                            firstForSource && assistantLike && !continues,
+                        onRegenerate: onRegenerate,
+                        onBranch: assistantLike ? onBranch : null,
+                        onMore: () => onMessageLongPress(logical),
+                        onJumpToQuestion: question == null
+                            ? null
+                            : () => onJumpToQuestion(question),
+                        isActivelyStreaming: false,
+                        agentReplySender:
+                            (assistantLike &&
+                                firstForSource &&
+                                lastForSource &&
+                                question != null)
+                            ? agentDeliverySender(question.fullText)
+                            : null,
+                        turnVersionTotal: versionTotal,
+                        turnVersionIndex: versionIndex,
+                        onSelectTurnVersion: versionAnchor == null
+                            ? null
+                            : (i) =>
+                                  chatStore.selectTurnVersion(versionAnchor, i),
+                        onRestoreTurnVersion:
+                            (versionAnchor == null ||
+                                versionIndex >= versionTotal - 1)
+                            ? null
+                            : onRestoreVersion,
+                      ),
+              ),
+            ),
     );
+    if (logical.role == 'user' && firstForSource) {
+      messageRow = _UserMessageMountMarker(
+        messageId: logical.id,
+        onMountChanged: onUserMessageMountChanged,
+        child: messageRow,
+      );
+    }
+    children.add(messageRow);
     return _wrapRow(
       context,
       Column(
@@ -8690,10 +8793,6 @@ class _MessageList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final messages = snapshot.messages;
-    final timeline = buildChatTimeline(
-      messages,
-      preserveMessageId: snapshot.streamingMessageId,
-    );
     final itemCount = 1 + timeline.length + (snapshot.hasNewerWindow ? 1 : 0);
     return RefreshIndicator(
       onRefresh: () async {
@@ -8801,6 +8900,50 @@ class _MessageList extends StatelessWidget {
       ),
     );
   }
+}
+
+class _UserMessageMountMarker extends StatefulWidget {
+  const _UserMessageMountMarker({
+    required this.messageId,
+    required this.onMountChanged,
+    required this.child,
+  });
+
+  final String messageId;
+  final void Function(String id, bool mounted) onMountChanged;
+  final Widget child;
+
+  @override
+  State<_UserMessageMountMarker> createState() =>
+      _UserMessageMountMarkerState();
+}
+
+class _UserMessageMountMarkerState extends State<_UserMessageMountMarker> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onMountChanged(widget.messageId, true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _UserMessageMountMarker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.messageId == widget.messageId &&
+        oldWidget.onMountChanged == widget.onMountChanged) {
+      return;
+    }
+    oldWidget.onMountChanged(oldWidget.messageId, false);
+    widget.onMountChanged(widget.messageId, true);
+  }
+
+  @override
+  void dispose() {
+    widget.onMountChanged(widget.messageId, false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// The actively-streaming bubble: subscribes to the throttled stream tick so

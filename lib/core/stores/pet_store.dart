@@ -35,6 +35,7 @@ class PetStore extends ChangeNotifier {
   StreamSubscription? _sub;
   ApiClient? _api;
   int _generation = 0;
+  int _stateEpoch = 0;
 
   ApiClient requireApi([ApiClient? expected]) {
     final api = connection.api;
@@ -56,6 +57,7 @@ class PetStore extends ChangeNotifier {
     _loading = false;
     _error = null;
     _state = PetState.idle;
+    _stateEpoch++;
     notifyListeners();
     if (api != null) unawaited(refresh());
   }
@@ -63,7 +65,7 @@ class PetStore extends ChangeNotifier {
   void _onEvent(GatewayEvent e) {
     if (e.type == 'pet.changed') {
       refresh();
-    } else if (e.type == 'message.start') {
+    } else if (e.type == 'message.start' || e.type == 'message.delta') {
       _updateState(busy: true);
     } else if (e.type == 'message.complete') {
       final generation = _generation;
@@ -73,9 +75,24 @@ class PetStore extends ChangeNotifier {
       } else {
         _updateState(justCompleted: true);
       }
+      final stateEpoch = _stateEpoch;
       Future.delayed(const Duration(seconds: 3), () {
-        if (generation == _generation) _updateState(busy: false);
+        if (generation == _generation && stateEpoch == _stateEpoch) {
+          _updateState(busy: false);
+        }
       });
+    } else if (e.type == 'error') {
+      final generation = _generation;
+      _updateState(error: true);
+      final stateEpoch = _stateEpoch;
+      Future.delayed(const Duration(seconds: 3), () {
+        if (generation == _generation && stateEpoch == _stateEpoch) {
+          _updateState(busy: false);
+        }
+      });
+    } else if (e.type == 'interactive.expire' ||
+        e.type == 'interactive.expired') {
+      _updateState(busy: false);
     } else if (e.type == 'approval.request' ||
         e.type == 'clarify.request' ||
         e.type == 'sudo.request' ||
@@ -90,6 +107,7 @@ class PetStore extends ChangeNotifier {
     bool? error,
     bool? justCompleted,
   }) {
+    _stateEpoch++;
     if (error == true) {
       _state = PetState.failed;
     } else if (justCompleted == true) {

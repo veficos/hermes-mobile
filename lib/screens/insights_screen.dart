@@ -194,7 +194,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                     children: [
                       _stat(
                         context,
-                        'Token',
+                        context.l10n.insightsTokens,
                         _fmtNum(_tokenTotal(totals)),
                         HermesSemantic.purple,
                       ),
@@ -307,7 +307,7 @@ class _InsightsScreenState extends State<InsightsScreen>
 
   Widget _modelRow(BuildContext context, dynamic m) {
     final map = (m as Map).cast<String, dynamic>();
-    final name = (map['model'] ?? 'unknown').toString();
+    final name = map['model']?.toString() ?? context.l10n.insightsUnknownModel;
     final provider = (map['billing_provider'] ?? '').toString();
     final input = (map['input_tokens'] ?? 0) as num;
     final output = (map['output_tokens'] ?? 0) as num;

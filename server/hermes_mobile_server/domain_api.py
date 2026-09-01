@@ -188,7 +188,11 @@ def _ok_response(result: Any | None) -> dict:
 
 
 async def _all_session_messages(
-    backend: BackendManager, session_id: str, *, page_size: int = 500
+    backend: BackendManager,
+    session_id: str,
+    *,
+    page_size: int = 500,
+    profile: str | None = None,
 ) -> list[Any]:
     """Read every raw Hermes history row without silently truncating exports."""
     rows: list[Any] = []
@@ -198,7 +202,11 @@ async def _all_session_messages(
             backend,
             "GET",
             f"/api/sessions/{session_id}/messages",
-            query={"limit": page_size, "offset": offset},
+            query={
+                "limit": page_size,
+                "offset": offset,
+                **({"profile": profile} if profile else {}),
+            },
         )
         page = (payload or {}).get("messages", []) if isinstance(payload, dict) else []
         if not isinstance(page, list):
@@ -752,9 +760,13 @@ async def _session_messages_compat(
     )
 
 
-async def _reject_subagent_mutation(backend: BackendManager, session_id: str) -> None:
+async def _reject_subagent_mutation(
+    backend: BackendManager, session_id: str, *, profile: str | None = None
+) -> None:
     try:
-        detail = await _session_detail_compat(backend, session_id)
+        detail = await _session_detail_compat(
+            backend, session_id, profile=profile
+        )
     except HTTPException as exc:
         if exc.status_code == 404:
             # Runtime-only sessions have no durable row yet; the route's own
@@ -781,6 +793,8 @@ def build_domain_router(
     session_live_state = SessionLiveState()
     if backend is not None and hasattr(backend, "add_event_listener"):
         backend.add_event_listener(session_live_state.on_backend_event)
+    if backend is not None and hasattr(backend, "add_lifecycle_listener"):
+        backend.add_lifecycle_listener(session_live_state.reset)
 
     def require_backend() -> BackendManager:
         if backend is None or not backend.is_running:
@@ -941,7 +955,11 @@ def build_domain_router(
                             merged[k] = detail[k]
                 except Exception:
                     pass
-            share = share_store.for_session(str(sid)) if sid else None
+            row_profile = merged.get("profile") or profile
+            share = (
+                share_store.for_session(str(sid), profile=row_profile)
+                if sid else None
+            )
             if share:
                 merged["share_token"] = share.get("token")
                 merged["share_created_at"] = share.get("created_at")
@@ -1049,7 +1067,9 @@ def build_domain_router(
     # POST is consumed by the detail route's path match and Starlette returns
     # 405 without reaching the batch handler.
     @router.post("/sessions/batch-delete")
-    async def batch_delete_sessions(payload: dict = Body(...)) -> Any:
+    async def batch_delete_sessions(
+        payload: dict = Body(...), profile: str | None = Query(None)
+    ) -> Any:
         """Batch delete multiple sessions (WebUI sidebar bulk-delete parity)."""
         require_backend()
         ids = payload.get("ids") if isinstance(payload, dict) else None
@@ -1060,7 +1080,7 @@ def build_domain_router(
         for sid in ids:
             sid_str = str(sid)
             try:
-                await delete_session(sid_str)
+                await delete_session(sid_str, profile=profile)
                 deleted.append(sid_str)
             except Exception as exc:
                 failed.append({"id": sid_str, "error": str(exc)})
@@ -1143,7 +1163,7 @@ def build_domain_router(
         unknown = set(payload) - supported
         if unknown:
             raise HTTPException(status_code=422, detail=f"unsupported fields: {', '.join(sorted(unknown))}")
-        await _reject_subagent_mutation(be, session_id)
+        await _reject_subagent_mutation(be, session_id, profile=profile)
         result: Any = {"ok": True}
         canonical = {
             field: payload[field]
@@ -1174,37 +1194,52 @@ def build_domain_router(
                 try:
                     result = await be.gateway_rpc(
                         "session.title",
-                        {"session_id": session_id, "title": title},
+                        {
+                            "session_id": session_id,
+                            "title": title,
+                            **({"profile": profile} if profile else {}),
+                        },
                     )
                 except BackendError as rpc_exc:
                     raise HTTPException(status_code=502, detail=str(rpc_exc)) from rpc_exc
         if "project_id" in payload:
             result = await move_session(
-                session_id, {"project_id": payload["project_id"]}
+                session_id, {"project_id": payload["project_id"]},
+                profile=profile,
             )
         return result
 
     @router.delete("/sessions/{session_id}")
-    async def delete_session(session_id: str) -> dict:
+    async def delete_session(
+        session_id: str, profile: str | None = Query(None)
+    ) -> dict:
         be = require_backend()
-        await _reject_subagent_mutation(be, session_id)
+        await _reject_subagent_mutation(be, session_id, profile=profile)
         return _ok_response(
-            await _backend_json(be, "DELETE", f"/api/sessions/{session_id}")
+            await _backend_json(
+                be, "DELETE", f"/api/sessions/{session_id}",
+                query={"profile": profile} if profile else None,
+            )
         )
 
     @router.get("/sessions/{session_id}/draft")
-    async def get_session_draft(session_id: str) -> dict:
+    async def get_session_draft(
+        session_id: str, profile: str | None = Query(None)
+    ) -> dict:
         """Return the persisted composer draft for a session (WebUI parity).
 
         GET /api/v1/sessions/{id}/draft -> {"draft": {"text": str, "files": list}}
         """
         # Current Hermes releases removed /api/session/draft.  Use the mobile
         # server's durable fallback rather than repeatedly probing that 404.
-        draft = _draft_store.get(session_id)
+        draft = _draft_store.get(session_id, profile=profile)
         return {"draft": {"text": draft.get("text", ""), "files": draft.get("files", [])}}
 
     @router.post("/sessions/{session_id}/draft")
-    async def save_session_draft(session_id: str, payload: dict = Body(default={})) -> dict:
+    async def save_session_draft(
+        session_id: str, payload: dict = Body(default={}),
+        profile: str | None = Query(None),
+    ) -> dict:
         """Persist the composer draft (text + attachments) for a session.
 
         Mirrors WebUI POST /api/session/draft:
@@ -1224,28 +1259,38 @@ def build_domain_router(
             files = []
         if isinstance(files, list) and len(files) > _MAX_DRAFT_FILES:
             files = files[:_MAX_DRAFT_FILES]
-        draft = _draft_store.save(session_id, text=text, files=files)
+        draft = _draft_store.save(
+            session_id, text=text, files=files, profile=profile
+        )
         return {"ok": True, "draft": draft}
 
     @router.put("/sessions/{session_id}/pin")
-    async def pin_session(session_id: str, payload: dict = Body(default={})) -> Any:
+    async def pin_session(
+        session_id: str, payload: dict = Body(default={}),
+        profile: str | None = Query(None),
+    ) -> Any:
         """Pin/unpin a session to the top of the sidebar list.
 
         Mirrors WebUI pin/unpin actions. Pinned sessions appear in the
         dedicated 'Pinned' group above the time-grouped recent list.
         """
         be = require_backend()
-        await _reject_subagent_mutation(be, session_id)
+        await _reject_subagent_mutation(be, session_id, profile=profile)
         pinned = bool((payload or {}).get("pinned", True))
         return await _backend_json(
-            be, "PATCH", f"/api/sessions/{session_id}", body={"pinned": pinned}
+            be, "PATCH", f"/api/sessions/{session_id}",
+            query={"profile": profile} if profile else None,
+            body={"pinned": pinned}
         )
 
     @router.post("/sessions/{session_id}/branch")
-    async def branch_session(session_id: str, payload: dict = Body(default={})) -> dict:
+    async def branch_session(
+        session_id: str, payload: dict = Body(default={}),
+        profile: str | None = Query(None),
+    ) -> dict:
         """Fork a stored session without first changing the mobile active session."""
         be = require_backend()
-        await _reject_subagent_mutation(be, session_id)
+        await _reject_subagent_mutation(be, session_id, profile=profile)
         branch_params: dict[str, Any] = {}
         keep_count = (payload or {}).get("keep_count")
         if keep_count is not None:
@@ -1263,6 +1308,7 @@ def build_domain_router(
                     "cols": 48,
                     "source": "mobile",
                     "omit_messages": True,
+                    **({"profile": profile} if profile else {}),
                 },
             )
             runtime_id = resumed.get("session_id")
@@ -1277,7 +1323,10 @@ def build_domain_router(
         detail: dict[str, Any] = {}
         if new_id:
             try:
-                raw = await _backend_json(be, "GET", f"/api/sessions/{new_id}") or {}
+                raw = await _backend_json(
+                    be, "GET", f"/api/sessions/{new_id}",
+                    query={"profile": profile} if profile else None,
+                ) or {}
                 if isinstance(raw, dict):
                     detail = raw.get("session", raw)
             except HTTPException:
@@ -1294,7 +1343,9 @@ def build_domain_router(
         }
 
     @router.post("/sessions/{session_id}/duplicate")
-    async def duplicate_session(session_id: str) -> dict:
+    async def duplicate_session(
+        session_id: str, profile: str | None = Query(None)
+    ) -> dict:
         """Create an independent copy of a durable Hermes session.
 
         Current ``hermes serve`` intentionally has no legacy
@@ -1305,9 +1356,9 @@ def build_domain_router(
         duplicate action (same transcript/workspace/model, fresh lifecycle).
         """
         be = require_backend()
-        await _reject_subagent_mutation(be, session_id)
-        source = await _session_detail_compat(be, session_id)
-        messages = await _session_messages_compat(be, session_id)
+        await _reject_subagent_mutation(be, session_id, profile=profile)
+        source = await _session_detail_compat(be, session_id, profile=profile)
+        messages = await _session_messages_compat(be, session_id, profile=profile)
         if not isinstance(source, dict):
             raise HTTPException(status_code=404, detail="session not found")
         now = time.time()
@@ -1346,16 +1397,20 @@ def build_domain_router(
         )
         if not isinstance(imported, dict) or int(imported.get("imported") or 0) != 1:
             raise HTTPException(status_code=502, detail="Hermes did not import the duplicate")
-        detail = await _backend_json(be, "GET", f"/api/sessions/{duplicate_id}")
+        detail = await _backend_json(
+            be, "GET", f"/api/sessions/{duplicate_id}",
+            query={"profile": profile} if profile else None,
+        )
         return {"ok": True, "session": detail}
 
     @router.post("/sessions/{session_id}/title/regenerate")
     async def regenerate_session_title(
-        session_id: str, payload: dict = Body(default={})
+        session_id: str, payload: dict = Body(default={}),
+        profile: str | None = Query(None),
     ) -> dict:
         """Generate and persist a title through Hermes' real auxiliary LLM."""
         be = require_backend()
-        messages = await _all_session_messages(be, session_id)
+        messages = await _all_session_messages(be, session_id, profile=profile)
         transcript: list[str] = []
         for row in messages if isinstance(messages, list) else []:
             if not isinstance(row, dict) or row.get("role") not in {"user", "assistant"}:
@@ -1395,6 +1450,7 @@ def build_domain_router(
                     "cols": 48,
                     "source": "mobile",
                     "omit_messages": True,
+                    **({"profile": profile} if profile else {}),
                 },
             )
             runtime_id = str(resumed.get("session_id") or "").strip()
@@ -1408,7 +1464,10 @@ def build_domain_router(
         return {"ok": True, "title": title, "session": {"id": session_id, "title": title}}
 
     @router.post("/sessions/{session_id}/move")
-    async def move_session(session_id: str, payload: dict = Body(default={})) -> Any:
+    async def move_session(
+        session_id: str, payload: dict = Body(default={}),
+        profile: str | None = Query(None),
+    ) -> Any:
         be = require_backend()
         project_id = str((payload or {}).get("project_id") or "").strip()
         if not project_id:
@@ -1445,7 +1504,11 @@ def build_domain_router(
                 )
 
             return await be.gateway_rpc(
-                "session.workspace.move", {"cwd": cwd, "session_key": session_id}
+                "session.workspace.move", {
+                    "cwd": cwd,
+                    "session_key": session_id,
+                    **({"profile": profile} if profile else {}),
+                }
             )
         except HTTPException:
             raise
@@ -1454,7 +1517,8 @@ def build_domain_router(
 
     @router.post("/sessions/{session_id}/workspace")
     async def set_session_workspace(
-        session_id: str, payload: dict = Body(default={})
+        session_id: str, payload: dict = Body(default={}),
+        profile: str | None = Query(None),
     ) -> Any:
         """Move the session's working directory to an explicit cwd.
 
@@ -1468,7 +1532,11 @@ def build_domain_router(
             raise HTTPException(status_code=422, detail="cwd is required")
         try:
             return await be.gateway_rpc(
-                "session.workspace.move", {"cwd": cwd, "session_key": session_id}
+                "session.workspace.move", {
+                    "cwd": cwd,
+                    "session_key": session_id,
+                    **({"profile": profile} if profile else {}),
+                }
             )
         except BackendError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -1484,11 +1552,15 @@ def build_domain_router(
         session_id: str,
         response: Response,
         format: str = Query("json", pattern="^(json|html)$"),
+        profile: str | None = Query(None),
     ) -> dict:
         """Return a transport-safe export built from Hermes' canonical session API."""
         be = require_backend()
-        session = await _backend_json(be, "GET", f"/api/sessions/{session_id}") or {}
-        messages = await _all_session_messages(be, session_id)
+        session = await _backend_json(
+            be, "GET", f"/api/sessions/{session_id}",
+            query={"profile": profile} if profile else None,
+        ) or {}
+        messages = await _all_session_messages(be, session_id, profile=profile)
         payload = {
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "session_id": session_id,
@@ -1515,16 +1587,23 @@ def build_domain_router(
         }
 
     @router.post("/sessions/{session_id}/share")
-    async def create_session_share(session_id: str) -> dict:
+    async def create_session_share(
+        session_id: str, profile: str | None = Query(None)
+    ) -> dict:
         """Create or refresh an immutable public snapshot from real Hermes data."""
         be = require_backend()
-        session = await _backend_json(be, "GET", f"/api/sessions/{session_id}")
-        messages = await _all_session_messages(be, session_id)
+        session = await _backend_json(
+            be, "GET", f"/api/sessions/{session_id}",
+            query={"profile": profile} if profile else None,
+        )
+        messages = await _all_session_messages(be, session_id, profile=profile)
         if not isinstance(session, dict):
             raise HTTPException(status_code=404, detail="session not found")
         if not isinstance(messages, list) or not messages:
             raise HTTPException(status_code=422, detail="empty sessions cannot be shared")
-        snapshot = share_store.create(session_id, session, messages)
+        snapshot = share_store.create(
+            session_id, session, messages, profile=profile
+        )
         return {
             "ok": True,
             "share": {
@@ -1542,13 +1621,18 @@ def build_domain_router(
         }
 
     @router.delete("/sessions/{session_id}/share")
-    async def revoke_session_share(session_id: str) -> dict:
-        if not share_store.revoke(session_id):
+    async def revoke_session_share(
+        session_id: str, profile: str | None = Query(None)
+    ) -> dict:
+        if not share_store.revoke(session_id, profile=profile):
             raise HTTPException(status_code=404, detail="session share not found")
         return {"ok": True, "session_id": session_id}
 
     @router.post("/sessions/{session_id}/stop")
-    async def stop_session_stream(session_id: str, payload: dict = Body(default={})) -> Any:
+    async def stop_session_stream(
+        session_id: str, payload: dict = Body(default={}),
+        profile: str | None = Query(None),
+    ) -> Any:
         be = require_backend()
         # ``active_stream_id`` is a stream identity, not a gateway runtime
         # session id. Resume the durable row first and interrupt that runtime;
@@ -1562,6 +1646,7 @@ def build_domain_router(
                     "cols": 48,
                     "source": "mobile",
                     "omit_messages": True,
+                    **({"profile": profile} if profile else {}),
                 },
             )
             runtime_id = str(resumed.get("session_id") or "").strip()
@@ -1662,8 +1747,16 @@ def build_domain_router(
         return await _backend_json(require_backend(), "POST", "/api/providers/custom-endpoints", query={"profile": profile} if profile else None, body=payload)
 
     @router.post("/providers/custom-endpoints/validate")
-    async def validate_custom_endpoint(payload: dict = Body(...)) -> Any:
-        return await _backend_json(require_backend(), "POST", "/api/providers/custom-endpoints/validate", body=payload)
+    async def validate_custom_endpoint(
+        payload: dict = Body(...), profile: str | None = Query(None)
+    ) -> Any:
+        return await _backend_json(
+            require_backend(),
+            "POST",
+            "/api/providers/custom-endpoints/validate",
+            query={"profile": profile} if profile else None,
+            body=payload,
+        )
 
     @router.post("/providers/custom-endpoints/{endpoint_id}/activate")
     async def activate_custom_endpoint(endpoint_id: str, profile: str | None = Query(None)) -> Any:
@@ -3852,10 +3945,15 @@ def build_domain_router(
             raise HTTPException(status_code=502, detail=str(exc))
 
     @router.post("/subagents/{subagent_id}/interrupt")
-    async def interrupt_subagent(subagent_id: str) -> Any:
+    async def interrupt_subagent(
+        subagent_id: str, profile: str | None = Query(None)
+    ) -> Any:
         be = require_backend()
         try:
-            return await be.gateway_rpc("subagent.interrupt", {"subagent_id": subagent_id})
+            return await be.gateway_rpc(
+                "subagent.interrupt",
+                {"subagent_id": subagent_id, **({"profile": profile} if profile else {})},
+            )
         except BackendError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 

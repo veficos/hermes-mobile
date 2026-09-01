@@ -6,6 +6,8 @@
 /// ports of the desktop TypeScript originals.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -85,6 +87,7 @@ class _StarmapScreenState extends State<StarmapScreen>
   // outline/label, matching desktop's clickable ring labels.
   int? _selectedRing;
   int _loadGeneration = 0;
+  bool _detailOpen = false;
 
   @override
   void initState() {
@@ -107,6 +110,10 @@ class _StarmapScreenState extends State<StarmapScreen>
 
   void _reloadForConnection() {
     if (!mounted) return;
+    if (_detailOpen) {
+      _detailOpen = false;
+      unawaited(Navigator.of(context).maybePop());
+    }
     setState(() {
       _graph = null;
       _imported = null;
@@ -191,23 +198,28 @@ class _StarmapScreenState extends State<StarmapScreen>
       if (!mounted || !identical(api, context.read<ConnectionStore>().api)) {
         return;
       }
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(HermesRadius.sheet),
+      _detailOpen = true;
+      try {
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(HermesRadius.sheet),
+            ),
           ),
-        ),
-        builder: (_) => _StarmapNodeSheet(
-          node: node,
-          detail: detail,
-          ownerApi: api,
-          memoryCard: _memoryById[node.id],
-          onChanged: _load,
-        ),
-      );
+          builder: (_) => _StarmapNodeSheet(
+            node: node,
+            detail: detail,
+            ownerApi: api,
+            memoryCard: _memoryById[node.id],
+            onChanged: _load,
+          ),
+        );
+      } finally {
+        _detailOpen = false;
+      }
     } catch (e) {
       if (mounted && identical(api, context.read<ConnectionStore>().api)) {
         showHermesToast(context, message: l10n.starmapLoadDetailFailed('$e'));

@@ -73,6 +73,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   bool _onboardingChecked = false;
   Set<String> _backgroundStreamingIds = {};
   String? _backgroundConnectionId;
+  DateTime? _backgroundedAt;
   NotificationsService? _notificationsService;
   DeepLinkService? _deepLinkService;
   UpdateStore? _updateStore;
@@ -160,6 +161,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.inactive) {
+      _backgroundedAt ??= DateTime.now();
       _backgroundStreamingIds = {
         for (final row
             in context.read<SessionStore>().sessions ?? const <SessionRow>[])
@@ -172,11 +174,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       return;
     }
     if (state == AppLifecycleState.resumed) {
-      unawaited(_reconcileAfterResume());
+      final backgroundedAt = _backgroundedAt;
+      _backgroundedAt = null;
+      unawaited(_reconcileAfterResume(backgroundedAt));
     }
   }
 
-  Future<void> _reconcileAfterResume() async {
+  Future<void> _reconcileAfterResume(DateTime? backgroundedAt) async {
     if (!mounted) return;
     // Snapshot the ids this call is responsible for reconciling: a rapid
     // pause→resume while this is still in flight would otherwise overwrite
@@ -188,16 +192,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final sessions = context.read<SessionStore>();
     final notifications = context.read<NotificationStore>();
     final l10n = context.l10n;
-    if (pendingConnectionId != connection.activeConnectionId.value) {
+    if (pendingConnectionId != null &&
+        pendingConnectionId != connection.activeConnectionId.value) {
       _backgroundStreamingIds = _backgroundStreamingIds.difference(pending);
       return;
     }
     try {
-      await connection.connect();
+      final suspendedFor = backgroundedAt == null
+          ? Duration.zero
+          : DateTime.now().difference(backgroundedAt);
+      await connection.reconnectAfterResume(
+        refreshSocket: suspendedFor >= const Duration(seconds: 10),
+      );
     } catch (_) {
       return;
     }
-    if (pendingConnectionId != connection.activeConnectionId.value) {
+    if (pendingConnectionId != null &&
+        pendingConnectionId != connection.activeConnectionId.value) {
       _backgroundStreamingIds = _backgroundStreamingIds.difference(pending);
       return;
     }
@@ -222,6 +233,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               ? row.title!.trim()
               : l10n.appSessionCompletedBody,
           sessionId: row.id,
+          connectionId: pendingConnectionId,
+          profile: row.profile,
         );
       }
     }
@@ -236,7 +249,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
     if (target.approval) {
       final navContext = hermesNavigatorKey.currentContext ?? context;
-      await showRequestSheet(navContext);
+      final owner = target.connectionId == null
+          ? null
+          : OwnerRoute(
+              connectionId: ConnectionId(target.connectionId!),
+              profile: target.profile,
+            );
+      await showRequestSheet(
+        navContext,
+        requestId: target.requestId,
+        ownerRoute: owner,
+        sessionId: target.sessionId,
+      );
       return;
     }
     final sessionId = target.sessionId;

@@ -167,11 +167,10 @@ class SessionCard extends StatelessWidget {
           HermesProviderBrand.dingtalk,
         ),
         'slack' => ('Slack', HermesProviderBrand.slack),
-        'webui' ||
-        'mobile' ||
-        '' => (session.displaySource, HermesBrand.signalBlue),
+        'webui' || '' => (session.displaySource, HermesBrand.signalBlue),
+        'mobile' => (context.l10n.messageSourceMobile, HermesBrand.signalBlue),
         'server' => (
-          'Server',
+          context.l10n.messageSourceServer,
           dark ? HermesSemanticDark.gray : HermesSemantic.gray,
         ),
         _ => (

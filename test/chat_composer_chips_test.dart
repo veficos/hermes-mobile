@@ -116,7 +116,11 @@ class _FakeChatApi extends ApiClient {
   ];
 
   @override
-  Future<void> setSessionWorkspace(String id, String cwd) async {
+  Future<void> setSessionWorkspace(
+    String id,
+    String cwd, {
+    String? profile,
+  }) async {
     workspaceCwd = cwd;
   }
 }

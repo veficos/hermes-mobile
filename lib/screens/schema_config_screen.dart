@@ -189,7 +189,7 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
         _loading = false;
       });
       if (_viewingActiveConnection) {
-        _scopeStore?.updateProfiles(profilesPayload);
+        await _scopeStore?.updateProfiles(profilesPayload);
       }
     } catch (e) {
       if (mounted &&

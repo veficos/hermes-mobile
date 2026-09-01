@@ -10,6 +10,7 @@ import '../api_client.dart';
 import '../connections/connection_registry.dart';
 import '../gateway.dart';
 import '../gateway_oauth.dart';
+import '../../l10n/runtime_l10n.dart';
 import '../settings_store.dart';
 import '../ssh_gateway_tunnel.dart';
 
@@ -22,11 +23,18 @@ enum ConnectionPhase {
   exhausted,
 }
 
+typedef ConnectionClientsFactory =
+    Future<({ApiClient api, GatewayClient gateway})> Function(
+      ConnectionId id,
+      ConnectionSettings settings,
+    );
+
 class ConnectionStore extends ChangeNotifier {
   static const primaryConnectionId = ConnectionId('primary');
   static ConnectionId savedConnectionId(String name) =>
       ConnectionId('saved:${name.trim()}');
   final SettingsStore store;
+  final ConnectionClientsFactory? clientFactory;
   final ConnectionRegistry registry = ConnectionRegistry();
   final SessionOwnerIndex sessionOwners = SessionOwnerIndex();
 
@@ -44,8 +52,11 @@ class ConnectionStore extends ChangeNotifier {
   StreamSubscription<RoutedGatewayEvent>? _registryEventSub;
   final List<Future<void> Function(ApiClient client)> _beforeDisconnectHooks =
       [];
+  final Map<ConnectionId, int> _clientGenerations = {};
+  final Map<(ConnectionId, int), GatewayOAuthTokens> _pendingOAuthTokens = {};
 
-  ConnectionStore({SettingsStore? store}) : store = store ?? SettingsStore() {
+  ConnectionStore({SettingsStore? store, this.clientFactory})
+    : store = store ?? SettingsStore() {
     _registryEventSub = registry.events.listen((routed) {
       if (routed.route.connectionId == activeConnectionId) {
         _events.add(routed.event);
@@ -159,7 +170,7 @@ class ConnectionStore extends ChangeNotifier {
     gateway = clients.gateway;
     final oldPrimary = registry.runtime(primaryConnectionId);
     if (oldPrimary != null) {
-      unawaited(registry.remove(primaryConnectionId));
+      await registry.remove(primaryConnectionId);
     }
     registry.add(
       _runtime(primaryConnectionId, settings, api!, gateway!),
@@ -168,17 +179,63 @@ class ConnectionStore extends ChangeNotifier {
   }
 
   Future<void> saveConnection(ConnectionSettings newSettings) async {
+    final oldSettings = settings;
     final previousApi = api;
-    if (previousApi != null && !newSettings.hasSameIdentity(settings)) {
-      await _runBeforeDisconnectHooks(previousApi);
+    final previousGeneration = _clientGenerations[primaryConnectionId];
+    late ({ApiClient api, GatewayClient gateway}) clients;
+    try {
+      clients = await _clientsFor(primaryConnectionId, newSettings);
+    } catch (_) {
+      if (previousGeneration == null) {
+        _clientGenerations.remove(primaryConnectionId);
+      } else {
+        _clientGenerations[primaryConnectionId] = previousGeneration;
+      }
+      rethrow;
     }
-    settings = newSettings;
-    await store.save(newSettings);
-    _resetConnectionState();
-    await _buildClients();
+    final candidate = _runtime(
+      primaryConnectionId,
+      newSettings,
+      clients.api,
+      clients.gateway,
+    );
+    var persisted = false;
+    try {
+      // Prepare everything while the old primary remains fully usable.
+      await candidate.connect();
+      if (previousApi != null && !newSettings.hasSameIdentity(oldSettings)) {
+        await _runBeforeDisconnectHooks(previousApi);
+      }
+      await store.save(newSettings);
+      persisted = true;
+
+      // Commit only after every fallible preparation step has succeeded.
+      final oldPrimary = registry.runtime(primaryConnectionId);
+      if (oldPrimary != null) await registry.remove(primaryConnectionId);
+      registry.add(candidate, makeActive: true);
+      settings = newSettings;
+      api = clients.api;
+      gateway = clients.gateway;
+      _resetConnectionState();
+      _syncActiveFacade();
+    } catch (_) {
+      if (persisted) {
+        try {
+          await store.save(oldSettings);
+        } catch (_) {}
+      }
+      if (registry.runtime(primaryConnectionId) != candidate) {
+        await candidate.dispose();
+      }
+      if (previousGeneration == null) {
+        _clientGenerations.remove(primaryConnectionId);
+      } else {
+        _clientGenerations[primaryConnectionId] = previousGeneration;
+      }
+      rethrow;
+    }
     _activeProfileLabel = null;
     notifyListeners();
-    unawaited(connect());
     unawaited(refreshActiveConnectionLabel());
   }
 
@@ -267,6 +324,26 @@ class ConnectionStore extends ChangeNotifier {
     await connect();
   }
 
+  /// Restarts an exhausted reconnect cycle when the app returns to the
+  /// foreground. [refreshSocket] also replaces a socket that may look alive
+  /// locally after the operating system suspended its network path.
+  Future<void> reconnectAfterResume({bool refreshSocket = false}) async {
+    if (!isConfigured) return;
+    final runtime = registry.active;
+    if (runtime == null) return;
+    try {
+      await runtime.reconnectAfterResume(refreshSocket: refreshSocket);
+      _syncActiveFacade();
+      unawaited(refreshCapabilities());
+    } catch (e) {
+      error = '$e';
+      _syncActiveFacade();
+      rethrow;
+    } finally {
+      notifyListeners();
+    }
+  }
+
   /// Capability probe result (full | legacy | missing), fetched from status.
   Future<void> refreshStatus() async {
     await refreshCapabilities();
@@ -275,14 +352,17 @@ class ConnectionStore extends ChangeNotifier {
   Future<void> refreshCapabilities() async {
     final client = api;
     if (client == null) return;
+    final connectionId = activeConnectionId;
     try {
       final status = await client.status();
+      if (!identical(client, api) || connectionId != activeConnectionId) return;
       capability = status['capability']?.toString() ?? 'missing';
     } catch (_) {
       // Keep the last known runtime capability while reconnecting.
     }
     try {
       final methods = await client.methods();
+      if (!identical(client, api) || connectionId != activeConnectionId) return;
       final rest =
           ((methods['rest'] as Map?)?['resources'] as List? ?? const [])
               .map((item) => item.toString())
@@ -291,7 +371,9 @@ class ConnectionStore extends ChangeNotifier {
     } catch (_) {
       // Older mobile servers may not expose /methods.
     }
-    notifyListeners();
+    if (identical(client, api) && connectionId == activeConnectionId) {
+      notifyListeners();
+    }
   }
 
   bool supportsRest(String route) => restCapabilities.contains(route);
@@ -353,14 +435,12 @@ class ConnectionStore extends ChangeNotifier {
         },
       );
       if (result['ok'] != true) {
-        throw StateError('Plugin toggle was rejected by the backend');
+        throw StateError(runtimeL10n.errorPluginToggleRejected);
       }
       return;
     }
     if (settings.transport != ConnectionTransport.companion || api == null) {
-      throw StateError(
-        'This plugin requires a canonical key before it can be changed',
-      );
+      throw StateError(runtimeL10n.errorPluginCanonicalKeyRequired);
     }
     final name = plugin['name']?.toString() ?? '';
     await api!.setPluginEnabled(name, enabled, profile: profile);
@@ -408,21 +488,56 @@ class ConnectionStore extends ChangeNotifier {
     bool makeActive = false,
   }) async {
     if (!settings.isConfigured) {
-      throw StateError('connection is not configured');
+      throw StateError(runtimeL10n.errorConnectionNotConfigured);
     }
-    if (registry.runtime(id) != null) await registry.remove(id);
-    final clients = await _clientsFor(id, settings);
+    final previousClientGeneration = _clientGenerations[id];
+    late ({ApiClient api, GatewayClient gateway}) clients;
+    try {
+      clients = await _clientsFor(id, settings);
+    } catch (_) {
+      if (previousClientGeneration == null) {
+        _clientGenerations.remove(id);
+      } else {
+        _clientGenerations[id] = previousClientGeneration;
+      }
+      rethrow;
+    }
+    final clientGeneration = _clientGenerations[id]!;
     final runtime = _runtime(id, settings, clients.api, clients.gateway);
-    registry.add(runtime, makeActive: makeActive);
-    await runtime.connect();
-    if (makeActive) _syncActiveFacade();
-    notifyListeners();
+    try {
+      // A candidate is not observable as active until it has connected. This
+      // keeps the existing REST facade and routed event filter on one backend.
+      await runtime.connect();
+      if (registry.runtime(id) != null) await registry.remove(id);
+      registry.add(runtime, makeActive: makeActive);
+      final pending = _pendingOAuthTokens.remove((id, clientGeneration));
+      if (pending != null) {
+        await _persistRefreshedTokens(id, clientGeneration, settings, pending);
+      }
+      if (makeActive) _syncActiveFacade();
+      notifyListeners();
+    } catch (_) {
+      _pendingOAuthTokens.remove((id, clientGeneration));
+      if (_clientGenerations[id] == clientGeneration) {
+        if (previousClientGeneration == null) {
+          _clientGenerations.remove(id);
+        } else {
+          _clientGenerations[id] = previousClientGeneration;
+        }
+      }
+      await runtime.dispose();
+      rethrow;
+    }
   }
 
   Future<({ApiClient api, GatewayClient gateway})> _clientsFor(
     ConnectionId id,
     ConnectionSettings candidate,
   ) async {
+    final clientGeneration = (_clientGenerations[id] ?? 0) + 1;
+    _clientGenerations[id] = clientGeneration;
+    final factory = clientFactory;
+    if (factory != null) return factory(id, candidate);
     if (candidate.transport == ConnectionTransport.sshTunnel) {
       final tunnel = await openSshGatewayTunnel(
         candidate,
@@ -482,7 +597,7 @@ class ConnectionStore extends ChangeNotifier {
       ),
       client: oauthClient,
       onTokensChanged: (tokens) =>
-          _persistRefreshedTokens(id, candidate, tokens),
+          _persistRefreshedTokens(id, clientGeneration, candidate, tokens),
     );
     final gateway = GatewayClient(
       serverBaseUrl: candidate.baseUrl,
@@ -507,13 +622,29 @@ class ConnectionStore extends ChangeNotifier {
 
   Future<void> _persistRefreshedTokens(
     ConnectionId id,
+    int clientGeneration,
     ConnectionSettings previous,
     GatewayOAuthTokens tokens,
   ) async {
-    final next = tokens.applyTo(previous);
+    if (_clientGenerations[id] != clientGeneration) return;
     final runtime = registry.runtime(id);
+    if (runtime == null && id != primaryConnectionId) {
+      _pendingOAuthTokens[(id, clientGeneration)] = tokens;
+      return;
+    }
+    final base =
+        runtime?.settings ?? (id == primaryConnectionId ? settings : previous);
+    if (!base.hasSameIdentity(previous)) {
+      _pendingOAuthTokens[(id, clientGeneration)] = tokens;
+      return;
+    }
+    final next = tokens.applyTo(base);
     if (runtime != null) runtime.settings = next;
     if (id == primaryConnectionId) {
+      if (_clientGenerations[id] != clientGeneration ||
+          !settings.hasSameIdentity(previous)) {
+        return;
+      }
       settings = next;
       await store.save(next);
     }
@@ -549,9 +680,15 @@ class ConnectionStore extends ChangeNotifier {
   );
 
   void activateConnection(ConnectionId id) {
+    if (id == activeConnectionId) return;
     registry.activate(id);
+    _activeProfileLabel = null;
+    capability = null;
+    restCapabilities = const {};
     _syncActiveFacade();
     notifyListeners();
+    unawaited(refreshActiveConnectionLabel());
+    unawaited(refreshCapabilities());
   }
 
   void _syncActiveFacade() {
@@ -610,7 +747,7 @@ class ConnectionStore extends ChangeNotifier {
   }) {
     final owner = sessionOwners.byDurable(durableId);
     if (owner == null) {
-      throw StateError('session owner is unknown: $durableId');
+      throw StateError(runtimeL10n.errorSessionOwnerUnknown(durableId));
     }
     return requestForOwner(owner.route, method, params, timeout: timeout);
   }

@@ -1,0 +1,2 @@
+"NSLocalNetworkUsageDescription" = "Hermes Mobile 需要访问局域网，以连接本地的 hermes-mobile-server。";
+"NSMicrophoneUsageDescription" = "Hermes Mobile 使用麦克风进行语音输入，并可在应用位于前台时监听已启用的 Hermes 唤醒词。";

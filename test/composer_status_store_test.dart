@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/stores/composer_status_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations_en.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations_zh.dart';
+import 'package:hermes_mobile/l10n/runtime_l10n.dart';
 
 class _FakeRpc implements ComposerStatusRpc {
   var listCalls = <String>[];
@@ -41,6 +44,8 @@ ComposerStatusItem _findItem(
 ) => store.itemsFor(sessionId).firstWhere((item) => item.id == id);
 
 void main() {
+  setUp(() => RuntimeL10n.use(AppLocalizationsEn()));
+
   test('background reconcile does not cancel typed lifecycle timers', () async {
     final store = ComposerStatusStore();
     store.upsertStatus(
@@ -367,5 +372,18 @@ void main() {
     expect(_findItem(store, 's1', 'p1').state, ComposerStatusState.done);
     expect(_findItem(store, 's1', 'p2').state, ComposerStatusState.failed);
     expect(_findItem(store, 's1', 'p2').exitCode, 1);
+  });
+
+  test('empty background command uses the active locale', () {
+    RuntimeL10n.use(AppLocalizationsZh());
+    final store = ComposerStatusStore();
+    store.reconcileBackgroundProcesses('s1', const [
+      GatewayProcessEntry(sessionId: 'p1', command: '', status: 'running'),
+    ]);
+
+    expect(
+      _findItem(store, 's1', 'p1').title,
+      AppLocalizationsZh().backgroundProcessFallback,
+    );
   });
 }

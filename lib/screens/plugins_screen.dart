@@ -45,12 +45,22 @@ class _PluginsScreenState extends State<PluginsScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    observeConnection(context.read<ConnectionStore>(), _load);
+    observeConnection(context.read<ConnectionStore>(), _reloadForConnection);
     final scope = context.read<ProfileScopeStore>();
     if (identical(scope, _scopeStore)) return;
     _scopeStore?.removeListener(_onScopeChanged);
     _scopeStore = scope..addListener(_onScopeChanged);
     scope.ensureLoaded();
+  }
+
+  void _reloadForConnection() {
+    if (!mounted) return;
+    setState(() {
+      _plugins = null;
+      _error = null;
+      _busyName = '';
+    });
+    _load();
   }
 
   void _onScopeChanged() {
@@ -120,19 +130,41 @@ class _PluginsScreenState extends State<PluginsScreen>
 
   Future<void> _toggle(Map<String, dynamic> plugin, bool enabled) async {
     final connection = context.read<ConnectionStore>();
-    if (connectedApiOrNotify(context, connection) == null) return;
+    final api = connectedApiOrNotify(context, connection);
+    if (api == null) return;
+    final connectionId = connection.activeConnectionId;
+    final profile = _profile;
     final l10n = context.l10n;
     final name = (plugin['name'] ?? '').toString();
     setState(() => _busyName = name);
     try {
-      await connection.setPluginEnabled(plugin, enabled, profile: _profile);
+      requireActiveApi(context, connection, api);
+      if (connectionId != connection.activeConnectionId ||
+          profile != _profile) {
+        throw StateError(l10n.backendDisconnected);
+      }
+      await connection.setPluginEnabled(plugin, enabled, profile: profile);
+      if (!mounted) return;
+      requireActiveApi(context, connection, api);
+      if (connectionId != connection.activeConnectionId ||
+          profile != _profile) {
+        return;
+      }
       await _load();
     } catch (e) {
-      if (mounted) {
+      if (mounted &&
+          identical(api, connection.api) &&
+          connectionId == connection.activeConnectionId &&
+          profile == _profile) {
         showHermesToast(context, message: l10n.pluginsOperationFailed('$e'));
       }
     } finally {
-      if (mounted) setState(() => _busyName = '');
+      if (mounted &&
+          identical(api, connection.api) &&
+          connectionId == connection.activeConnectionId &&
+          profile == _profile) {
+        setState(() => _busyName = '');
+      }
     }
   }
 

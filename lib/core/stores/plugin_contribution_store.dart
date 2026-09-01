@@ -299,6 +299,8 @@ class PluginContributionStore extends ChangeNotifier {
 
   bool _loading = false;
   ConnectionId? _loadedConnection;
+  ConnectionId? _loadingConnection;
+  int _loadGeneration = 0;
   final Map<String, Timer> _pollers = {};
   final Map<String, WebSocketChannel> _sockets = {};
   final Map<String, StreamSubscription<dynamic>> _socketSubscriptions = {};
@@ -312,18 +314,44 @@ class PluginContributionStore extends ChangeNotifier {
   }
 
   void _onConnectionChanged() {
-    if (!connection.isConnected || _loading) return;
     final id = connection.activeConnectionId;
-    if (_loadedConnection == id) return;
+    if (!connection.isConnected) {
+      _loadGeneration++;
+      _loadedConnection = null;
+      _loadingConnection = null;
+      _loading = false;
+      if (contributions.isNotEmpty || results.isNotEmpty || badges.isNotEmpty) {
+        adaptPluginInventory(const [], owner: OwnerRoute(connectionId: id));
+      }
+      return;
+    }
+    if (_loadedConnection == id && !_loading) return;
+    if (_loading && _loadingConnection == id) return;
+    final generation = ++_loadGeneration;
     _loading = true;
+    _loadingConnection = id;
     connection
         .listPlugins()
         .then((plugins) {
+          if (generation != _loadGeneration ||
+              id != connection.activeConnectionId ||
+              !connection.isConnected) {
+            return;
+          }
           _loadedConnection = id;
-          adaptPluginInventory(plugins);
+          adaptPluginInventory(plugins, owner: OwnerRoute(connectionId: id));
         })
         .catchError((_) {})
-        .whenComplete(() => _loading = false);
+        .whenComplete(() {
+          if (generation == _loadGeneration) {
+            _loading = false;
+            _loadingConnection = null;
+            if (_loadedConnection != connection.activeConnectionId &&
+                connection.isConnected) {
+              _onConnectionChanged();
+            }
+          }
+        });
   }
 
   List<MobilePluginContribution> forArea(MobileContributionArea area) =>
@@ -521,6 +549,14 @@ class PluginContributionStore extends ChangeNotifier {
       if (!_safeAutomaticAction(item.badgeAction!)) continue;
       try {
         final result = await _dispatch(item.badgeAction!, item);
+        if (!contributions.any(
+              (entry) =>
+                  entry.namespacedId == item.namespacedId &&
+                  entry.owner == item.owner,
+            ) ||
+            connection.activeConnectionId != item.owner.connectionId) {
+          continue;
+        }
         final value = result['badge'] ?? result['count'];
         if (value == null) continue;
         badges = {...badges, item.namespacedId: value.toString()};

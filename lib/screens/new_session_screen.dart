@@ -241,7 +241,12 @@ class _NewSessionScreenState extends State<NewSessionScreen>
           handoff.isNotEmpty) {
         try {
           requireActiveApi(context, connection, ownerApi);
-          await ownerApi.saveDraft(sid, text: handoff, files: const []);
+          await ownerApi.saveDraft(
+            sid,
+            text: handoff,
+            files: const [],
+            profile: session.profile,
+          );
           if (!mounted) return;
           requireActiveApi(context, connection, ownerApi);
         } catch (error) {

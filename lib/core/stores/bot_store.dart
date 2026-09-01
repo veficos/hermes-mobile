@@ -388,6 +388,9 @@ class BotStore extends ChangeNotifier {
   final Map<String, int> _deletedRooms = {};
   StreamSubscription<RoutedGatewayEvent>? _events;
   Timer? _syncTimer;
+  Timer? _rosterTimer;
+  Timer? _connectionRefreshTimer;
+  String _connectionSignature = '';
   bool _disposed = false;
   int _refreshGeneration = 0;
 
@@ -412,6 +415,33 @@ class BotStore extends ChangeNotifier {
   BotStore(this.connection) {
     unawaited(loadGroups());
     _events = connection.routedEvents.listen(_onRoomEvent);
+    _connectionSignature = _runtimeSignature();
+    connection.addListener(_onConnectionChanged);
+  }
+
+  void startRosterRefresh() {
+    if (_disposed || _rosterTimer != null) return;
+    _rosterTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(refresh()),
+    );
+  }
+
+  String _runtimeSignature() => connection.registry.runtimes
+      .map((runtime) => '${runtime.id.value}:${identityHashCode(runtime.api)}')
+      .toList()
+      .join('|');
+
+  void _onConnectionChanged() {
+    final signature = _runtimeSignature();
+    if (signature == _connectionSignature) return;
+    _connectionSignature = signature;
+    _refreshGeneration++;
+    _connectionRefreshTimer?.cancel();
+    _connectionRefreshTimer = Timer(
+      const Duration(milliseconds: 100),
+      () => unawaited(refresh()),
+    );
   }
 
   Future<void> refresh() async {
@@ -605,11 +635,13 @@ class BotStore extends ChangeNotifier {
     Iterable<BotIdentity> members,
   ) async {
     final clean = name.trim();
-    if (clean.isEmpty) throw ArgumentError('group name is empty');
+    if (clean.isEmpty) throw ArgumentError(runtimeL10n.botGroupNameRequired);
     final keys = members.map((e) => e.key).toSet().toList();
-    if (keys.length < 2) throw ArgumentError('a group needs at least two bots');
+    if (keys.length < 2) {
+      throw ArgumentError(runtimeL10n.botGroupMembersMinimum);
+    }
     if (keys.length > maxGroupMembers) {
-      throw ArgumentError('a group supports at most $maxGroupMembers bots');
+      throw ArgumentError(runtimeL10n.botGroupMembersMaximum(maxGroupMembers));
     }
     final roomId =
         'r${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
@@ -666,9 +698,9 @@ class BotStore extends ChangeNotifier {
   }) async {
     final clean = name.trim();
     final keys = members.map((member) => member.key).toSet().toList();
-    if (clean.isEmpty) throw ArgumentError('group name is empty');
+    if (clean.isEmpty) throw ArgumentError(runtimeL10n.botGroupNameRequired);
     if (keys.length < 2 || keys.length > maxGroupMembers) {
-      throw ArgumentError('a group needs 2-$maxGroupMembers bots');
+      throw ArgumentError(runtimeL10n.botGroupMembersRange(maxGroupMembers));
     }
     final updated = BotGroup(
       id: group.id,
@@ -698,7 +730,9 @@ class BotStore extends ChangeNotifier {
     final clean = text.trim();
     if (clean.isEmpty && attachments.isEmpty) return;
     final members = _membersForGroup(group);
-    if (members.isEmpty) throw StateError('no available group member');
+    if (members.isEmpty) {
+      throw StateError(runtimeL10n.botGroupMemberUnavailable);
+    }
     final turnId = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
     final targetThread = threadId?.trim().isNotEmpty == true
         ? threadId!.trim()
@@ -1091,7 +1125,9 @@ class BotStore extends ChangeNotifier {
   Future<({String runtime, String? stored, Map<String, dynamic>? snapshot})>
   _ensureGroupSession(BotGroup group, BotIdentity member) async {
     final state = _stateFor(group.id);
-    final title = 'Group: ${group.roomId}';
+    final title = runtimeL10n.botGroupSessionTitle(group.roomId);
+    final legacyTitle = 'Group: ${group.roomId}';
+    final acceptedTitles = {title, legacyTitle};
     var stored = state.sessions[member.key];
     if (stored != null && stored.isNotEmpty) {
       try {
@@ -1123,8 +1159,8 @@ class BotStore extends ChangeNotifier {
         .map((row) => row.cast<String, dynamic>())
         .where(
           (row) =>
-              row['root_title']?.toString() == title ||
-              row['title']?.toString() == title,
+              acceptedTitles.contains(row['root_title']?.toString()) ||
+              acceptedTitles.contains(row['title']?.toString()),
         )
         .firstOrNull;
     if (matching != null) {
@@ -1164,7 +1200,9 @@ class BotStore extends ChangeNotifier {
     final runtime = created['session_id']?.toString();
     stored = created['stored_session_id']?.toString();
     if (runtime?.isNotEmpty != true) {
-      throw StateError('${member.displayName} group session did not start');
+      throw StateError(
+        runtimeL10n.errorBotGroupSessionStartFailed(member.displayName),
+      );
     }
     if (stored?.isNotEmpty == true) {
       state.sessions[member.key] = stored!;
@@ -1536,7 +1574,9 @@ class BotStore extends ChangeNotifier {
         break;
       }
     }
-    if (candidate == null) throw StateError('no free profile name');
+    if (candidate == null) {
+      throw StateError(runtimeL10n.botProfileNameUnavailable);
+    }
     await connection.requestForOwner(bot.route, 'profiles.create', {
       'name': candidate,
       'clone_from': bot.profile,
@@ -1642,12 +1682,12 @@ class BotStore extends ChangeNotifier {
 
   Future<void> deleteBot(BotIdentity bot) async {
     if (bot.profile.toLowerCase() == 'default') {
-      throw StateError('the default profile cannot be deleted');
+      throw StateError(runtimeL10n.botDefaultProfileDeleteForbidden);
     }
     final runtime = connection.registry.runtimes
         .where((item) => item.id == bot.route.connectionId)
         .firstOrNull;
-    if (runtime == null) throw StateError('bot connection is unavailable');
+    if (runtime == null) throw StateError(runtimeL10n.botConnectionUnavailable);
     await runtime.api.deleteProfile(bot.profile);
     groups = List.unmodifiable(
       groups
@@ -1707,7 +1747,7 @@ class BotStore extends ChangeNotifier {
       final message =
           (event.payload['message'] ??
                   event.payload['error'] ??
-                  'Bot turn failed')
+                  runtimeL10n.botTurnFailed)
               .toString();
       final completer = _roomReplyCompleters[sessionId];
       if (completer != null && !completer.isCompleted) {
@@ -1750,6 +1790,9 @@ class BotStore extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    connection.removeListener(_onConnectionChanged);
+    _rosterTimer?.cancel();
+    _connectionRefreshTimer?.cancel();
     for (final state in _roomStates.values) {
       state.epoch += 1;
     }

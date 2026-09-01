@@ -11,6 +11,8 @@ void main() {
         final framed = withPreviewBridge(
           '<html><body><button>Go</button></body></html>',
           'token-123',
+          scriptErrorLabel: 'Script error',
+          unhandledPromiseRejectionLabel: 'Unhandled promise rejection: ',
         );
 
         expect(framed, contains('window.hermes'));
@@ -23,8 +25,14 @@ void main() {
     );
 
     test('token is JSON encoded rather than interpolated as JavaScript', () {
-      final framed = withPreviewBridge('<p>x</p>', 'x";alert(1);//');
+      final framed = withPreviewBridge(
+        '<p>x</p>',
+        'x";alert(1);//',
+        scriptErrorLabel: '脚本错误',
+        unhandledPromiseRejectionLabel: '未处理：',
+      );
       expect(framed, contains(jsonEncode('x";alert(1);//')));
+      expect(framed, contains(jsonEncode('脚本错误')));
       expect(framed, isNot(contains('var token=x";alert')));
     });
   });
@@ -99,17 +107,19 @@ void main() {
   test(
     'tour script JSON-encodes payload and exposes the complete action set',
     () {
-      final script = previewTourScript({
-        'action': 'show',
-        'selector': '#x";alert(1)',
-        'title': 'Title',
-      });
+      final script = previewTourScript(
+        {'action': 'show', 'selector': '#x";alert(1)', 'title': 'Title'},
+        backLabel: 'Zurück',
+        doneLabel: 'Fertig',
+        nextLabel: 'Weiter',
+      );
       expect(script, contains(jsonEncode('#x";alert(1)')));
       expect(script, contains('kind==="targets"'));
       expect(script, contains('kind==="start"'));
       expect(script, contains('kind==="next"||kind==="prev"'));
       expect(script, contains('kind==="stop"'));
       expect(script, contains('__hermes-mobile-tour'));
+      expect(script, contains(jsonEncode('Zurück')));
     },
   );
 }

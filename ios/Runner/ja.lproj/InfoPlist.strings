@@ -1,0 +1,2 @@
+"NSLocalNetworkUsageDescription" = "Hermes Mobile は、ローカルの hermes-mobile-server に接続するためにローカルネットワークへのアクセスを必要とします。";
+"NSMicrophoneUsageDescription" = "Hermes Mobile は音声入力にマイクを使用し、Hermes ウェイクワードが有効な場合はアプリがフォアグラウンドにある間、そのウェイクワードを待機します。";

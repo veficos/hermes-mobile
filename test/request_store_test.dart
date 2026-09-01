@@ -611,4 +611,111 @@ void main() {
     requests.rotateDurableScope('stored-before', 'stored-after', route);
     expect(requests.current!.durableSessionId, 'stored-after');
   });
+
+  test(
+    'same request id is responded and dismissed within its owner scope',
+    () async {
+      const routeA = OwnerRoute(
+        connectionId: ConnectionId('server-a'),
+        profile: 'default',
+      );
+      const routeB = OwnerRoute(
+        connectionId: ConnectionId('server-b'),
+        profile: 'work',
+      );
+      final requests = RequestStore();
+      addTearDown(requests.dispose);
+      for (final route in [routeA, routeB]) {
+        requests.enqueue(
+          PendingRequest(
+            kind: RequestKind.approval,
+            requestId: 'r1',
+            sessionId: 'runtime-1',
+            ownerRoute: route,
+          ),
+        );
+      }
+
+      PendingRequest? sent;
+      await requests.respondById(
+        'r1',
+        (request) async {
+          sent = request;
+          return const {'ok': true};
+        },
+        ownerRoute: routeB,
+        sessionId: 'runtime-1',
+      );
+
+      expect(sent?.ownerRoute, routeB);
+      expect(requests.pendingRequests.single.ownerRoute, routeA);
+      expect(
+        requests.resolution('r1', ownerRoute: routeB)?.scopeKey,
+        startsWith(routeB.key),
+      );
+      requests.dismissById('r1', ownerRoute: routeA);
+      expect(requests.pendingCount, 0);
+    },
+  );
+
+  test('same request id and scope remains distinct by request kind', () async {
+    const route = OwnerRoute(
+      connectionId: ConnectionId('server-a'),
+      profile: 'default',
+    );
+    final requests = RequestStore();
+    addTearDown(requests.dispose);
+    for (final kind in [RequestKind.approval, RequestKind.secret]) {
+      requests.enqueue(
+        PendingRequest(
+          kind: kind,
+          requestId: 'shared-id',
+          sessionId: 'runtime-1',
+          ownerRoute: route,
+        ),
+      );
+    }
+
+    await requests.respondById(
+      'shared-id',
+      (_) async => const {'ok': true},
+      ownerRoute: route,
+      sessionId: 'runtime-1',
+      kind: RequestKind.secret,
+    );
+
+    expect(requests.pendingRequests.single.kind, RequestKind.approval);
+    expect(
+      requests.resolution(
+        'shared-id',
+        ownerRoute: route,
+        sessionId: 'runtime-1',
+        kind: RequestKind.secret,
+      ),
+      isNotNull,
+    );
+  });
+
+  test('clearScope preserves requests owned by background sessions', () {
+    const route = OwnerRoute(
+      connectionId: ConnectionId('server-a'),
+      profile: 'default',
+    );
+    final requests = RequestStore();
+    addTearDown(requests.dispose);
+    for (final session in ['foreground', 'background']) {
+      requests.enqueue(
+        PendingRequest(
+          kind: RequestKind.approval,
+          requestId: 'request-$session',
+          durableSessionId: session,
+          ownerRoute: route,
+        ),
+      );
+    }
+
+    requests.clearScope(ownerRoute: route, sessionId: 'foreground');
+
+    expect(requests.pendingRequests.single.durableSessionId, 'background');
+  });
 }

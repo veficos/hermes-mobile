@@ -12,8 +12,8 @@ import '../../widgets/message_preview_attachments.dart';
 import '../../widgets/web_preview.dart' show openChatLink;
 import '../content/embed_registry.dart';
 import 'code_block.dart';
-import 'expandable_block.dart';
 import 'inline_content.dart';
+import 'inline_content_cache.dart';
 import 'markdown_alert.dart';
 import 'math_view.dart';
 import 'preview_file_card.dart';
@@ -30,25 +30,34 @@ class InlineContentRenderer extends StatelessWidget {
   final String text;
   final EmbedRegistry? embeds;
   final bool selectable;
+  final bool cachePreparedContent;
   const InlineContentRenderer({
     super.key,
     required this.text,
     this.embeds,
     this.selectable = true,
+    this.cachePreparedContent = true,
   });
 
   @override
   Widget build(BuildContext context) {
     // L1: pull `@image:` / `@url:` / `@file:` refs out of the body — they
     // render as chips below, not as raw `@image:/path` text.
-    final refs = extractMessageReferences(text);
-    final body = refs.isEmpty ? text : stripMessageReferences(text);
-    final nodes = parseInlineContent(body);
+    final prepared = InlineContentCache.instance.prepare(
+      text,
+      cache: cachePreparedContent,
+    );
+    final refs = prepared.references;
+    final nodes = prepared.nodes;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final node in nodes)
-          _RenderNode(node: node, selectable: selectable),
+          _RenderNode(
+            node: node,
+            selectable: selectable,
+            enableHighlight: cachePreparedContent,
+          ),
         if (refs.isNotEmpty) MessageReferenceChips(references: refs),
       ],
     );
@@ -62,7 +71,12 @@ class InlineContentRenderer extends StatelessWidget {
 class _RenderNode extends StatelessWidget {
   final InlineContentNode node;
   final bool selectable;
-  const _RenderNode({required this.node, required this.selectable});
+  final bool enableHighlight;
+  const _RenderNode({
+    required this.node,
+    required this.selectable,
+    required this.enableHighlight,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +85,7 @@ class _RenderNode extends StatelessWidget {
         InlineCodeNode(:final code, :final language) => codeBlockOrArtifact(
           code,
           language,
+          enableHighlight: enableHighlight,
         ),
         InlineDirectiveNode(:final name, :final value) => Chip(
           avatar: const Icon(Icons.tune, size: 15),
@@ -197,14 +212,21 @@ class _PluginDirectiveCard extends StatelessWidget {
   }
 }
 
-class _TextNode extends StatelessWidget {
+class _TextNode extends StatefulWidget {
   final String text;
   final bool selectable;
   const _TextNode({required this.text, required this.selectable});
 
+  @override
+  State<_TextNode> createState() => _TextNodeState();
+}
+
+class _TextNodeState extends State<_TextNode> {
+  bool _expanded = false;
+
   Widget _markdown(BuildContext context, String data) => MarkdownBody(
     data: prettifyBareLinks(upgradeImageLinks(data)),
-    selectable: selectable,
+    selectable: widget.selectable,
     styleSheet: hermesMarkdownStyle(context, compact: true),
     extensionSet: md.ExtensionSet.gitHubFlavored,
     builders: {'table': ResizableMarkdownTableBuilder()},
@@ -216,12 +238,31 @@ class _TextNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final text = widget.text;
     if (text.length <= _longTextChars) return _markdown(context, text);
-    // G1: a very long block is collapsed behind "show more" so it can't
-    // dominate the transcript / stall layout.
-    return ExpandableBlock(
-      collapsedHeight: 320,
-      child: _markdown(context, text),
+    if (!_expanded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText('${text.substring(0, _longTextChars)}\n\n…'),
+          TextButton.icon(
+            onPressed: () => setState(() => _expanded = true),
+            icon: const Icon(Icons.expand_more),
+            label: Text(context.l10n.commonViewAll),
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _markdown(context, text),
+        TextButton.icon(
+          onPressed: () => setState(() => _expanded = false),
+          icon: const Icon(Icons.expand_less),
+          label: Text(context.l10n.commonCollapse),
+        ),
+      ],
     );
   }
 }

@@ -52,7 +52,8 @@ class McpLogsScreen extends StatefulWidget {
   State<McpLogsScreen> createState() => _McpLogsScreenState();
 }
 
-class _McpLogsScreenState extends State<McpLogsScreen> {
+class _McpLogsScreenState extends State<McpLogsScreen>
+    with ConnectionReloadMixin<McpLogsScreen> {
   List<String>? _lines;
   String? _error;
   late String _source;
@@ -60,6 +61,7 @@ class _McpLogsScreenState extends State<McpLogsScreen> {
   bool _polling = false;
   Timer? _pollTimer;
   final _scrollController = ScrollController();
+  int _generation = 0;
 
   @override
   void initState() {
@@ -70,15 +72,36 @@ class _McpLogsScreenState extends State<McpLogsScreen> {
 
   @override
   void dispose() {
+    disposeConnectionObserver();
     _disposed = true;
     _pollTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    observeConnection(context.read<ConnectionStore>(), _reloadForConnection);
+  }
+
+  void _reloadForConnection() {
+    _generation++;
+    _pollTimer?.cancel();
+    _polling = false;
+    if (mounted) {
+      setState(() {
+        _lines = null;
+        _error = null;
+      });
+    }
+    unawaited(_poll());
+  }
+
   Future<void> _poll() async {
     if (_disposed || _polling) return;
     _polling = true;
+    final generation = _generation;
     final api = context.read<ConnectionStore>().api;
     final source = _source;
     if (api != null) {
@@ -98,6 +121,7 @@ class _McpLogsScreenState extends State<McpLogsScreen> {
         }
         if (!_disposed &&
             mounted &&
+            generation == _generation &&
             source == _source &&
             identical(api, context.read<ConnectionStore>().api)) {
           setState(() {
@@ -108,6 +132,7 @@ class _McpLogsScreenState extends State<McpLogsScreen> {
       } catch (e) {
         if (!_disposed &&
             mounted &&
+            generation == _generation &&
             source == _source &&
             identical(api, context.read<ConnectionStore>().api)) {
           setState(() => _error = '$e');
@@ -116,8 +141,9 @@ class _McpLogsScreenState extends State<McpLogsScreen> {
     } else if (mounted) {
       setState(() => _error = connectionOfflineErrorCode);
     }
-    _polling = false;
+    if (generation == _generation) _polling = false;
     if (_disposed) return;
+    if (generation != _generation) return;
     if (source != _source) {
       unawaited(_poll());
       return;
@@ -139,9 +165,15 @@ class _McpLogsScreenState extends State<McpLogsScreen> {
     final sourcePicker = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(value: 'stdio', label: Text('stdio')),
-          ButtonSegment(value: 'agent', label: Text('agent')),
+        segments: [
+          ButtonSegment(
+            value: 'stdio',
+            label: Text(context.l10n.mcpLogsSourceStdio),
+          ),
+          ButtonSegment(
+            value: 'agent',
+            label: Text(context.l10n.mcpLogsSourceAgent),
+          ),
         ],
         selected: {_source},
         onSelectionChanged: (value) => _switchSource(value.first),

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../l10n/runtime_l10n.dart';
 import 'gateway_oauth.dart';
 
 Future<GatewayOAuthTokens> runNativeGatewayLogin({
@@ -49,7 +50,7 @@ Future<GatewayOAuthTokens> runNativeGatewayLogin({
     final code = parseGatewayOAuthCallback(callbackUri, state);
     return await client.exchangeCode(code: code, verifier: pkce.verifier);
   } on TimeoutException {
-    throw const GatewayOAuthException('Gateway sign-in timed out');
+    throw GatewayOAuthException(runtimeL10n.gatewayOauthTimedOut);
   } finally {
     await server.close(force: true);
   }

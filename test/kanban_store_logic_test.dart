@@ -129,6 +129,45 @@ void main() {
     expect((await newDetail)?.task.title, 'new detail');
   });
 
+  test('detail cache is partitioned by board slug', () async {
+    final client = _RacingBoardClient();
+    final api = KanbanApi(client, boardSlug: 'old');
+    final store = KanbanStore(api);
+    addTearDown(store.dispose);
+
+    final oldDetail = store.loadDetail('same-id');
+    client.detailGates['old']!.complete();
+    expect((await oldDetail)?.task.title, 'old detail');
+
+    api.boardSlug = 'new';
+    final newDetail = store.loadDetail('same-id');
+    client.detailGates['new']!.complete();
+    expect((await newDetail)?.task.title, 'new detail');
+  });
+
+  test('a stale board token cannot read or move a task', () async {
+    final client = _RacingBoardClient();
+    final api = KanbanApi(client, boardSlug: 'old');
+    final store = KanbanStore(api);
+    addTearDown(store.dispose);
+
+    api.boardSlug = 'new';
+
+    await expectLater(
+      store.loadDetail('same-id', expectedApi: api, expectedBoardSlug: 'old'),
+      throwsStateError,
+    );
+    await expectLater(
+      store.moveTask(
+        'same-id',
+        'done',
+        expectedApi: api,
+        expectedBoardSlug: 'old',
+      ),
+      throwsStateError,
+    );
+  });
+
   test('a stale sheet API token cannot operate on a new connection', () async {
     final oldApi = KanbanApi(_BoardSelectionClient(), boardSlug: 'old');
     final newApi = KanbanApi(_BoardSelectionClient(), boardSlug: 'new');
@@ -146,6 +185,59 @@ void main() {
     );
     expect(newApi.boardSlug, 'new');
   });
+
+  test('an old failed move cannot roll its board into a new binding', () async {
+    final oldClient = _DelayedPatchClient();
+    final oldApi = KanbanApi(oldClient);
+    final store = KanbanStore(oldApi)
+      ..boardData = KanbanBoard.fromJson({
+        'columns': [
+          {
+            'name': 'todo',
+            'tasks': [
+              {'id': 'old', 'title': 'old', 'status': 'todo'},
+            ],
+          },
+        ],
+      });
+    addTearDown(store.dispose);
+
+    final moving = store.moveTask('old', 'done');
+    final newApi = KanbanApi(_DelayedBoardClient('new'));
+    store.bindApi(newApi);
+    store.boardData = KanbanBoard.fromJson({
+      'columns': [
+        {
+          'name': 'todo',
+          'tasks': [
+            {'id': 'new', 'title': 'new', 'status': 'todo'},
+          ],
+        },
+      ],
+    });
+    oldClient.gate.complete();
+    await moving;
+
+    expect(store.boardData?.tasks.single.id, 'new');
+    expect(store.error, isNull);
+  });
+}
+
+class _DelayedPatchClient extends ApiClient {
+  _DelayedPatchClient()
+    : super(baseUrl: 'http://contract.invalid', apiKey: 'test');
+
+  final gate = Completer<void>();
+
+  @override
+  Future<dynamic> patch(
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+  }) async {
+    await gate.future;
+    throw StateError('old backend failed');
+  }
 }
 
 class _RacingBoardClient extends ApiClient {

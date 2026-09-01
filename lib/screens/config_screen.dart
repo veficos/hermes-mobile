@@ -989,7 +989,7 @@ class _ConfigScreenState extends State<ConfigScreen>
       key: const ValueKey('model-moa-section'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(theme, 'Mixture of Agents'),
+        _sectionTitle(theme, context.l10n.modelMoaTitle),
         const SizedBox(height: 8),
         if (_moa == null)
           Text(
@@ -2937,8 +2937,9 @@ class _ElevenLabsVoiceFieldState extends State<_ElevenLabsVoiceField>
     }
   }
 
-  String _label(Map<String, dynamic> v) {
-    final name = (v['name'] ?? v['voice_id'] ?? 'Voice').toString();
+  String _label(BuildContext context, Map<String, dynamic> v) {
+    final name = (v['name'] ?? v['voice_id'] ?? context.l10n.configVoice)
+        .toString();
     final category = (v['category'] ?? '').toString();
     return category.isNotEmpty ? '$name ($category)' : name;
   }
@@ -2980,7 +2981,7 @@ class _ElevenLabsVoiceFieldState extends State<_ElevenLabsVoiceField>
         for (final v in voices)
           DropdownMenuItem(
             value: v['voice_id']?.toString() ?? '',
-            child: Text(_label(v), overflow: TextOverflow.ellipsis),
+            child: Text(_label(context, v), overflow: TextOverflow.ellipsis),
           ),
         if (!hasCurrent && widget.current.isNotEmpty)
           DropdownMenuItem(

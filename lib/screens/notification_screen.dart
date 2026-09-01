@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/stores/notification_store.dart';
+import '../core/stores/connection_store.dart';
+import '../core/connections/connection_registry.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
@@ -67,14 +69,39 @@ class NotificationScreen extends StatelessWidget {
     final store = context.read<NotificationStore>();
     store.markRead(n.id);
     if (n.kind == NotificationKind.approval) {
-      await showRequestSheet(context);
+      final owner = n.connectionId == null
+          ? null
+          : OwnerRoute(
+              connectionId: ConnectionId(n.connectionId!),
+              profile: n.profile,
+            );
+      await showRequestSheet(
+        context,
+        requestId: n.requestId,
+        ownerRoute: owner,
+        sessionId: n.sessionId,
+      );
       return;
     }
     final sessionId = n.sessionId;
     if (sessionId == null) return;
     final session = context.read<SessionStore>();
     try {
-      await session.resumeSession(sessionId);
+      final connectionId = n.connectionId;
+      if (connectionId != null && connectionId.isNotEmpty) {
+        final connection = context.read<ConnectionStore>();
+        final id = ConnectionId(connectionId);
+        if (connection.registry.runtime(id) != null &&
+            connection.activeConnectionId != id) {
+          connection.activateConnection(id);
+        }
+        await session.resumeOwnedSession(
+          sessionId,
+          OwnerRoute(connectionId: id, profile: n.profile),
+        );
+      } else {
+        await session.resumeSession(sessionId, profile: n.profile);
+      }
       if (!context.mounted) return;
       Navigator.of(
         context,

@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/models.dart';
+import '../core/connections/connection_registry.dart';
+import '../core/stores/connection_store.dart';
 import '../core/stores/session_store.dart';
 import '../core/stores/subagent_store.dart';
 import '../l10n/l10n.dart';
@@ -49,6 +51,10 @@ class _SubagentsScreenState extends State<SubagentsScreen> {
     final store = context.watch<SubagentStore>();
     final session = context.watch<SessionStore>();
     final activeSessionId = session.durableId;
+    final connectionId = context.watch<ConnectionStore>().activeConnectionId;
+
+    SessionRow? rowFor(String id) =>
+        session.sessions?.where((row) => row.id == id).firstOrNull;
 
     // Build the list of session ids to display: the active session first, then
     // any other sessions with known subagent activity.
@@ -100,9 +106,13 @@ class _SubagentsScreenState extends State<SubagentsScreen> {
                       _SessionBlock(
                         sessionId: id,
                         isActive: id == activeSessionId,
-                        session: session.sessions
-                            ?.where((row) => row.id == id)
-                            .firstOrNull,
+                        session: rowFor(id),
+                        owner: OwnerRoute(
+                          connectionId: connectionId,
+                          profile:
+                              rowFor(id)?.profile ??
+                              (id == activeSessionId ? session.profile : null),
+                        ),
                         nodes: store.forSession(id),
                       ),
                       const SizedBox(height: HermesSpacing.md),
@@ -118,12 +128,14 @@ class _SessionBlock extends StatelessWidget {
   final String sessionId;
   final bool isActive;
   final SessionRow? session;
+  final OwnerRoute owner;
   final List<SubagentNode> nodes;
 
   const _SessionBlock({
     required this.sessionId,
     required this.isActive,
     this.session,
+    required this.owner,
     required this.nodes,
   });
 
@@ -255,7 +267,12 @@ class _SessionBlock extends StatelessWidget {
           child: Column(
             children: [
               for (final node in nodes)
-                _SubagentTile(node: node, sessionId: sessionId, depth: 0),
+                _SubagentTile(
+                  node: node,
+                  sessionId: sessionId,
+                  owner: owner,
+                  depth: 0,
+                ),
             ],
           ),
         ),
@@ -316,11 +333,13 @@ class _AggregateStatsRow extends StatelessWidget {
 class _SubagentTile extends StatelessWidget {
   final SubagentNode node;
   final String sessionId;
+  final OwnerRoute owner;
   final int depth;
 
   const _SubagentTile({
     required this.node,
     required this.sessionId,
+    required this.owner,
     required this.depth,
   });
 
@@ -347,7 +366,10 @@ class _SubagentTile extends StatelessWidget {
                   Navigator.of(ctx).pop();
                   final messenger = ScaffoldMessenger.of(context);
                   try {
-                    await context.read<SubagentStore>().interrupt(node.id);
+                    await context.read<SubagentStore>().interrupt(
+                      node.id,
+                      ownerRoute: owner,
+                    );
                     if (context.mounted) {
                       messenger.showSnackBar(
                         SnackBar(content: Text(l10n.subagentsInterruptSent)),
@@ -373,7 +395,10 @@ class _SubagentTile extends StatelessWidget {
                   if (sid == null || sid.isEmpty) return;
                   final session = context.read<SessionStore>();
                   try {
-                    await session.openReadOnlySession(sid);
+                    final childOwner = context
+                        .read<SubagentStore>()
+                        .routeForChildSession(sid, owner);
+                    await session.openReadOnlyOwnedSession(sid, childOwner);
                   } catch (error) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -462,7 +487,12 @@ class _SubagentTile extends StatelessWidget {
         subtitle: _NodeMeta(node: node),
         children: [
           for (final child in node.children)
-            _SubagentTile(node: child, sessionId: sessionId, depth: depth + 1),
+            _SubagentTile(
+              node: child,
+              sessionId: sessionId,
+              owner: owner,
+              depth: depth + 1,
+            ),
         ],
       ),
     );

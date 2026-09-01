@@ -1,8 +1,38 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hermes_mobile/core/connections/connection_registry.dart';
+import 'package:hermes_mobile/core/gateway.dart';
 import 'package:hermes_mobile/core/stores/notification_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/notifications_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _NotificationConnection extends ConnectionStore {
+  final controller = StreamController<RoutedGatewayEvent>.broadcast();
+
+  @override
+  Stream<RoutedGatewayEvent> get routedEvents => controller.stream;
+
+  void emit(String connectionId, GatewayEvent event, {String? profile}) {
+    controller.add(
+      RoutedGatewayEvent(
+        route: OwnerRoute(
+          connectionId: ConnectionId(connectionId),
+          profile: profile,
+        ),
+        socketGeneration: 1,
+        event: event,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    controller.close();
+    super.dispose();
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -66,6 +96,7 @@ void main() {
       sessionId: 'session-1',
       connectionId: 'saved:work',
       profile: 'expert',
+      requestId: 'request-7',
       approval: true,
     );
 
@@ -74,10 +105,70 @@ void main() {
     expect(decoded.sessionId, 'session-1');
     expect(decoded.connectionId, 'saved:work');
     expect(decoded.profile, 'expert');
+    expect(decoded.requestId, 'request-7');
     expect(decoded.approval, isTrue);
     expect(
       NotificationTarget.fromPayload('old-session').sessionId,
       'old-session',
     );
+  });
+
+  test(
+    'gateway notifications keep owner route and clear only matching key',
+    () async {
+      final connection = _NotificationConnection();
+      final store = NotificationStore(connection: connection);
+      addTearDown(store.dispose);
+      addTearDown(connection.dispose);
+      await store.initialized;
+
+      for (final id in ['primary', 'saved:work']) {
+        connection.emit(
+          id,
+          GatewayEvent(
+            type: 'notification.show',
+            payload: {'key': 'credits.low', 'text': 'Credits: Low'},
+          ),
+        );
+      }
+      await pumpEventQueue();
+      expect(store.items, hasLength(2));
+      expect(store.items.map((item) => item.connectionId).toSet(), {
+        'primary',
+        'saved:work',
+      });
+
+      connection.emit(
+        'saved:work',
+        GatewayEvent(
+          type: 'notification.clear',
+          payload: {'key': 'credits.low'},
+        ),
+      );
+      await pumpEventQueue();
+      expect(store.items.single.connectionId, 'primary');
+    },
+  );
+
+  test('approval notification retains routed profile and request id', () async {
+    final connection = _NotificationConnection();
+    final store = NotificationStore(connection: connection);
+    addTearDown(store.dispose);
+    addTearDown(connection.dispose);
+    await store.initialized;
+
+    connection.emit(
+      'saved:work',
+      GatewayEvent(
+        type: 'approval.request',
+        sessionId: 'runtime-7',
+        payload: const {'request_id': 'request-7'},
+      ),
+      profile: 'expert',
+    );
+    await pumpEventQueue();
+
+    expect(store.items.single.profile, 'expert');
+    expect(store.items.single.requestId, 'request-7');
   });
 }

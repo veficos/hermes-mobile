@@ -41,24 +41,37 @@ class SessionLiveState:
     """Tracks runtime events and exposes the mobile session-row contract."""
 
     def __init__(self) -> None:
-        self._states: dict[str, _LiveSession] = {}
-        self._runtime_to_durable: dict[str, str] = {}
-        self._request_sessions: dict[str, str] = {}
+        self._states: dict[tuple[str, str], _LiveSession] = {}
+        self._runtime_to_durable: dict[tuple[str, str], str] = {}
+        self._request_sessions: dict[tuple[str, str], tuple[str, str]] = {}
 
-    def _canonical(self, session_id: str) -> str:
-        return self._runtime_to_durable.get(session_id, session_id)
+    def reset(self) -> None:
+        """Discard projections owned by the previous backend process."""
+        self._states.clear()
+        self._runtime_to_durable.clear()
+        self._request_sessions.clear()
 
-    def _state(self, session_id: str) -> _LiveSession:
-        return self._states.setdefault(self._canonical(session_id), _LiveSession())
+    def _canonical(self, session_id: str, profile: str = "") -> tuple[str, str]:
+        return (
+            profile,
+            self._runtime_to_durable.get((profile, session_id), session_id),
+        )
 
-    def _remember_alias(self, runtime_id: str, durable_id: str) -> None:
+    def _state(self, session_id: str, profile: str = "") -> _LiveSession:
+        return self._states.setdefault(
+            self._canonical(session_id, profile), _LiveSession()
+        )
+
+    def _remember_alias(
+        self, runtime_id: str, durable_id: str, profile: str = ""
+    ) -> None:
         if not runtime_id or not durable_id or runtime_id == durable_id:
             return
-        self._runtime_to_durable[runtime_id] = durable_id
-        runtime_state = self._states.pop(runtime_id, None)
+        self._runtime_to_durable[(profile, runtime_id)] = durable_id
+        runtime_state = self._states.pop((profile, runtime_id), None)
         if runtime_state is None:
             return
-        durable_state = self._states.setdefault(durable_id, _LiveSession())
+        durable_state = self._states.setdefault((profile, durable_id), _LiveSession())
         if runtime_state.is_streaming is not None:
             durable_state.is_streaming = runtime_state.is_streaming
         if runtime_state.cron_running is not None:
@@ -74,10 +87,19 @@ class SessionLiveState:
         )
         durable_state.pending_request_ids.update(runtime_state.pending_request_ids)
 
+    def _clear_pending_requests(
+        self, state_key: tuple[str, str], state: _LiveSession
+    ) -> None:
+        for request_key, owner in tuple(self._request_sessions.items()):
+            if owner == state_key:
+                self._request_sessions.pop(request_key, None)
+        state.pending_request_ids.clear()
+
     async def on_backend_event(self, raw: dict[str, Any]) -> None:
         event_type = str(raw.get("type") or "")
         nested = raw.get("payload")
         payload = nested if isinstance(nested, dict) else raw
+        profile = str(raw.get("profile") or payload.get("profile") or "")
         runtime_id = str(raw.get("session_id") or payload.get("session_id") or "")
         durable_id = str(
             payload.get("stored_session_id")
@@ -85,23 +107,23 @@ class SessionLiveState:
             or ""
         )
         if runtime_id and durable_id:
-            self._remember_alias(runtime_id, durable_id)
-        session_id = durable_id or self._canonical(runtime_id)
+            self._remember_alias(runtime_id, durable_id, profile)
+        session_id = durable_id or self._canonical(runtime_id, profile)[1]
         if not session_id:
             return
-        state = self._state(session_id)
+        state_key = self._canonical(session_id, profile)
+        state = self._state(session_id, profile)
 
         if event_type == "message.start":
             state.is_streaming = True
             stream_id = payload.get("stream_id") or payload.get("active_stream_id")
             state.active_stream_id = str(stream_id) if stream_id else None
             # A resumed turn proves any earlier interactive wait was resolved.
-            for request_id in tuple(state.pending_request_ids):
-                self._request_sessions.pop(request_id, None)
-            state.pending_request_ids.clear()
+            self._clear_pending_requests(state_key, state)
         elif event_type in {"message.complete", "error"}:
             state.is_streaming = False
             state.active_stream_id = None
+            self._clear_pending_requests(state_key, state)
         elif event_type == "session.info":
             if "running" in payload:
                 state.is_streaming = wire_bool(payload.get("running"))
@@ -126,21 +148,31 @@ class SessionLiveState:
         elif event_type in _REQUEST_EVENTS:
             request_id = str(payload.get("request_id") or "")
             if request_id:
-                previous = self._request_sessions.get(request_id)
-                if previous and previous != session_id:
-                    self._state(previous).pending_request_ids.discard(request_id)
-                self._request_sessions[request_id] = session_id
+                request_key = (profile, request_id)
+                previous = self._request_sessions.get(request_key)
+                if previous and previous != state_key:
+                    self._states.setdefault(previous, _LiveSession()).pending_request_ids.discard(
+                        request_id
+                    )
+                self._request_sessions[request_key] = state_key
                 state.pending_request_ids.add(request_id)
         elif event_type in {"interactive.expire", "interactive.expired"}:
             request_id = str(payload.get("request_id") or "")
-            owner = self._request_sessions.pop(request_id, None)
+            owner = self._request_sessions.pop((profile, request_id), None)
             if owner:
-                self._state(owner).pending_request_ids.discard(request_id)
+                self._states.setdefault(owner, _LiveSession()).pending_request_ids.discard(
+                    request_id
+                )
 
     def project(self, row: dict[str, Any]) -> dict[str, Any]:
         projected = dict(row)
         session_id = str(row.get("session_id") or row.get("id") or "")
-        state = self._states.get(self._canonical(session_id))
+        profile = str(row.get("profile") or "")
+        state = self._states.get(self._canonical(session_id, profile))
+        if state is None and profile:
+            # Older gateway events did not carry a profile. They remain usable
+            # as a fallback, while profile-aware events stay fully isolated.
+            state = self._states.get(self._canonical(session_id))
 
         projected["is_streaming"] = (
             state.is_streaming

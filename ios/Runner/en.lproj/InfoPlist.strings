@@ -1,0 +1,2 @@
+"NSLocalNetworkUsageDescription" = "Hermes Mobile needs local network access to connect to your local hermes-mobile-server.";
+"NSMicrophoneUsageDescription" = "Hermes Mobile uses the microphone for voice input and, while the app is in the foreground, to listen for the Hermes wake word when enabled.";

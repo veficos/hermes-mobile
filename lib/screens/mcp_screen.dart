@@ -47,6 +47,7 @@ class _McpScreenState extends State<McpScreen>
   // server/catalog data with stale data and there is no way to tell the UI
   // is now wrong. Mirrors `provider_config_screen.dart`'s `_loadGeneration`.
   int _loadGeneration = 0;
+  int _mutationGeneration = 0;
 
   @override
   void initState() {
@@ -61,7 +62,7 @@ class _McpScreenState extends State<McpScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    observeConnection(context.read<ConnectionStore>(), _load);
+    observeConnection(context.read<ConnectionStore>(), _reloadForTarget);
   }
 
   @override
@@ -73,6 +74,21 @@ class _McpScreenState extends State<McpScreen>
 
   void _onScopeChanged() {
     if (!mounted) return;
+    _reloadForTarget();
+  }
+
+  void _reloadForTarget() {
+    if (!mounted) return;
+    ++_loadGeneration;
+    ++_mutationGeneration;
+    setState(() {
+      _servers = null;
+      _catalog = null;
+      _usage30d = const {};
+      _probes.clear();
+      _busyName = '';
+      _error = null;
+    });
     _load();
   }
 
@@ -133,15 +149,21 @@ class _McpScreenState extends State<McpScreen>
     final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
     final profile = _profile;
+    final generation = _mutationGeneration;
     final name = (server['name'] ?? '').toString();
     setState(() => _busyName = name);
     try {
       await api.mcpSetEnabled(name, enabled, profile: profile);
+      if (generation != _mutationGeneration || !_ownsTarget(api, profile)) {
+        return;
+      }
       _requireTarget(api, profile);
       await _reloadLive(api, profile);
       await _load();
     } catch (e) {
-      if (mounted) {
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, profile)) {
         showHermesToast(
           context,
           message: context.l10n.mcpOperationFailed('$e'),
@@ -149,7 +171,9 @@ class _McpScreenState extends State<McpScreen>
         );
       }
     } finally {
-      if (mounted) setState(() => _busyName = '');
+      if (mounted && generation == _mutationGeneration) {
+        setState(() => _busyName = '');
+      }
     }
   }
 
@@ -157,11 +181,16 @@ class _McpScreenState extends State<McpScreen>
     final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
     final profile = _profile;
+    final generation = _mutationGeneration;
     final name = (server['name'] ?? '').toString();
     setState(() => _busyName = name);
     try {
       final result = await api.mcpTest(name, profile: profile);
-      if (!_ownsTarget(api, profile) || !mounted) return;
+      if (!mounted ||
+          generation != _mutationGeneration ||
+          !_ownsTarget(api, profile)) {
+        return;
+      }
       setState(() => _probes[name] = result);
       final ok = result['ok'] == true || result['reachable'] == true;
       final tools = result['tools'] as List? ?? const [];
@@ -183,7 +212,9 @@ class _McpScreenState extends State<McpScreen>
         ),
       );
     } catch (e) {
-      if (mounted) {
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, profile)) {
         showHermesToast(
           context,
           message: context.l10n.mcpTestFailed('$e'),
@@ -191,7 +222,9 @@ class _McpScreenState extends State<McpScreen>
         );
       }
     } finally {
-      if (mounted) setState(() => _busyName = '');
+      if (mounted && generation == _mutationGeneration) {
+        setState(() => _busyName = '');
+      }
     }
   }
 
@@ -656,24 +689,30 @@ class _McpScreenState extends State<McpScreen>
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (edited == null || !mounted) return;
-    Map<String, dynamic> parsed;
+    dynamic decoded;
     try {
-      final decoded = jsonDecode(edited);
-      if (decoded is! Map) {
-        throw const FormatException('expected a JSON object');
-      }
-      parsed = decoded.cast<String, dynamic>();
-    } catch (e) {
+      decoded = jsonDecode(edited);
+    } on FormatException {
       if (mounted) {
         showHermesToast(
           context,
-          message: context.l10n.mcpInvalidJson('$e'),
+          message: context.l10n.mcpInvalidJsonSyntax,
           kind: HermesToastKind.error,
         );
       }
       if (mounted) setState(() => _busyName = '');
       return;
     }
+    if (decoded is! Map) {
+      showHermesToast(
+        context,
+        message: context.l10n.mcpJsonObjectRequired,
+        kind: HermesToastKind.error,
+      );
+      setState(() => _busyName = '');
+      return;
+    }
+    final parsed = decoded.cast<String, dynamic>();
     try {
       _requireTarget(api, profile);
       final next = {...rawServers, name: parsed};

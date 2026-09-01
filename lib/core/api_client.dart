@@ -4,6 +4,7 @@
 /// The client only ever deals with durable session ids.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
@@ -104,6 +105,8 @@ class ApiClient {
   final void Function()? onClose;
   final http.Client _client;
   final Duration requestTimeout;
+  final int readRetryAttempts;
+  final Future<void> Function(Duration delay) _retryDelay;
   late final ComposerDraftStore _draftStore = ComposerDraftStore(baseUrl);
 
   ApiClient({
@@ -115,8 +118,11 @@ class ApiClient {
     this.directGateway = false,
     this.onClose,
     this.requestTimeout = HermesPolicy.httpTimeout,
+    this.readRetryAttempts = 1,
+    Future<void> Function(Duration delay)? retryDelay,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+  }) : _client = client ?? http.Client(),
+       _retryDelay = retryDelay ?? Future<void>.delayed;
 
   void close() {
     _client.close();
@@ -156,7 +162,7 @@ class ApiClient {
   Map<String, dynamic> _asMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return data.cast<String, dynamic>();
-    throw ApiException(0, 'expected object response');
+    throw ApiException(0, runtimeL10n.errorExpectedObjectResponse);
   }
 
   Uri _uri(String path, [Map<String, String>? query]) {
@@ -205,10 +211,31 @@ class ApiClient {
     return path.replaceFirst('/api/v1/', '/api/');
   }
 
-  Never _unsupportedDirectGateway(String feature) => throw ApiException(
-    501,
-    '$feature is provided by Hermes Mobile Server and is not available on a direct Gateway connection',
-  );
+  /// Build the Kanban event endpoint using the same transport mapping and
+  /// credential source as REST. OAuth tokens are refreshed on every reconnect.
+  Future<Uri> kanbanEventsUri({
+    required String board,
+    required int since,
+  }) async {
+    final base = Uri.parse(baseUrl);
+    final token = accessTokenProvider == null
+        ? apiKey
+        : await accessTokenProvider!();
+    return base.replace(
+      scheme: base.scheme == 'https' ? 'wss' : 'ws',
+      path: directGateway
+          ? '/api/plugins/kanban/events'
+          : '/api/v1/kanban/events',
+      queryParameters: {
+        'token': token,
+        if (board.isNotEmpty) 'board': board,
+        'since': '$since',
+      },
+    );
+  }
+
+  Never _unsupportedDirectGateway(String feature) =>
+      throw ApiException(501, runtimeL10n.errorDirectGatewayFeatureUnavailable);
 
   Future<Map<String, dynamic>> _directRpc(
     String method,
@@ -228,7 +255,9 @@ class ApiClient {
         : result['message'] ?? error;
     throw ApiException(
       422,
-      '$feature failed: ${message ?? 'unknown error'}',
+      message == null
+          ? runtimeL10n.commonOperationFailed
+          : runtimeL10n.errorOperationFailedWithDetail('$message'),
       result,
     );
   }
@@ -300,12 +329,39 @@ class ApiClient {
     Map<String, String>? query,
     Duration? timeout,
   }) async {
-    final resp = await _bounded(
-      _client.get(_uri(path, query), headers: await _headers()),
-      timeout: timeout,
-    );
-    return _decode(resp);
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 0; attempt <= readRetryAttempts; attempt++) {
+      try {
+        final resp = await _bounded(
+          _client.get(_uri(path, query), headers: await _headers()),
+          timeout: timeout,
+        );
+        if (_isTransientReadStatus(resp.statusCode) &&
+            attempt < readRetryAttempts) {
+          await _retryDelay(_readRetryDelay(attempt));
+          continue;
+        }
+        return _decode(resp);
+      } on TimeoutException catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+      } on http.ClientException catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+      }
+      if (attempt < readRetryAttempts) {
+        await _retryDelay(_readRetryDelay(attempt));
+      }
+    }
+    Error.throwWithStackTrace(lastError!, lastStackTrace!);
   }
+
+  static bool _isTransientReadStatus(int status) =>
+      status == 408 || status == 429 || status >= 500;
+
+  static Duration _readRetryDelay(int attempt) =>
+      Duration(milliseconds: attempt == 0 ? 250 : 750);
 
   Future<dynamic> post(
     String path, {
@@ -496,10 +552,10 @@ class ApiClient {
     );
     final dataUrl = (data as Map)['data_url'] as String?;
     if (dataUrl == null) {
-      throw ApiException(0, 'TTS returned no audio');
+      throw ApiException(0, runtimeL10n.errorTtsNoAudio);
     }
     final comma = dataUrl.indexOf(',');
-    if (comma < 0) throw ApiException(0, 'invalid data url');
+    if (comma < 0) throw ApiException(0, runtimeL10n.errorInvalidDataUrl);
     return base64Decode(dataUrl.substring(comma + 1));
   }
 
@@ -602,16 +658,20 @@ class ApiClient {
     return _asMap(data);
   }
 
-  Future<void> deleteSession(String id) async {
-    await delete('/api/v1/sessions/${_seg(id)}');
+  Future<void> deleteSession(String id, {String? profile}) async {
+    await delete('/api/v1/sessions/${_seg(id)}', query: {'profile': ?profile});
   }
 
   /// Batch delete multiple sessions at once.
   /// Mirrors WebUI bulk-delete sidebar action.
-  Future<Map<String, dynamic>> deleteSessions(List<String> ids) async {
+  Future<Map<String, dynamic>> deleteSessions(
+    List<String> ids, {
+    String? profile,
+  }) async {
     if (ids.isEmpty) return {'deleted': <String>[], 'failed': <dynamic>[]};
     final data = await post(
       '/api/v1/sessions/batch-delete',
+      query: {'profile': ?profile},
       body: {'ids': ids},
     );
     return _asMap(data);
@@ -642,12 +702,16 @@ class ApiClient {
   }
 
   /// Pin/unpin a session to the sidebar top group (WebUI parity).
-  Future<void> pinSession(String id, bool pinned) async {
+  Future<void> pinSession(String id, bool pinned, {String? profile}) async {
     final path = '/api/v1/sessions/${_seg(id)}';
     if (directGateway) {
-      await patch(path, body: {'pinned': pinned});
+      await patch(path, body: {'pinned': pinned}, query: {'profile': ?profile});
     } else {
-      await put('$path/pin', body: {'pinned': pinned});
+      await put(
+        '$path/pin',
+        body: {'pinned': pinned},
+        query: {'profile': ?profile},
+      );
     }
   }
 
@@ -655,6 +719,7 @@ class ApiClient {
     String id, {
     int? keepCount,
     String? title,
+    String? profile,
   }) async {
     final normalizedTitle = title?.trim();
     if (directGateway) {
@@ -665,10 +730,11 @@ class ApiClient {
         'cols': 48,
         'source': 'mobile',
         'omit_messages': true,
+        'profile': ?profile,
       });
       final runtimeId = resumed['session_id']?.toString() ?? '';
       if (runtimeId.isEmpty) {
-        throw ApiException(502, 'session.resume returned no runtime id');
+        throw ApiException(502, runtimeL10n.sessionRuntimeIdMissing);
       }
       final result = await request('session.branch', {
         'session_id': runtimeId,
@@ -679,11 +745,11 @@ class ApiClient {
           (result['stored_session_id'] ?? result['session_id'])?.toString() ??
           '';
       if (newId.isEmpty) {
-        throw ApiException(502, 'session.branch returned no durable id');
+        throw ApiException(502, runtimeL10n.errorSessionBranchIdMissing);
       }
       Map<String, dynamic> detail = const {};
       try {
-        detail = await sessionInfo(newId);
+        detail = await sessionInfo(newId, profile: profile);
       } catch (_) {}
       return SessionRow.fromJson({
         'id': newId,
@@ -695,6 +761,7 @@ class ApiClient {
     }
     final data = await post(
       '/api/v1/sessions/${_seg(id)}/branch',
+      query: {'profile': ?profile},
       body: {
         'keep_count': ?keepCount,
         'title': ?(normalizedTitle?.isNotEmpty == true
@@ -706,13 +773,18 @@ class ApiClient {
     return SessionRow.fromJson((raw as Map).cast<String, dynamic>());
   }
 
-  Future<SessionRow> duplicateSession(String id) async {
+  Future<SessionRow> duplicateSession(String id, {String? profile}) async {
     if (directGateway) {
-      final source = await sessionInfo(id);
+      final source = await sessionInfo(id, profile: profile);
       final messages = <dynamic>[];
       var offset = 0;
       while (true) {
-        final page = await sessionMessagesPage(id, limit: 500, offset: offset);
+        final page = await sessionMessagesPage(
+          id,
+          limit: 500,
+          offset: offset,
+          profile: profile,
+        );
         messages.addAll(page.messages);
         offset += page.messages.length;
         if (page.messages.length < 500 ||
@@ -745,7 +817,9 @@ class ApiClient {
           if (!resetFields.contains(entry.key)) entry.key: entry.value,
         'id': duplicateId,
         'session_id': duplicateId,
-        'title': '${(source['title'] ?? 'Untitled').toString().trim()} (copy)',
+        'title': runtimeL10n.sessionCopyTitle(
+          (source['title'] ?? runtimeL10n.sessionUntitled).toString().trim(),
+        ),
         'source': source['source'] ?? 'mobile',
         'started_at': now,
         'ended_at': now,
@@ -763,12 +837,15 @@ class ApiClient {
         ),
       );
       if ((imported['imported'] as num?)?.toInt() != 1) {
-        throw ApiException(502, 'Hermes did not import the duplicate');
+        throw ApiException(502, runtimeL10n.errorDuplicateImportFailed);
       }
-      return SessionRow.fromJson(await sessionInfo(duplicateId));
+      return SessionRow.fromJson(
+        await sessionInfo(duplicateId, profile: profile),
+      );
     }
     final data = await post(
       '/api/v1/sessions/${_seg(id)}/duplicate',
+      query: {'profile': ?profile},
       body: const {},
     );
     final raw = (data as Map)['session'] ?? data;
@@ -778,6 +855,7 @@ class ApiClient {
   Future<String> regenerateSessionTitle(
     String id, {
     bool preferLatest = false,
+    String? profile,
   }) async {
     if (directGateway) {
       final request = gatewayRequest;
@@ -785,7 +863,12 @@ class ApiClient {
       final messages = <dynamic>[];
       var offset = 0;
       while (true) {
-        final page = await sessionMessagesPage(id, limit: 500, offset: offset);
+        final page = await sessionMessagesPage(
+          id,
+          limit: 500,
+          offset: offset,
+          profile: profile,
+        );
         messages.addAll(page.messages);
         offset += page.messages.length;
         if (page.messages.length < 500 ||
@@ -805,7 +888,7 @@ class ApiClient {
         }
       }
       if (transcript.isEmpty) {
-        throw ApiException(422, 'session has no titleable messages');
+        throw ApiException(422, runtimeL10n.errorSessionNoTitleableMessages);
       }
       final excerpt = preferLatest && transcript.length > 12
           ? transcript.sublist(transcript.length - 12)
@@ -825,23 +908,25 @@ class ApiClient {
       title = title.split(RegExp(r'[\r\n]+')).join(' ').trim();
       if (title.length > 80) title = title.substring(0, 80);
       if (title.isEmpty) {
-        throw ApiException(502, 'title generator returned an empty title');
+        throw ApiException(502, runtimeL10n.errorTitleGeneratorEmpty);
       }
       final resumed = await request('session.resume', {
         'session_id': id,
         'cols': 48,
         'source': 'mobile',
         'omit_messages': true,
+        'profile': ?profile,
       });
       final runtimeId = resumed['session_id']?.toString() ?? '';
       if (runtimeId.isEmpty) {
-        throw ApiException(502, 'session.resume returned no runtime id');
+        throw ApiException(502, runtimeL10n.sessionRuntimeIdMissing);
       }
       await request('session.title', {'session_id': runtimeId, 'title': title});
       return title;
     }
     final data = await post(
       '/api/v1/sessions/${_seg(id)}/title/regenerate',
+      query: {'profile': ?profile},
       body: {'prefer_latest': preferLatest},
     );
     final map = _asMap(data);
@@ -849,12 +934,16 @@ class ApiClient {
         .toString();
   }
 
-  Future<Map<String, dynamic>> createSessionShare(String id) async {
+  Future<Map<String, dynamic>> createSessionShare(
+    String id, {
+    String? profile,
+  }) async {
     if (directGateway) {
       _unsupportedDirectGateway('Public session sharing');
     }
     final data = await post(
       '/api/v1/sessions/${_seg(id)}/share',
+      query: {'profile': ?profile},
       body: const {},
     );
     final result = _asMap(data);
@@ -867,21 +956,28 @@ class ApiClient {
     return result;
   }
 
-  Future<void> revokeSessionShare(String id) async {
+  Future<void> revokeSessionShare(String id, {String? profile}) async {
     if (directGateway) {
       _unsupportedDirectGateway('Public session sharing');
     }
-    await delete('/api/v1/sessions/${_seg(id)}/share');
+    await delete(
+      '/api/v1/sessions/${_seg(id)}/share',
+      query: {'profile': ?profile},
+    );
   }
 
   String sessionShareUrl(String token) => Uri.parse(
     baseUrl,
   ).resolve('/share/${Uri.encodeComponent(token)}').toString();
 
-  Future<void> moveSession(String id, String? projectId) async {
+  Future<void> moveSession(
+    String id,
+    String? projectId, {
+    String? profile,
+  }) async {
     if (directGateway) {
       if (projectId == null || projectId.trim().isEmpty) {
-        throw ApiException(422, 'project_id is required');
+        throw ApiException(422, runtimeL10n.errorProjectIdRequired);
       }
       final request = gatewayRequest;
       if (request == null) _unsupportedDirectGateway('Move sessions');
@@ -895,13 +991,18 @@ class ApiClient {
                 .map((repo) => repo.path?.trim() ?? '')
                 .firstWhere((path) => path.isNotEmpty, orElse: () => '');
       if (cwd == null || cwd.isEmpty) {
-        throw ApiException(422, 'target project has no working folder');
+        throw ApiException(422, runtimeL10n.errorProjectWorkingFolderMissing);
       }
-      await request('session.workspace.move', {'session_key': id, 'cwd': cwd});
+      await request('session.workspace.move', {
+        'session_key': id,
+        'cwd': cwd,
+        'profile': ?profile,
+      });
       return;
     }
     await post(
       '/api/v1/sessions/${_seg(id)}/move',
+      query: {'profile': ?profile},
       body: {'project_id': projectId},
     );
   }
@@ -946,15 +1047,20 @@ class ApiClient {
   Future<Map<String, dynamic>> exportSession(
     String id, {
     String format = 'json',
+    String? profile,
   }) async {
     final data = await get(
       '/api/v1/sessions/${_seg(id)}/export',
-      query: {'format': format},
+      query: {'format': format, 'profile': ?profile},
     );
     return _asMap(data);
   }
 
-  Future<void> stopSessionStream(String id, String streamId) async {
+  Future<void> stopSessionStream(
+    String id,
+    String streamId, {
+    String? profile,
+  }) async {
     if (directGateway) {
       final request = gatewayRequest;
       if (request == null) _unsupportedDirectGateway('Stop sessions');
@@ -963,16 +1069,18 @@ class ApiClient {
         'cols': 48,
         'source': 'mobile',
         'omit_messages': true,
+        'profile': ?profile,
       });
       final runtimeId = resumed['session_id']?.toString() ?? '';
       if (runtimeId.isEmpty) {
-        throw ApiException(502, 'session.resume returned no runtime id');
+        throw ApiException(502, runtimeL10n.sessionRuntimeIdMissing);
       }
       await request('session.interrupt', {'session_id': runtimeId});
       return;
     }
     await post(
       '/api/v1/sessions/${_seg(id)}/stop',
+      query: {'profile': ?profile},
       body: {'stream_id': streamId},
     );
   }
@@ -980,11 +1088,15 @@ class ApiClient {
   // ── Composer draft persistence (WebUI `_saveComposerDraft` parity) ──
 
   /// Fetch the current persisted draft for a session.
-  Future<ComposerDraft> getDraft(String sessionId) async {
+  Future<ComposerDraft> getDraft(String sessionId, {String? profile}) async {
+    final scopedId = '${profile ?? ''}\u0000$sessionId';
     if (directGateway) {
-      return ComposerDraft.fromJson(await _draftStore.load(sessionId));
+      return ComposerDraft.fromJson(await _draftStore.load(scopedId));
     }
-    final data = await get('/api/v1/sessions/${_seg(sessionId)}/draft');
+    final data = await get(
+      '/api/v1/sessions/${_seg(sessionId)}/draft',
+      query: {'profile': ?profile},
+    );
     final draft = (data as Map)['draft'] as Map? ?? const {};
     return ComposerDraft.fromJson(draft.cast<String, dynamic>());
   }
@@ -995,10 +1107,12 @@ class ApiClient {
     String sessionId, {
     String? text,
     List<dynamic>? files,
+    String? profile,
   }) async {
+    final scopedId = '${profile ?? ''}\u0000$sessionId';
     if (directGateway) {
       return ComposerDraft.fromJson(
-        await _draftStore.save(sessionId, text: text, files: files),
+        await _draftStore.save(scopedId, text: text, files: files),
       );
     }
     final body = <String, dynamic>{};
@@ -1006,6 +1120,7 @@ class ApiClient {
     if (files != null) body['files'] = files;
     final data = await post(
       '/api/v1/sessions/${_seg(sessionId)}/draft',
+      query: {'profile': ?profile},
       body: body,
     );
     final draft = (data as Map)['draft'] as Map? ?? const {};
@@ -1226,7 +1341,7 @@ class ApiClient {
   }) async {
     final cwd = await fsDefaultCwd();
     if (cwd.trim().isEmpty) {
-      throw ApiException(0, 'server did not provide an export directory');
+      throw ApiException(0, runtimeL10n.errorExportDirectoryMissing);
     }
     final safeName = name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final filename =
@@ -1259,7 +1374,7 @@ class ApiClient {
   }) async {
     final cwd = await fsDefaultCwd();
     if (cwd.trim().isEmpty) {
-      throw ApiException(0, 'server did not provide an import directory');
+      throw ApiException(0, runtimeL10n.errorImportDirectoryMissing);
     }
     final safeName = filename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final separator = cwd.endsWith('/') || cwd.endsWith('\\')
@@ -1345,7 +1460,7 @@ class ApiClient {
     if (yamlText == null || yamlText.trim().isEmpty) return {};
     final parsed = loadYaml(yamlText);
     if (parsed is! Map) {
-      throw ApiException(0, 'expected object in raw config response');
+      throw ApiException(0, runtimeL10n.errorRawConfigInvalid);
     }
     return jsonDecode(jsonEncode(parsed)).cast<String, dynamic>();
   }
@@ -1557,14 +1672,26 @@ class ApiClient {
 
   // ------------------------------------------------------------ workspace
   /// Move a session's working directory (gateway `session.workspace.move`).
-  Future<void> setSessionWorkspace(String id, String cwd) async {
+  Future<void> setSessionWorkspace(
+    String id,
+    String cwd, {
+    String? profile,
+  }) async {
     if (directGateway) {
       final request = gatewayRequest;
       if (request == null) _unsupportedDirectGateway('Change workspace');
-      await request('session.workspace.move', {'session_key': id, 'cwd': cwd});
+      await request('session.workspace.move', {
+        'session_key': id,
+        'cwd': cwd,
+        'profile': ?profile,
+      });
       return;
     }
-    await post('/api/v1/sessions/${_seg(id)}/workspace', body: {'cwd': cwd});
+    await post(
+      '/api/v1/sessions/${_seg(id)}/workspace',
+      body: {'cwd': cwd},
+      query: {'profile': ?profile},
+    );
   }
 
   /// Raw project rows from the gateway `projects.list` RPC.
@@ -2270,7 +2397,7 @@ class ApiClient {
     );
     if (resp.statusCode >= 400) {
       _decode(resp);
-      throw ApiException(resp.statusCode, 'download failed');
+      throw ApiException(resp.statusCode, runtimeL10n.errorDownloadFailed);
     }
     final suggested =
         filenameFromContentDisposition(resp.headers['content-disposition']) ??
@@ -2903,8 +3030,11 @@ class ApiClient {
         .toList();
   }
 
-  Future<void> interruptSubagent(String id) async {
-    await post('/api/v1/subagents/${_seg(id)}/interrupt');
+  Future<void> interruptSubagent(String id, {String? profile}) async {
+    await post(
+      '/api/v1/subagents/${_seg(id)}/interrupt',
+      query: {if (profile != null && profile.isNotEmpty) 'profile': profile},
+    );
   }
 
   // ----------------------------------------------------------------- pet
@@ -3236,7 +3366,7 @@ class ApiClient {
         final id = (row['id'] ?? row['name'] ?? '').toString();
         if (id.toLowerCase() == platform.toLowerCase()) return row;
       }
-      throw ApiException(404, 'messaging platform not found');
+      throw ApiException(404, runtimeL10n.errorMessagingPlatformNotFound);
     }
     final data = await get('/api/v1/messaging/${_seg(platform)}/config');
     return _asMap(data);

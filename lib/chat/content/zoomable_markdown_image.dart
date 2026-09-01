@@ -7,6 +7,7 @@ import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/clipboard.dart';
+import '../../core/http_status_exception.dart';
 import '../../l10n/l10n.dart';
 
 /// Desktop parity: `chat/zoomable-image.tsx`. Any image inside a rendered
@@ -142,7 +143,9 @@ class _ZoomableInlineImage extends StatelessWidget {
         bytes = UriData.fromUri(uri).contentAsBytes();
       } else {
         final res = await http.get(uri);
-        if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
+        if (res.statusCode != 200) {
+          throw HttpStatusException(res.statusCode);
+        }
         bytes = res.bodyBytes;
       }
       if (!await Gal.hasAccess()) await Gal.requestAccess();
@@ -155,8 +158,11 @@ class _ZoomableInlineImage extends StatelessWidget {
       }
     } catch (error) {
       if (context.mounted) {
+        final detail = error is HttpStatusException
+            ? context.l10n.httpStatusError(error.statusCode)
+            : '$error';
         messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.imageSaveFailed('$error'))),
+          SnackBar(content: Text(context.l10n.imageSaveFailed(detail))),
         );
       }
     }

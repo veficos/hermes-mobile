@@ -206,7 +206,31 @@ class ConnectionRuntime {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
-    await connect();
+    try {
+      await connect();
+    } catch (_) {
+      if (!_disposed && phase != RuntimePhase.exhausted) {
+        phase = RuntimePhase.reconnecting;
+        onStateChanged?.call(this);
+        _scheduleReconnect();
+      }
+      rethrow;
+    }
+  }
+
+  /// Revalidates a socket after the application returns from the background.
+  /// Mobile operating systems may preserve the Dart object while silently
+  /// dropping the underlying network path.
+  Future<void> reconnectAfterResume({bool refreshSocket = false}) async {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempt = 0;
+    if (refreshSocket && gateway.isConnected) {
+      phase = RuntimePhase.reconnecting;
+      onStateChanged?.call(this);
+      await gateway.disconnect();
+    }
+    await reconnectNow();
   }
 
   Future<void> dispose() async {

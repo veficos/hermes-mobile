@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 
 import '../core/chat_message.dart';
 import '../core/clipboard.dart';
+import '../core/http_status_exception.dart';
 import '../chat/content/code_block.dart';
 import '../chat/content/diff_view.dart';
 import '../chat/content/inline_content_renderer.dart';
@@ -572,6 +573,7 @@ class _MessageBubbleBody {
           return InlineContentRenderer(
             text: remendStreamingMarkdown(_markdownText(context, part.text)),
             selectable: false,
+            cachePreparedContent: false,
           );
         }
         // 正文 14px / 行高 1.75（WebUI --message-body-font-size/line-height）。
@@ -848,7 +850,9 @@ class _GeneratedImageToolCard extends StatelessWidget {
         bytes = UriData.fromUri(Uri.parse(url)).contentAsBytes();
       } else {
         final res = await http.get(Uri.parse(url));
-        if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
+        if (res.statusCode != 200) {
+          throw HttpStatusException(res.statusCode);
+        }
         bytes = res.bodyBytes;
       }
       if (!await Gal.hasAccess()) await Gal.requestAccess();
@@ -863,10 +867,11 @@ class _GeneratedImageToolCard extends StatelessWidget {
       }
     } catch (error) {
       if (context.mounted) {
+        final detail = error is HttpStatusException
+            ? context.l10n.httpStatusError(error.statusCode)
+            : '$error';
         messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.messageImageSaveFailed('$error')),
-          ),
+          SnackBar(content: Text(context.l10n.messageImageSaveFailed(detail))),
         );
       }
     }
@@ -1596,7 +1601,7 @@ class _WebToolCard extends StatelessWidget {
         ? query!
         : url?.isNotEmpty == true
         ? url!
-        : 'Web';
+        : context.l10n.messageWebFallback;
     return ToolCardShell(
       icon: Icons.travel_explore,
       title: title,
@@ -2399,7 +2404,7 @@ class _TopMetaRow extends StatelessWidget {
         );
       case 'server':
         return (
-          label: 'Server',
+          label: context.l10n.messageSourceServer,
           icon: Icons.dns_outlined,
           color: HermesSemantic.gray,
         );
@@ -2413,7 +2418,7 @@ class _TopMetaRow extends StatelessWidget {
         );
       case 'mobile':
         return (
-          label: 'Mobile',
+          label: context.l10n.messageSourceMobile,
           icon: Icons.smartphone_outlined,
           color: HermesPalette.of(context).accent,
         );

@@ -99,7 +99,11 @@ class SessionDetailPanel extends StatelessWidget {
             sessionSourceLabel(row),
           ),
           if (row.profile?.isNotEmpty == true)
-            _Entry(Icons.person_outline, 'Profile', row.profile!),
+            _Entry(
+              Icons.person_outline,
+              context.l10n.sessionDetailProfile,
+              row.profile!,
+            ),
           if (row.model?.isNotEmpty == true)
             _Entry(
               Icons.smart_toy_outlined,

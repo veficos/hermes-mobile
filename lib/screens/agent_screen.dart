@@ -4,6 +4,7 @@
 /// /api/model/info) — no persona entity exists to CRUD.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_selector/file_selector.dart' as fs;
@@ -38,11 +39,16 @@ class _AgentScreenState extends State<AgentScreen>
   String? _error;
   bool _busy = false;
   int _loadGeneration = 0;
+  Timer? _statusTimer;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _statusTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => unawaited(_load()),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<BotStore>().refresh();
     });
@@ -51,12 +57,26 @@ class _AgentScreenState extends State<AgentScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    observeConnection(context.read<ConnectionStore>(), _load);
+    observeConnection(context.read<ConnectionStore>(), _reloadForConnection);
+  }
+
+  Future<void> _reloadForConnection() {
+    if (mounted) {
+      setState(() {
+        _status = null;
+        _error = null;
+      });
+    }
+    if (mounted) {
+      unawaited(context.read<BotStore>().refresh());
+    }
+    return _load();
   }
 
   @override
   void dispose() {
     disposeConnectionObserver();
+    _statusTimer?.cancel();
     super.dispose();
   }
 
@@ -270,7 +290,19 @@ class _AgentScreenState extends State<AgentScreen>
                                         title: Row(
                                           children: [
                                             Expanded(
-                                              child: Text(message.author),
+                                              child: Text(
+                                                message.author == 'You'
+                                                    ? context.l10n.botAuthorYou
+                                                    : message.author == 'System'
+                                                    ? context
+                                                          .l10n
+                                                          .botAuthorSystem
+                                                    : message.author == 'Bot'
+                                                    ? context
+                                                          .l10n
+                                                          .botAuthorFallback
+                                                    : message.author,
+                                              ),
                                             ),
                                             Text(
                                               '#${message.threadId.length > 8 ? message.threadId.substring(message.threadId.length - 8) : message.threadId}',
@@ -726,19 +758,28 @@ class _AgentScreenState extends State<AgentScreen>
     final api = context.read<ConnectionStore>().api;
     final generation = ++_loadGeneration;
     if (api == null) {
-      if (mounted) setState(() => _error = connectionOfflineErrorCode);
+      if (mounted) {
+        setState(() {
+          _status = null;
+          _error = connectionOfflineErrorCode;
+        });
+      }
       return;
     }
     try {
       final status = await api.status();
-      if (mounted && generation == _loadGeneration) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          identical(api, context.read<ConnectionStore>().api)) {
         setState(() {
           _status = status;
           _error = null;
         });
       }
     } catch (e) {
-      if (mounted && generation == _loadGeneration) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          identical(api, context.read<ConnectionStore>().api)) {
         setState(() => _error = '$e');
       }
     }

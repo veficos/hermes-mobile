@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import re
 import asyncio
+import re
 from pathlib import Path
+
+import httpx
 
 from hermes_mobile_server.config import Settings
 from hermes_mobile_server.domain_api import build_domain_router
@@ -108,6 +110,38 @@ def test_realtime_contract_paths_are_registered() -> None:
     assert '@router.websocket("/api/v1/terminal/ws")' in terminal
     kanban = (ROOT / "server/hermes_mobile_server/kanban_proxy.py").read_text()
     assert '@router.websocket("/api/v1/kanban/events")' in kanban
+
+
+def test_custom_endpoint_validation_forwards_profile() -> None:
+    class Backend:
+        is_running = True
+
+        def __init__(self) -> None:
+            self.call = None
+
+        async def http_client(self):
+            return self
+
+        async def request(self, method, path, params=None, json=None, headers=None):
+            self.call = (method, path, params, json)
+            return httpx.Response(200, json={"ok": True})
+
+    backend = Backend()
+    router = build_domain_router(Settings(api_key="contract-key"), backend)
+    route = next(
+        item
+        for item in router.routes
+        if item.path == "/api/v1/providers/custom-endpoints/validate"
+    )
+
+    asyncio.run(route.endpoint(payload={"id": "custom"}, profile="work"))
+
+    assert backend.call == (
+        "POST",
+        "/api/providers/custom-endpoints/validate",
+        {"profile": "work"},
+        {"id": "custom"},
+    )
 
 
 def test_gateway_proxy_backpressures_without_dropping_frames() -> None:

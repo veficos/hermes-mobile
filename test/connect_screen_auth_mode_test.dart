@@ -42,7 +42,7 @@ void main() {
     await tester.tap(find.text('Direct Gateway'));
     await tester.pump();
     expect(find.text('从 Hermes Cloud 发现 Agent'), findsOneWidget);
-    expect(find.text('Gateway Token'), findsOneWidget);
+    expect(find.text('Gateway 令牌'), findsOneWidget);
 
     await tester.tap(find.text('OAuth'));
     await tester.pump();

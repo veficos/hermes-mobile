@@ -58,6 +58,16 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       widget.project['project_id']?.toString() ??
       '';
 
+  String _folderLabel(Map<String, dynamic> folder) {
+    final label = folder['label']?.toString().trim() ?? '';
+    final path = folder['path']?.toString() ?? '';
+    final primary = folder['is_primary'] == true || path == _path;
+    if (primary && (label.isEmpty || label == 'Main')) {
+      return context.l10n.projectPrimaryFolder;
+    }
+    return label;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -302,8 +312,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              (folder['label']?.toString().isNotEmpty ?? false)
-                                  ? '${folder['label']} — ${folder['path']}'
+                              _folderLabel(folder).isNotEmpty
+                                  ? '${_folderLabel(folder)} — ${folder['path']}'
                                   : (folder['path'] ?? '').toString(),
                               style: Theme.of(context).textTheme.bodySmall,
                               overflow: TextOverflow.ellipsis,

@@ -22,6 +22,7 @@ class KanbanTaskDetailSheet extends StatefulWidget {
 class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
   late KanbanTaskDetail detail;
   late final KanbanApi _api;
+  late final String _boardSlug;
   bool busy = false;
   final comment = TextEditingController();
   List<Map<String, dynamic>> homes = const [];
@@ -31,8 +32,29 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
   void initState() {
     super.initState();
     _api = widget.store.api;
+    _boardSlug = _api.boardSlug;
     detail = widget.initial;
+    widget.store.addListener(_onStoreChanged);
     _loadHomes();
+  }
+
+  KanbanApi _requireTarget() {
+    final api = widget.store.requireApi(_api);
+    if (api.boardSlug != _boardSlug) {
+      throw StateError(context.l10n.backendDisconnected);
+    }
+    return api;
+  }
+
+  void _onStoreChanged() {
+    if (!mounted) return;
+    try {
+      _requireTarget();
+    } catch (_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).maybePop();
+      });
+    }
   }
 
   Future<void> _loadHomes() async {
@@ -43,9 +65,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
       });
     }
     try {
-      final raw = await widget.store
-          .requireApi(_api)
-          .homeChannels(taskId: detail.task.id);
+      final raw = await _requireTarget().homeChannels(taskId: detail.task.id);
       final list = (raw['home_channels'] as List? ?? const [])
           .whereType<Map>()
           .map((e) => e.cast<String, dynamic>())
@@ -69,6 +89,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
 
   @override
   void dispose() {
+    widget.store.removeListener(_onStoreChanged);
     comment.dispose();
     super.dispose();
   }
@@ -92,9 +113,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
       ),
     );
     if (confirmed != true) return;
-    await run(
-      () => widget.store.requireApi(_api).deleteAttachment(attachment.id),
-    );
+    await run(() => _requireTarget().deleteAttachment(attachment.id));
   }
 
   Future<void> run(Future<dynamic> Function() action) async {
@@ -106,6 +125,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
         detail.task.id,
         force: true,
         expectedApi: _api,
+        expectedBoardSlug: _boardSlug,
       );
       if (mounted && d != null) setState(() => detail = d);
     } catch (e) {
@@ -121,7 +141,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
 
   Future<void> inspect(Object id) async {
     try {
-      final value = await widget.store.requireApi(_api).inspectRun(id);
+      final value = await _requireTarget().inspectRun(id);
       if (!mounted) return;
       showModalBottomSheet(
         context: context,
@@ -141,7 +161,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
 
   Future<void> showLog() async {
     try {
-      final value = await widget.store.requireApi(_api).log(detail.task.id);
+      final value = await _requireTarget().log(detail.task.id);
       if (!mounted) return;
       showModalBottomSheet(
         context: context,
@@ -163,9 +183,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
 
   Future<void> estimate() async {
     try {
-      final value = await widget.store
-          .requireApi(_api)
-          .estimate(detail.task.id);
+      final value = await _requireTarget().estimate(detail.task.id);
       if (!mounted) return;
       showModalBottomSheet(
         context: context,
@@ -207,9 +225,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => ctl.dispose());
     if (id != null && id.isNotEmpty) {
-      await run(
-        () => widget.store.requireApi(_api).addLink(detail.task.id, id),
-      );
+      await run(() => _requireTarget().addLink(detail.task.id, id));
     }
   }
 
@@ -223,6 +239,30 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
     'review' => context.l10n.taskStatusReview,
     'done' => context.l10n.taskStatusDone,
     'archived' => context.l10n.taskStatusArchived,
+    'queued' => context.l10n.kanbanRunQueued,
+    'completed' => context.l10n.kanbanRunCompleted,
+    'failed' => context.l10n.kanbanRunFailed,
+    'cancelled' || 'canceled' => context.l10n.kanbanRunCancelled,
+    _ => value,
+  };
+
+  String _eventKindLabel(BuildContext context, String value) => switch (value) {
+    'task.created' || 'task_created' => context.l10n.kanbanEventTaskCreated,
+    'task.updated' || 'task_updated' => context.l10n.kanbanEventTaskUpdated,
+    'task.deleted' || 'task_deleted' => context.l10n.kanbanEventTaskDeleted,
+    'run.started' || 'run_started' => context.l10n.kanbanEventRunStarted,
+    'run.completed' || 'run_completed' => context.l10n.kanbanEventRunCompleted,
+    'run.failed' || 'run_failed' => context.l10n.kanbanEventRunFailed,
+    'run.cancelled' ||
+    'run.canceled' ||
+    'run_cancelled' ||
+    'run_canceled' => context.l10n.kanbanEventRunCancelled,
+    'comment.created' ||
+    'comment_created' => context.l10n.kanbanEventCommentCreated,
+    'attachment.added' ||
+    'attachment_added' => context.l10n.kanbanEventAttachmentAdded,
+    'attachment.deleted' ||
+    'attachment_deleted' => context.l10n.kanbanEventAttachmentDeleted,
     _ => value,
   };
 
@@ -255,7 +295,14 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
       ),
     );
     if (next == null || next == detail.task.status) return;
-    await run(() => widget.store.moveTask(detail.task.id, next));
+    await run(
+      () => widget.store.moveTask(
+        detail.task.id,
+        next,
+        expectedApi: _api,
+        expectedBoardSlug: _boardSlug,
+      ),
+    );
   }
 
   Future<void> editTask() async {
@@ -430,7 +477,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
     });
     if (value == null || value.title.isEmpty) return;
     await run(
-      () => widget.store.requireApi(_api).patchTask(detail.task.id, {
+      () => _requireTarget().patchTask(detail.task.id, {
         'title': value.title,
         'body': value.body,
         'status': value.status,
@@ -449,13 +496,11 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
       final file = await openFile();
       if (file == null) return;
       await run(() async {
-        await widget.store
-            .requireApi(_api)
-            .uploadAttachment(
-              detail.task.id,
-              file.name,
-              await file.readAsBytes(),
-            );
+        await _requireTarget().uploadAttachment(
+          detail.task.id,
+          file.name,
+          await file.readAsBytes(),
+        );
       });
     } catch (error) {
       if (mounted) {
@@ -468,9 +513,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
 
   Future<void> download(KanbanAttachment attachment) async {
     try {
-      final data = await widget.store
-          .requireApi(_api)
-          .downloadAttachment(attachment.id);
+      final data = await _requireTarget().downloadAttachment(attachment.id);
       final path = await writeDownloadBytes(
         attachment.filename.isEmpty ? data.filename : attachment.filename,
         data.bytes,
@@ -494,13 +537,9 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
     if (platform.isEmpty) return;
     try {
       if (home['subscribed'] == true) {
-        await widget.store
-            .requireApi(_api)
-            .unsubscribeHome(detail.task.id, platform);
+        await _requireTarget().unsubscribeHome(detail.task.id, platform);
       } else {
-        await widget.store
-            .requireApi(_api)
-            .subscribeHome(detail.task.id, platform);
+        await _requireTarget().subscribeHome(detail.task.id, platform);
       }
       await _loadHomes();
     } catch (e) {
@@ -517,9 +556,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
       return TextButton(
         onPressed: busy
             ? null
-            : () => run(
-                () => widget.store.requireApi(_api).reclaim(detail.task.id),
-              ),
+            : () => run(() => _requireTarget().reclaim(detail.task.id)),
         child: Text(action.label),
       );
     }
@@ -528,11 +565,8 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
       return TextButton(
         onPressed: busy || profile.isEmpty
             ? null
-            : () => run(
-                () => widget.store
-                    .requireApi(_api)
-                    .reassign(detail.task.id, profile),
-              ),
+            : () =>
+                  run(() => _requireTarget().reassign(detail.task.id, profile)),
         child: Text(action.label),
       );
     }
@@ -540,9 +574,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
       return TextButton(
         onPressed: busy
             ? null
-            : () => run(
-                () => widget.store.requireApi(_api).specify(detail.task.id),
-              ),
+            : () => run(() => _requireTarget().specify(detail.task.id)),
         child: Text(action.label),
       );
     }
@@ -588,11 +620,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
             PopupMenuButton<String>(
               onSelected: (v) => v == 'estimate'
                   ? estimate()
-                  : run(
-                      () => widget.store
-                          .requireApi(_api)
-                          .decompose(detail.task.id),
-                    ),
+                  : run(() => _requireTarget().decompose(detail.task.id)),
               itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'estimate',
@@ -658,11 +686,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
                       final v = comment.text.trim();
                       if (v.isNotEmpty) {
                         comment.clear();
-                        run(
-                          () => widget.store
-                              .requireApi(_api)
-                              .comment(detail.task.id, v),
-                        );
+                        run(() => _requireTarget().comment(detail.task.id, v));
                       }
                     },
               icon: const Icon(Icons.send),
@@ -674,18 +698,14 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
         Text(context.l10n.kanbanRuns(detail.runs.length)),
         for (final r in detail.runs)
           ListTile(
-            title: Text(r.status),
+            title: Text(_statusLabel(context, r.status)),
             subtitle: Text(r.summary ?? r.error ?? ''),
             onTap: () => inspect(r.id),
             trailing: r.status == 'running'
                 ? IconButton(
                     onPressed: busy
                         ? null
-                        : () => run(
-                            () => widget.store
-                                .requireApi(_api)
-                                .terminateRun(r.id),
-                          ),
+                        : () => run(() => _requireTarget().terminateRun(r.id)),
                     icon: const Icon(Icons.stop_circle_outlined),
                     tooltip: context.l10n.commonStop,
                   )
@@ -715,9 +735,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
               onPressed: busy
                   ? null
                   : () => run(
-                      () => widget.store
-                          .requireApi(_api)
-                          .removeLink(detail.task.id, id),
+                      () => _requireTarget().removeLink(detail.task.id, id),
                     ),
               icon: const Icon(Icons.link_off),
               tooltip: context.l10n.commonRemove,
@@ -758,7 +776,7 @@ class _KanbanTaskDetailSheetState extends State<KanbanTaskDetailSheet> {
             ListTile(
               dense: true,
               leading: const Icon(Icons.history, size: 18),
-              title: Text(event.kind),
+              title: Text(_eventKindLabel(context, event.kind)),
               subtitle: event.payload == null
                   ? null
                   : Text(

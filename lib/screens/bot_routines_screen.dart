@@ -5,7 +5,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/connection_reload_mixin.dart';
 import '../core/stores/bot_store.dart';
+import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
@@ -42,20 +44,49 @@ class _BotRoutinesScreenState extends State<BotRoutinesScreen> {
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
+    final botStore = context.read<BotStore>();
+    final connection = botStore.connection;
+    final registryManaged = connection.registry.runtimes.isNotEmpty;
+    final ownerRuntime = connection.registry.runtime(
+      widget.bot.route.connectionId,
+    );
+    if (registryManaged && ownerRuntime == null) {
+      if (mounted) {
+        setState(() {
+          _routines = null;
+          _error = connectionOfflineErrorCode;
+        });
+      }
+      return;
+    }
     try {
-      final routines = await context.read<BotStore>().listBotRoutines(
-        widget.bot,
-      );
-      if (!mounted || generation != _loadGeneration) return;
+      final routines = await botStore.listBotRoutines(widget.bot);
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !_ownerIsCurrent(connection, ownerRuntime, registryManaged)) {
+        return;
+      }
       setState(() {
         _routines = routines;
         _error = null;
       });
     } catch (error) {
-      if (mounted && generation == _loadGeneration && _routines == null) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          _ownerIsCurrent(connection, ownerRuntime, registryManaged)) {
         setState(() => _error = '$error');
       }
     }
+  }
+
+  bool _ownerIsCurrent(
+    ConnectionStore connection,
+    Object? ownerRuntime,
+    bool registryManaged,
+  ) {
+    final current = connection.registry.runtime(widget.bot.route.connectionId);
+    if (registryManaged) return identical(current, ownerRuntime);
+    return connection.registry.runtimes.isEmpty || current != null;
   }
 
   Future<void> _mutate(BotRoutine routine, String action) async {
@@ -233,7 +264,12 @@ class _BotRoutinesScreenState extends State<BotRoutinesScreen> {
       return HermesLoadingState(label: context.l10n.botRoutineLoading);
     }
     if (routines == null) {
-      return HermesErrorState(description: _error, onRetry: _load);
+      return HermesErrorState(
+        description: _error == connectionOfflineErrorCode
+            ? context.l10n.backendDisconnected
+            : _error,
+        onRetry: _load,
+      );
     }
     if (routines.isEmpty) {
       return HermesEmptyState(

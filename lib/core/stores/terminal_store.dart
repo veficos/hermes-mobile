@@ -8,6 +8,7 @@ import 'package:xterm/xterm.dart';
 
 import '../../l10n/runtime_l10n.dart';
 import '../api_client.dart';
+import '../connections/connection_registry.dart';
 import '../models.dart';
 import '../terminal_gateway.dart';
 import '../terminal_interactions.dart';
@@ -66,7 +67,8 @@ class TerminalStore extends ChangeNotifier {
     required this.connection,
     this.sessionStore,
     this.storageScope = '',
-  });
+  }) : _boundConnectionId = connection.activeConnectionId,
+       _boundApi = connection.api;
 
   static const _maxSessions = 5;
   static const _prefsKey = 'hm_terminal_tabs_v2';
@@ -94,6 +96,9 @@ class TerminalStore extends ChangeNotifier {
   final Set<String> _failedRecoverySessionIds = {};
   final Map<String, SshTerminalTarget> _sshTargets = {};
   TerminalGatewayClient? _client;
+  ConnectionId _boundConnectionId;
+  ApiClient? _boundApi;
+  int _backendGeneration = 0;
   StreamSubscription? _eventSub;
   StreamSubscription? _disconnectSub;
   String? _activeId;
@@ -157,8 +162,52 @@ class TerminalStore extends ChangeNotifier {
     required ConnectionStore connection,
     SessionStore? sessionStore,
   }) {
+    final identityChanged =
+        connection.activeConnectionId != _boundConnectionId ||
+        !identical(connection.api, _boundApi);
     this.connection = connection;
     this.sessionStore = sessionStore;
+    if (!identityChanged) return;
+    _boundConnectionId = connection.activeConnectionId;
+    _boundApi = connection.api;
+    final generation = ++_backendGeneration;
+    if (_initialized) unawaited(_switchBackend(generation));
+  }
+
+  Future<void> _switchBackend(int generation) async {
+    await _eventSub?.cancel();
+    await _disconnectSub?.cancel();
+    _eventSub = null;
+    _disconnectSub = null;
+    final old = _client;
+    _client = null;
+    for (final timer in _snapshotTimers.values) {
+      timer.cancel();
+    }
+    _snapshotTimers.clear();
+    _sessions.clear();
+    _terminals.clear();
+    _cwdTrackers.clear();
+    _sshTargets.clear();
+    _recoveringSessionIds.clear();
+    _failedRecoverySessionIds.clear();
+    _activeId = null;
+    _defaultCwd = null;
+    _reconnecting = false;
+    _reconnectNotice = null;
+    notifyListeners();
+    await old?.close();
+    if (generation != _backendGeneration) return;
+    try {
+      _defaultCwd = await connection.api?.fsDefaultCwd();
+      if (generation != _backendGeneration) return;
+      await _connectClient(generation: generation);
+      if (generation != _backendGeneration) return;
+      await newSession();
+      await _persistTabs();
+    } catch (_) {
+      // The next explicit terminal action retries after reconnect.
+    }
   }
 
   Terminal? terminal(String id) => _terminals[id];
@@ -197,7 +246,7 @@ class TerminalStore extends ChangeNotifier {
     if (_sessions.isEmpty) await newSession();
   }
 
-  Future<void> _connectClient() async {
+  Future<void> _connectClient({int? generation}) async {
     if (!connection.settings.isConfigured) {
       throw StateError(runtimeL10n.terminalServerNotConfigured);
     }
@@ -210,10 +259,26 @@ class TerminalStore extends ChangeNotifier {
       extraHeaders: connection.settings.normalizedHeaders,
     );
     _client = client;
-    _eventSub = client.events.listen(_onEvent);
-    _disconnectSub = client.disconnects.listen((_) => _recoverConnection());
+    final clientGeneration = generation ?? _backendGeneration;
+    _eventSub = client.events.listen((event) {
+      if (clientGeneration == _backendGeneration &&
+          identical(client, _client)) {
+        _onEvent(event);
+      }
+    });
+    _disconnectSub = client.disconnects.listen((_) {
+      if (clientGeneration == _backendGeneration &&
+          identical(client, _client)) {
+        _recoverConnection();
+      }
+    });
     await old?.close();
     await client.connect();
+    if (clientGeneration != _backendGeneration || !identical(client, _client)) {
+      if (identical(client, _client)) _client = null;
+      await client.close();
+      return;
+    }
   }
 
   Future<void> newSession({
@@ -408,8 +473,10 @@ class TerminalStore extends ChangeNotifier {
       }
       _scheduleSnapshot(session.id);
     } else if (event.type == 'error') {
+      final error =
+          event.data['message']?.toString() ?? runtimeL10n.commonUnknownError;
       _terminals[session.id]?.write(
-        '\r\nTerminal error: ${event.data['message'] ?? 'unknown'}\r\n',
+        '\r\n${runtimeL10n.terminalErrorMessage(error)}\r\n',
       );
     } else if (event.type == 'exit') {
       final code = (event.data['code'] as num?)?.toInt();

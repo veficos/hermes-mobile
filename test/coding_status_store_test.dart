@@ -81,4 +81,21 @@ void main() {
     await oldRefresh;
     expect(store.forCwd('/repo')?.branch, 'new');
   });
+
+  test(
+    'tracked repositories refresh periodically after the first snapshot',
+    () async {
+      final api = _GitApi();
+      final store = CodingStatusStore(
+        autoRefreshInterval: const Duration(milliseconds: 5),
+      )..bindApi(api);
+      addTearDown(store.dispose);
+      store.startAutoRefresh();
+      await store.refresh('/repo');
+      expect(api.calls, 1);
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(api.calls, greaterThan(1));
+    },
+  );
 }

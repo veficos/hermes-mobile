@@ -172,6 +172,7 @@ class PendingRequest {
 class RequestResolution {
   final String requestId;
   final String scopeKey;
+  final RequestKind? kind;
   final String status;
   final Map<String, dynamic> result;
   final DateTime resolvedAt;
@@ -179,6 +180,7 @@ class RequestResolution {
   const RequestResolution({
     required this.requestId,
     required this.scopeKey,
+    this.kind,
     required this.status,
     required this.result,
     required this.resolvedAt,
@@ -195,18 +197,57 @@ class RequestStore extends ChangeNotifier {
 
   /// The request currently shown in the sheet (head of queue).
   PendingRequest? get current => _queue.isEmpty ? null : _queue.first;
-  PendingRequest? byId(String? requestId) {
-    if (requestId == null || requestId.isEmpty) return current;
+  PendingRequest? byId(
+    String? requestId, {
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+    RequestKind? kind,
+  }) {
+    if ((requestId == null || requestId.isEmpty) &&
+        ownerRoute == null &&
+        sessionId == null) {
+      return current;
+    }
     for (final request in _queue) {
-      if (request.requestId == requestId) return request;
+      if ((requestId == null || requestId.isEmpty
+          ? _matchesScope(request, ownerRoute: ownerRoute, sessionId: sessionId)
+          : _matches(
+              request,
+              requestId,
+              ownerRoute: ownerRoute,
+              sessionId: sessionId,
+              kind: kind,
+            ))) {
+        return request;
+      }
     }
     return null;
   }
 
   int get pendingCount => _queue.length;
   List<PendingRequest> get pendingRequests => List.unmodifiable(_queue);
-  RequestResolution? resolution(String? requestId) =>
-      requestId == null ? null : _resolved[requestId];
+  RequestResolution? resolution(
+    String? requestId, {
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+    RequestKind? kind,
+  }) {
+    if (requestId == null) return null;
+    for (final resolution in _resolved.values.toList().reversed) {
+      if (resolution.requestId != requestId) continue;
+      if (ownerRoute != null &&
+          !resolution.scopeKey.startsWith('${ownerRoute.key}\u0000')) {
+        continue;
+      }
+      if (sessionId != null &&
+          !resolution.scopeKey.endsWith('\u0000$sessionId')) {
+        continue;
+      }
+      if (kind != null && resolution.kind != kind) continue;
+      return resolution;
+    }
+    return null;
+  }
 
   void bindScopeResolver(
     ({OwnerRoute? route, String? durableId}) Function(String? runtimeId)
@@ -220,6 +261,38 @@ class RequestStore extends ChangeNotifier {
     request.ownerRoute?.profile ?? '',
     request.durableSessionId ?? request.sessionId ?? 'unscoped',
   ].join('\u0000');
+
+  String _resolutionKey(
+    String requestId,
+    String scopeKey, [
+    RequestKind? kind,
+  ]) => '$scopeKey\u0000${kind?.name ?? 'legacy'}\u0000$requestId';
+
+  bool _matches(
+    PendingRequest request,
+    String requestId, {
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+    RequestKind? kind,
+  }) {
+    if (request.requestId != requestId) return false;
+    if (kind != null && request.kind != kind) return false;
+    return _matchesScope(request, ownerRoute: ownerRoute, sessionId: sessionId);
+  }
+
+  bool _matchesScope(
+    PendingRequest request, {
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+  }) {
+    if (ownerRoute != null && request.ownerRoute != ownerRoute) return false;
+    if (sessionId != null &&
+        request.sessionId != sessionId &&
+        request.durableSessionId != sessionId) {
+      return false;
+    }
+    return true;
+  }
 
   Future<void> restore() async {
     try {
@@ -264,9 +337,16 @@ class RequestStore extends ChangeNotifier {
           final data = row.cast<String, dynamic>();
           final id = data['request_id']?.toString() ?? '';
           if (id.isEmpty) continue;
-          _resolved[id] = RequestResolution(
+          final scopeKey = data['scope_key']?.toString() ?? '';
+          final kindName = data['kind']?.toString();
+          final kind = RequestKind.values.cast<RequestKind?>().firstWhere(
+            (value) => value?.name == kindName,
+            orElse: () => null,
+          );
+          _resolved[_resolutionKey(id, scopeKey, kind)] = RequestResolution(
             requestId: id,
-            scopeKey: data['scope_key']?.toString() ?? '',
+            scopeKey: scopeKey,
+            kind: kind,
             status: data['status']?.toString() ?? 'completed',
             result:
                 (data['result'] as Map?)?.cast<String, dynamic>() ?? const {},
@@ -313,6 +393,7 @@ class RequestStore extends ChangeNotifier {
                 {
                   'request_id': resolution.requestId,
                   'scope_key': resolution.scopeKey,
+                  'kind': resolution.kind?.name,
                   'status': resolution.status,
                   'result': resolution.result,
                   'resolved_at': resolution.resolvedAt.toIso8601String(),
@@ -362,7 +443,16 @@ class RequestStore extends ChangeNotifier {
         case 'interactive.expire':
         case 'interactive.expired':
           final requestId = routed.event.payload['request_id']?.toString();
-          if (requestId?.isNotEmpty == true) dismissById(requestId);
+          if (requestId?.isNotEmpty == true) {
+            dismissById(
+              requestId,
+              ownerRoute: OwnerRoute(
+                connectionId: routed.route.connectionId,
+                profile: routed.event.profile ?? routed.route.profile,
+              ),
+              sessionId: routed.event.sessionId,
+            );
+          }
         default:
           break;
       }
@@ -427,11 +517,26 @@ class RequestStore extends ChangeNotifier {
   Future<bool> respondById(
     String? requestId,
     Future<Map<String, dynamic>> Function(PendingRequest req) send, {
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+    RequestKind? kind,
     Map<String, dynamic> resolution = const {},
   }) async {
-    if (requestId == null || requestId.isEmpty) return respond(send);
+    if ((requestId == null || requestId.isEmpty) &&
+        ownerRoute == null &&
+        sessionId == null) {
+      return respond(send);
+    }
     final index = _queue.indexWhere(
-      (request) => request.requestId == requestId,
+      (request) => requestId == null || requestId.isEmpty
+          ? _matchesScope(request, ownerRoute: ownerRoute, sessionId: sessionId)
+          : _matches(
+              request,
+              requestId,
+              ownerRoute: ownerRoute,
+              sessionId: sessionId,
+              kind: kind,
+            ),
     );
     if (index < 0) return false;
     final req = _queue.removeAt(index);
@@ -450,9 +555,15 @@ class RequestStore extends ChangeNotifier {
   }
 
   void _recordResolution(PendingRequest request, Map<String, dynamic> result) {
-    _resolved[request.requestId] = RequestResolution(
+    final scopeKey = _scopeKey(request);
+    _resolved[_resolutionKey(
+      request.requestId,
+      scopeKey,
+      request.kind,
+    )] = RequestResolution(
       requestId: request.requestId,
-      scopeKey: _scopeKey(request),
+      scopeKey: scopeKey,
+      kind: request.kind,
       status: (result['status'] ?? result['choice'] ?? 'completed').toString(),
       result: Map.unmodifiable(result),
       resolvedAt: DateTime.now(),
@@ -476,9 +587,21 @@ class RequestStore extends ChangeNotifier {
     if (changed) _persist();
   }
 
-  void updatePayload(String requestId, Map<String, dynamic> patch) {
+  void updatePayload(
+    String requestId,
+    Map<String, dynamic> patch, {
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+    RequestKind? kind,
+  }) {
     final index = _queue.indexWhere(
-      (request) => request.requestId == requestId,
+      (request) => _matches(
+        request,
+        requestId,
+        ownerRoute: ownerRoute,
+        sessionId: sessionId,
+        kind: kind,
+      ),
     );
     if (index < 0) return;
     final request = _queue[index];
@@ -495,14 +618,46 @@ class RequestStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  void dismissById(String? requestId) {
-    if (requestId == null || requestId.isEmpty) return dismissCurrent();
-    final before = _queue.length;
-    _queue.removeWhere((request) => request.requestId == requestId);
-    if (_queue.length != before) {
+  void dismissById(
+    String? requestId, {
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+    RequestKind? kind,
+  }) {
+    if ((requestId == null || requestId.isEmpty) &&
+        ownerRoute == null &&
+        sessionId == null) {
+      return dismissCurrent();
+    }
+    final index = _queue.indexWhere(
+      (request) => requestId == null || requestId.isEmpty
+          ? _matchesScope(request, ownerRoute: ownerRoute, sessionId: sessionId)
+          : _matches(
+              request,
+              requestId,
+              ownerRoute: ownerRoute,
+              sessionId: sessionId,
+              kind: kind,
+            ),
+    );
+    if (index >= 0) {
+      _queue.removeAt(index);
       _persist();
       notifyListeners();
     }
+  }
+
+  /// Remove only requests owned by one session. Closing a foreground session
+  /// must not discard approvals belonging to background sessions.
+  void clearScope({required OwnerRoute ownerRoute, required String sessionId}) {
+    final before = _queue.length;
+    _queue.removeWhere(
+      (request) =>
+          _matchesScope(request, ownerRoute: ownerRoute, sessionId: sessionId),
+    );
+    if (_queue.length == before) return;
+    _persist();
+    notifyListeners();
   }
 
   @override

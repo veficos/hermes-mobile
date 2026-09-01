@@ -2154,8 +2154,11 @@ class BillingPaymentMethod {
       );
 
   String get display => switch (kind) {
-    'card' => '${brand ?? 'Card'} •••• ${last4 ?? ''}'.trim(),
-    'link' => email == null ? 'Link' : 'Link · $email',
+    'card' => '${brand ?? runtimeL10n.billingCard} •••• ${last4 ?? ''}'.trim(),
+    'link' =>
+      email == null
+          ? runtimeL10n.billingLink
+          : '${runtimeL10n.billingLink} · $email',
     _ =>
       rawKind == null
           ? runtimeL10n.billingSavedPaymentMethod

@@ -546,7 +546,7 @@ class _ProjectScreenState extends State<ProjectScreen>
     final connection = context.read<ConnectionStore>();
     final gateway = connectedGatewayOrNotify(context, connection);
     if (gateway == null) return;
-    // First row is the primary folder (path required, label always "Main").
+    // The primary folder uses a stable marker; its display label is localized.
     // Any additional rows are optional extra folders with their own label.
     final extraFolders =
         <(TextEditingController path, TextEditingController label)>[];
@@ -662,7 +662,7 @@ class _ProjectScreenState extends State<ProjectScreen>
         {
           'name': name,
           'folders': [
-            {'path': path, 'label': 'Main'},
+            {'path': path, 'label': '', 'is_primary': true},
             for (final folder in extras)
               {
                 'path': folder['path'],

@@ -1,20 +1,16 @@
 import 'dart:typed_data';
 
-import 'folder_attachments.dart';
 import '../l10n/runtime_l10n.dart';
+import 'folder_attachments.dart';
 
 Future<String> writeDownloadBytes(String filename, Uint8List bytes) {
-  throw UnsupportedError(
-    'Local file download is not available on this platform',
-  );
+  throw UnsupportedError(runtimeL10n.filesDownloadPlatformUnsupported);
 }
 
 Future<String?> pickDownloadSavePath(String suggestedName) async => null;
 
 Future<void> writeBytesAtPath(String filePath, Uint8List bytes) {
-  throw UnsupportedError(
-    'Local file download is not available on this platform',
-  );
+  throw UnsupportedError(runtimeL10n.filesDownloadPlatformUnsupported);
 }
 
 Future<FolderScanResult> listFolderFiles(

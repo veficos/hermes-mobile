@@ -53,6 +53,15 @@ class _FakeWakeConnection extends ConnectionStore {
     Map<String, dynamic> params,
   )
   handler;
+  ConnectionId activeId = const ConnectionId('primary');
+
+  @override
+  ConnectionId get activeConnectionId => activeId;
+
+  void switchTo(String id) {
+    activeId = ConnectionId(id);
+    notifyListeners();
+  }
 
   @override
   Stream<GatewayEvent> get events => eventController.stream;
@@ -175,6 +184,39 @@ void main() {
     expect(store.detection, isNull);
   });
 
+  test(
+    'status from a previous connection is ignored after switching',
+    () async {
+      final connection = _FakeWakeConnection();
+      final capture = _FakeWakeCapture();
+      final oldStatus = Completer<Map<String, dynamic>>();
+      connection.handler = (method, params) {
+        if (method == 'wake.status') return oldStatus.future;
+        return <String, dynamic>{};
+      };
+      final store = WakeWordStore(
+        connection: connection,
+        audioCapture: capture,
+      );
+      addTearDown(store.dispose);
+      addTearDown(connection.dispose);
+
+      final refresh = store.refreshStatus();
+      connection.switchTo('server-b');
+      oldStatus.complete({
+        'available': true,
+        'enabled': true,
+        'listening': true,
+        'capture': 'client',
+      });
+      await refresh;
+
+      expect(store.available, isFalse);
+      expect(store.enabled, isFalse);
+      expect(store.listening, isFalse);
+    },
+  );
+
   test('voice pause and resume reattach the client microphone', () async {
     final connection = _FakeWakeConnection();
     final capture = _FakeWakeCapture();
@@ -269,6 +311,28 @@ void main() {
       expect(capture.active, true);
     },
   );
+
+  test('unexpected microphone completion uses localized notice', () async {
+    final connection = _FakeWakeConnection();
+    final capture = _FakeWakeCapture();
+    connection.handler = (method, params) => switch (method) {
+      'wake.start' => {
+        'started': true,
+        'capture': 'client',
+        'frame_length': 160,
+      },
+      _ => <String, dynamic>{},
+    };
+    final store = WakeWordStore(connection: connection, audioCapture: capture);
+    addTearDown(store.dispose);
+    addTearDown(connection.dispose);
+
+    await store.setEnabled(true);
+    capture.onError?.call(const WakeAudioStreamEnded());
+
+    expect(store.notice, 'The wake word microphone stream ended unexpectedly');
+    expect(store.notice, isNot(contains('WakeAudioStreamEnded')));
+  });
 
   test('slash-style command persists explicit off', () async {
     final connection = _FakeWakeConnection();

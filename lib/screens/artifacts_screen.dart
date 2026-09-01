@@ -21,6 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/models.dart';
 import '../core/clipboard.dart';
 import '../core/connection_reload_mixin.dart';
+import '../core/http_status_exception.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
@@ -533,7 +534,7 @@ Future<ResolvedArtifactFile> resolveArtifactFile(ArtifactItem artifact) async {
     if (value.startsWith('http')) {
       final response = await http.get(Uri.parse(value));
       if (response.statusCode >= 400) {
-        throw HttpException('HTTP ${response.statusCode}');
+        throw HttpStatusException(response.statusCode);
       }
       final contentType = response.headers['content-type'];
       final urlExt = RegExp(
@@ -615,7 +616,10 @@ class _ArtifactDetailScreenState extends State<_ArtifactDetailScreen> {
       }
     } catch (e) {
       if (mounted) {
-        showHermesToast(context, message: l10n.artifactsSaveFailed('$e'));
+        final detail = e is HttpStatusException
+            ? l10n.httpStatusError(e.statusCode)
+            : '$e';
+        showHermesToast(context, message: l10n.artifactsSaveFailed(detail));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

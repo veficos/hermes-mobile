@@ -92,7 +92,7 @@ class MobileUpdateManifest {
 Uri _requireHttpsUrl(String value, {required String field}) {
   final uri = Uri.tryParse(value);
   if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
-    throw FormatException('$field must be an HTTPS URL');
+    throw FormatException(runtimeL10n.updateManifestInvalid);
   }
   return uri;
 }
@@ -233,7 +233,7 @@ class UpdateStore extends ChangeNotifier {
       }
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
       if (decoded is! Map) {
-        throw const FormatException('manifest must be an object');
+        throw FormatException(runtimeL10n.updateManifestInvalid);
       }
       final envelope = decoded.cast<String, dynamic>();
       final payload = await verifyUpdateManifestEnvelope(
@@ -248,18 +248,16 @@ class UpdateStore extends ChangeNotifier {
       if (!RegExp(
         r'^v?\d+(?:\.\d+){1,3}(?:[-+].*)?$',
       ).hasMatch(next.latestVersion)) {
-        throw const FormatException('invalid latest version');
+        throw FormatException(runtimeL10n.updateManifestInvalid);
       }
       if (!RegExp(
         r'^v?\d+(?:\.\d+){1,3}(?:[-+].*)?$',
       ).hasMatch(next.minimumSupportedVersion)) {
-        throw const FormatException('invalid minimum supported version');
+        throw FormatException(runtimeL10n.updateManifestInvalid);
       }
       if (compareAppVersions(next.minimumSupportedVersion, next.latestVersion) >
           0) {
-        throw const FormatException(
-          'minimum supported version cannot exceed latest version',
-        );
+        throw FormatException(runtimeL10n.updateManifestInvalid);
       }
       _manifest = next;
       final prefs = await SharedPreferences.getInstance();
@@ -267,7 +265,9 @@ class UpdateStore extends ChangeNotifier {
       await prefs.setString(_lastCheckKey, DateTime.now().toIso8601String());
       return true;
     } catch (error) {
-      _error = error.toString();
+      _error = error is FormatException
+          ? runtimeL10n.updateManifestInvalid
+          : error.toString();
       return false;
     } finally {
       _checking = false;

@@ -1,7 +1,9 @@
+import '../../l10n/runtime_l10n.dart';
+
 Future<String> writeExportFile(
   String directoryPath,
   String filename,
   String content,
 ) {
-  throw UnsupportedError('Local file export is not available on this platform');
+  throw UnsupportedError(runtimeL10n.sessionExportPlatformUnsupported);
 }

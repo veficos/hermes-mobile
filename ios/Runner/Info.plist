@@ -49,9 +49,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Hermes Mobile 需要访问局域网以连接你本地的 hermes-mobile-server。</string>
+	<string>Hermes Mobile needs local network access to connect to your local hermes-mobile-server.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Hermes Mobile 使用麦克风进行语音输入，并可在应用位于前台时监听你启用的 Hermes 唤醒词。</string>
+	<string>Hermes Mobile uses the microphone for voice input and, while the app is in the foreground, to listen for the Hermes wake word when enabled.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

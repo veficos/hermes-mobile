@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:http/http.dart' as http;
 
+import '../l10n/runtime_l10n.dart';
 import 'settings_store.dart';
 import 'ssh_gateway_tunnel.dart';
 
@@ -309,7 +310,7 @@ Future<_ExecResult> _exec(
     timeout,
     onTimeout: () {
       session.close();
-      throw TimeoutException('SSH command timed out', timeout);
+      throw TimeoutException(runtimeL10n.sshCommandTimedOut, timeout);
     },
   );
   final result = _ExecResult(
@@ -320,7 +321,7 @@ Future<_ExecResult> _exec(
   if (!allowFailure && result.exitCode != 0) {
     throw StateError(
       result.stderr.trim().isEmpty
-          ? 'Remote command failed (${result.exitCode})'
+          ? runtimeL10n.sshRemoteCommandFailed('${result.exitCode}')
           : result.stderr.trim(),
     );
   }
@@ -343,7 +344,7 @@ Future<String> _probeHermesHome(SSHClient client) async {
   if (home.isEmpty ||
       home.contains('..') ||
       !RegExp(r'^(?:/|~/)[A-Za-z0-9._/+\-]+$').hasMatch(home)) {
-    throw StateError('Remote Hermes home is unsafe');
+    throw StateError(runtimeL10n.sshRemoteHomeUnsafe);
   }
   return home.replaceFirst(RegExp(r'/+$'), '');
 }
@@ -454,7 +455,7 @@ print("OWNED" if ok else "FOREIGN")''';
     allowFailure: true,
   );
   if (result.exitCode != 0) {
-    throw StateError('Could not verify remote Hermes process ownership');
+    throw StateError(runtimeL10n.sshOwnershipVerificationFailed);
   }
   return result.stdout.trim() == 'OWNED';
 }
@@ -534,7 +535,9 @@ Future<bool> _probeOwnership(String baseUrl, String token, String nonce) async {
     return false;
   }
   if (response.statusCode != 200) {
-    throw StateError('Remote ownership probe failed (${response.statusCode})');
+    throw StateError(
+      runtimeL10n.sshOwnershipProbeFailed('${response.statusCode}'),
+    );
   }
   final body = jsonDecode(response.body);
   return body is Map &&
@@ -585,7 +588,7 @@ Future<Map<String, dynamic>> _execJson(
   if (lines.isEmpty) return {};
   final decoded = jsonDecode(lines.last);
   if (decoded == null) return {};
-  if (decoded is! Map) throw StateError('Remote helper returned invalid JSON');
+  if (decoded is! Map) throw StateError(runtimeL10n.sshHelperInvalidJson);
   final map = decoded.cast<String, dynamic>();
   if (map['error'] != null) throw StateError(map['error'].toString());
   return map;
@@ -622,7 +625,7 @@ Future<_WindowsRuntime> _probeWindowsRuntime(
       pythonPath: data['python']?.toString() ?? '',
     );
   } catch (error) {
-    throw UnsupportedError('Unsupported remote platform: $error');
+    throw UnsupportedError(runtimeL10n.sshRemotePlatformUnsupported('$error'));
   }
 }
 
@@ -707,7 +710,7 @@ Future<void> _cleanupWindowsLock(
 ) async {
   final state = await _windowsProcessState(client, runtime, lock);
   if (state['indeterminate'] == true) {
-    throw StateError('Could not verify remote Windows process ownership');
+    throw StateError(runtimeL10n.sshWindowsOwnershipVerificationFailed);
   }
   final owned = state['alive'] == true && state['owned'] == true;
   if (owned) {
@@ -745,9 +748,7 @@ Future<String> _locateHermes(SSHClient client, String configuredPath) async {
   if (configured.isNotEmpty) {
     if (!(configured.startsWith('/') || configured.startsWith('~/')) ||
         configured.contains(RegExp(r'[\x00\r\n]'))) {
-      throw ArgumentError(
-        'Remote Hermes path must be absolute or start with ~/',
-      );
+      throw ArgumentError(runtimeL10n.sshRemotePathInvalid);
     }
     final probe = await _exec(
       client,
@@ -755,9 +756,7 @@ Future<String> _locateHermes(SSHClient client, String configuredPath) async {
       allowFailure: true,
     );
     if (probe.stdout.trim() != 'OK') {
-      throw StateError(
-        'Configured Hermes executable was not found on the remote host',
-      );
+      throw StateError(runtimeL10n.sshExecutableNotFound);
     }
     return configured;
   }
@@ -771,7 +770,7 @@ Future<String> _locateHermes(SSHClient client, String configuredPath) async {
   );
   final path = result.stdout.trim().split('\n').lastOrNull?.trim() ?? '';
   if (path.isEmpty || !path.startsWith('/')) {
-    throw StateError('Hermes is not installed on the remote host');
+    throw StateError(runtimeL10n.sshHermesNotInstalled);
   }
   return path;
 }
@@ -793,9 +792,7 @@ Future<SshGatewayTunnel> _openWindowsTunnel(
     args: [runtime.hermesPath],
   );
   if (inspection['supported'] != true) {
-    throw StateError(
-      'Remote Hermes must support secure SSH ownership bootstrap flags',
-    );
+    throw StateError(runtimeL10n.sshBootstrapFlagsUnsupported);
   }
   final resolvedRuntime = _WindowsRuntime(
     arch: runtime.arch,
@@ -823,7 +820,7 @@ Future<SshGatewayTunnel> _openWindowsTunnel(
   } else if (existing.isNotEmpty) {
     final state = await _windowsProcessState(client, resolvedRuntime, existing);
     if (state['indeterminate'] == true) {
-      throw StateError('Could not verify remote Windows process ownership');
+      throw StateError(runtimeL10n.sshWindowsOwnershipVerificationFailed);
     }
     final reusable =
         state['alive'] == true &&
@@ -916,7 +913,7 @@ Future<SshGatewayTunnel> _openWindowsTunnel(
       'remove-token',
       args: [ownershipId, nonce],
     );
-    throw StateError('Remote Windows backend returned an invalid identity');
+    throw StateError(runtimeL10n.sshWindowsIdentityInvalid);
   }
   try {
     await _windowsHelper(
@@ -933,7 +930,7 @@ Future<SshGatewayTunnel> _openWindowsTunnel(
       final state = await _windowsProcessState(client, resolvedRuntime, lock);
       if (state['indeterminate'] != true &&
           (state['alive'] != true || state['owned'] != true)) {
-        throw StateError('Remote Windows backend exited before becoming ready');
+        throw StateError(runtimeL10n.sshWindowsExitedBeforeReady);
       }
       final log = await _windowsHelper(
         client,
@@ -965,7 +962,7 @@ Future<SshGatewayTunnel> _openWindowsTunnel(
     tunnel.apiKey = token;
     try {
       if (!await _probeOwnership(tunnel.baseUrl, token, nonce)) {
-        throw StateError('Remote Windows ownership proof failed');
+        throw StateError(runtimeL10n.sshWindowsOwnershipProofFailed);
       }
       lock['port'] = remotePort;
       await _windowsHelper(
@@ -994,10 +991,10 @@ Future<SshGatewayTunnel> openSshGatewayTunnel(
   final host = settings.sshHost.trim();
   final user = settings.sshUser.trim();
   if (host.isEmpty || user.isEmpty) {
-    throw ArgumentError('SSH host and user are required');
+    throw ArgumentError(runtimeL10n.sshHostAndUserRequired);
   }
   if (settings.sshPort < 1 || settings.sshPort > 65535) {
-    throw ArgumentError('SSH port must be between 1 and 65535');
+    throw ArgumentError(runtimeL10n.sshPortInvalid);
   }
 
   final identities = settings.sshPrivateKey.trim().isEmpty
@@ -1038,7 +1035,11 @@ Future<SshGatewayTunnel> openSshGatewayTunnel(
     client.close();
     if (hostKeyChanged) {
       throw StateError(
-        'SSH host key changed for $host. Expected $knownFingerprint; received $observedFingerprint',
+        runtimeL10n.sshHostKeyChanged(
+          host,
+          '$knownFingerprint',
+          '$observedFingerprint',
+        ),
       );
     }
     rethrow;
@@ -1051,7 +1052,7 @@ Future<SshGatewayTunnel> openSshGatewayTunnel(
   if (profile.isNotEmpty &&
       !RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(profile)) {
     client.close();
-    throw ArgumentError('Remote profile name is invalid');
+    throw ArgumentError(runtimeL10n.sshProfileInvalid);
   }
   try {
     if (!await _isPosixPlatform(client)) {
@@ -1136,7 +1137,7 @@ Future<SshGatewayTunnel> openSshGatewayTunnel(
         'rm -f ${_remotePath(tokenPath)}',
         allowFailure: true,
       );
-      throw StateError('Remote Hermes did not return a process id');
+      throw StateError(runtimeL10n.sshProcessIdMissing);
     }
 
     var lock = _RemoteLock(
@@ -1160,7 +1161,7 @@ Future<SshGatewayTunnel> openSshGatewayTunnel(
       String lastLog = '';
       while (DateTime.now().isBefore(deadline)) {
         if (!await _pidAlive(client, pid)) {
-          throw StateError('Remote Hermes exited before becoming ready');
+          throw StateError(runtimeL10n.sshExitedBeforeReady);
         }
         final probe = await _exec(
           client,
@@ -1190,7 +1191,7 @@ Future<SshGatewayTunnel> openSshGatewayTunnel(
       tunnel.apiKey = token;
       try {
         if (!await _probeOwnership(tunnel.baseUrl, token, nonce)) {
-          throw StateError('Remote Hermes ownership proof failed');
+          throw StateError(runtimeL10n.sshOwnershipProofFailed);
         }
         lock = lock.withPort(remotePort);
         await _writeLock(client, ownershipId, lock);

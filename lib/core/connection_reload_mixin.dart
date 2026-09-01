@@ -59,6 +59,7 @@ mixin ConnectionReloadMixin<T extends StatefulWidget> on State<T> {
   ConnectionStore? _observedConnection;
   ApiClient? _observedApi;
   GatewayClient? _observedGateway;
+  bool _observedConnected = false;
   FutureOr<void> Function()? _reloadForConnection;
 
   void observeConnection(
@@ -71,6 +72,7 @@ mixin ConnectionReloadMixin<T extends StatefulWidget> on State<T> {
     _observedConnection = connection..addListener(_handleConnectionChange);
     _observedApi = connection.api;
     _observedGateway = connection.gateway;
+    _observedConnected = connection.isConnected;
   }
 
   void disposeConnectionObserver() {
@@ -78,13 +80,19 @@ mixin ConnectionReloadMixin<T extends StatefulWidget> on State<T> {
     _observedConnection = null;
     _observedApi = null;
     _observedGateway = null;
+    _observedConnected = false;
     _reloadForConnection = null;
   }
 
   void _handleConnectionChange() {
     final api = _observedConnection?.api;
     final gateway = _observedConnection?.gateway;
-    if (identical(api, _observedApi) && identical(gateway, _observedGateway)) {
+    final connected = _observedConnection?.isConnected == true;
+    final identityChanged =
+        !identical(api, _observedApi) || !identical(gateway, _observedGateway);
+    final recovered = connected && !_observedConnected;
+    _observedConnected = connected;
+    if (!identityChanged && !recovered) {
       return;
     }
     _observedApi = api;

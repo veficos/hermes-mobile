@@ -582,7 +582,11 @@ class _ProjectDialogState extends State<ProjectDialog>
                                 'name': name,
                                 'description': _descCtrl.text.trim(),
                                 'folders': [
-                                  {'path': path, 'label': 'Main'},
+                                  {
+                                    'path': path,
+                                    'label': '',
+                                    'is_primary': true,
+                                  },
                                 ],
                                 'primary_path': path,
                               });

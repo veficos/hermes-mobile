@@ -148,11 +148,25 @@ class BackendManager:
         self.last_stdout_tail: list[str] = []
         #: Subscribers for gateway broadcast events (task completion, …).
         self._event_listeners: list[Callable[[dict], Awaitable[None]]] = []
+        self._lifecycle_listeners: list[Callable[[], None]] = []
+        self._backend_epoch = 0
 
     def add_event_listener(self, listener: Callable[[dict], Awaitable[None]]) -> None:
         """Register a coroutine to receive every gateway broadcast event dict."""
         if listener not in self._event_listeners:
             self._event_listeners.append(listener)
+
+    def add_lifecycle_listener(self, listener: Callable[[], None]) -> None:
+        """Register a callback invoked whenever the backend process resets."""
+        if listener not in self._lifecycle_listeners:
+            self._lifecycle_listeners.append(listener)
+
+    def _emit_lifecycle_reset(self) -> None:
+        for listener in list(self._lifecycle_listeners):
+            try:
+                listener()
+            except Exception:  # noqa: BLE001
+                logger.exception("backend lifecycle listener failed")
 
     async def _emit_event(self, event: dict) -> None:
         for listener in list(self._event_listeners):
@@ -365,6 +379,22 @@ class BackendManager:
             pass
 
     async def stop(self) -> None:
+        self._backend_epoch += 1
+        reader = self._gw_reader
+        self._gw_reader = None
+        if reader is not None:
+            reader.cancel()
+            try:
+                await reader
+            except asyncio.CancelledError:
+                pass
+        ws = self._gw_ws
+        self._gw_ws = None
+        if ws is not None:
+            try:
+                await ws.close()
+            except Exception:  # noqa: BLE001
+                pass
         await self._terminate()
         if self._log_tail is not None:
             self._log_tail.cancel()
@@ -372,16 +402,7 @@ class BackendManager:
         if self._http is not None:
             await self._http.aclose()
             self._http = None
-        # Close the long-lived gateway RPC connection.
-        if self._gw_reader is not None:
-            self._gw_reader.cancel()
-            self._gw_reader = None
-        if self._gw_ws is not None:
-            try:
-                await self._gw_ws.close()
-            except Exception:  # noqa: BLE001
-                pass
-            self._gw_ws = None
+        self._emit_lifecycle_reset()
 
     async def backend_status(self) -> dict:
         """Rich status object merged into the mobile-facing /status endpoint."""
@@ -473,14 +494,15 @@ class BackendManager:
     async def _ensure_gateway_rpc(self) -> None:
         if self._gw_ws is None or self._gw_ws.state == websockets.protocol.State.CLOSED:
             self._gw_ws = await self.connect_gateway_ws()
-            self._gw_reader = asyncio.create_task(self._gw_read_loop())
+            epoch = self._backend_epoch
+            self._gw_reader = asyncio.create_task(self._gw_read_loop(epoch))
 
     async def ensure_gateway_event_stream(self) -> None:
         """Keep the server-owned event stream alive even without active RPC calls."""
         async with self._gateway_lock():
             await self._ensure_gateway_rpc()
 
-    async def _gw_read_loop(self) -> None:
+    async def _gw_read_loop(self, epoch: int) -> None:
         ws = self._gw_ws
         if ws is None:
             return
@@ -494,7 +516,8 @@ class BackendManager:
                     # Broadcast events are dispatched to subscribers (e.g. the
                     # task store watches message.complete / session.info to
                     # write back Task completion, ADR 0003).
-                    await self._emit_event(frame.get("params") or {})
+                    if epoch == self._backend_epoch:
+                        await self._emit_event(frame.get("params") or {})
                     continue
                 req_id = frame.get("id")
                 if isinstance(req_id, int) and req_id in self._gw_pending:
@@ -511,7 +534,8 @@ class BackendManager:
         except (websockets.ConnectionClosed, OSError, asyncio.CancelledError):
             pass
         finally:
-            self._gw_ws = None
+            if self._gw_ws is ws:
+                self._gw_ws = None
             # Fail anything still pending.
             pending, self._gw_pending = self._gw_pending, {}
             for future in pending.values():

@@ -18214,6 +18214,792 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Payment method · {kind}'**
   String billingPaymentMethodKind(String kind);
+
+  /// No description provided for @previewTourBack.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get previewTourBack;
+
+  /// No description provided for @previewTourDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get previewTourDone;
+
+  /// No description provided for @previewTourNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get previewTourNext;
+
+  /// No description provided for @chatMermaidParseError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not parse Mermaid diagram'**
+  String get chatMermaidParseError;
+
+  /// No description provided for @petDefaultName.
+  ///
+  /// In en, this message translates to:
+  /// **'Hermes Pet'**
+  String get petDefaultName;
+
+  /// No description provided for @sessionDetailProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get sessionDetailProfile;
+
+  /// No description provided for @profileArchiveType.
+  ///
+  /// In en, this message translates to:
+  /// **'Hermes profile'**
+  String get profileArchiveType;
+
+  /// No description provided for @profilesTemperature.
+  ///
+  /// In en, this message translates to:
+  /// **'Temperature'**
+  String get profilesTemperature;
+
+  /// No description provided for @profilesTopP.
+  ///
+  /// In en, this message translates to:
+  /// **'Top P'**
+  String get profilesTopP;
+
+  /// No description provided for @profilesMaxTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Max tokens'**
+  String get profilesMaxTokens;
+
+  /// No description provided for @sessionDesktopFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Desktop session'**
+  String get sessionDesktopFallback;
+
+  /// No description provided for @backgroundProcessFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Background process'**
+  String get backgroundProcessFallback;
+
+  /// No description provided for @insightsUnknownModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown model'**
+  String get insightsUnknownModel;
+
+  /// No description provided for @billingCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Card'**
+  String get billingCard;
+
+  /// No description provided for @billingLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Link'**
+  String get billingLink;
+
+  /// No description provided for @slashGroupSkills.
+  ///
+  /// In en, this message translates to:
+  /// **'Skills'**
+  String get slashGroupSkills;
+
+  /// No description provided for @slashGroupCommands.
+  ///
+  /// In en, this message translates to:
+  /// **'Commands'**
+  String get slashGroupCommands;
+
+  /// No description provided for @botAuthorYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You'**
+  String get botAuthorYou;
+
+  /// No description provided for @botAuthorSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get botAuthorSystem;
+
+  /// No description provided for @botAuthorFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Bot'**
+  String get botAuthorFallback;
+
+  /// No description provided for @terminalErrorMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal error: {error}'**
+  String terminalErrorMessage(String error);
+
+  /// No description provided for @sessionCopyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} (copy)'**
+  String sessionCopyTitle(String title);
+
+  /// No description provided for @gitRemoteFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote'**
+  String get gitRemoteFallback;
+
+  /// No description provided for @gitStashFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Stash'**
+  String get gitStashFallback;
+
+  /// No description provided for @notificationChannelErrors.
+  ///
+  /// In en, this message translates to:
+  /// **'Errors'**
+  String get notificationChannelErrors;
+
+  /// No description provided for @notificationChannelWarnings.
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings'**
+  String get notificationChannelWarnings;
+
+  /// No description provided for @notificationChannelSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Success'**
+  String get notificationChannelSuccess;
+
+  /// No description provided for @notificationChannelApprovals.
+  ///
+  /// In en, this message translates to:
+  /// **'Approvals'**
+  String get notificationChannelApprovals;
+
+  /// No description provided for @notificationChannelInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Info'**
+  String get notificationChannelInfo;
+
+  /// No description provided for @memoryCuratorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Curator'**
+  String get memoryCuratorTitle;
+
+  /// No description provided for @messageSourceServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Server'**
+  String get messageSourceServer;
+
+  /// No description provided for @messageSourceMobile.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile'**
+  String get messageSourceMobile;
+
+  /// No description provided for @kanbanRunQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Queued'**
+  String get kanbanRunQueued;
+
+  /// No description provided for @kanbanRunCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get kanbanRunCompleted;
+
+  /// No description provided for @kanbanRunFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get kanbanRunFailed;
+
+  /// No description provided for @kanbanRunCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get kanbanRunCancelled;
+
+  /// No description provided for @kanbanEventTaskCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Task created'**
+  String get kanbanEventTaskCreated;
+
+  /// No description provided for @kanbanEventTaskUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Task updated'**
+  String get kanbanEventTaskUpdated;
+
+  /// No description provided for @kanbanEventTaskDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Task deleted'**
+  String get kanbanEventTaskDeleted;
+
+  /// No description provided for @kanbanEventRunStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Run started'**
+  String get kanbanEventRunStarted;
+
+  /// No description provided for @kanbanEventRunCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Run completed'**
+  String get kanbanEventRunCompleted;
+
+  /// No description provided for @kanbanEventRunFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Run failed'**
+  String get kanbanEventRunFailed;
+
+  /// No description provided for @kanbanEventRunCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Run cancelled'**
+  String get kanbanEventRunCancelled;
+
+  /// No description provided for @kanbanEventCommentCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Comment added'**
+  String get kanbanEventCommentCreated;
+
+  /// No description provided for @kanbanEventAttachmentAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Attachment added'**
+  String get kanbanEventAttachmentAdded;
+
+  /// No description provided for @kanbanEventAttachmentDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Attachment deleted'**
+  String get kanbanEventAttachmentDeleted;
+
+  /// No description provided for @cloudRoleOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner'**
+  String get cloudRoleOwner;
+
+  /// No description provided for @cloudRoleAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Administrator'**
+  String get cloudRoleAdmin;
+
+  /// No description provided for @cloudRoleMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Member'**
+  String get cloudRoleMember;
+
+  /// No description provided for @cloudRoleViewer.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer'**
+  String get cloudRoleViewer;
+
+  /// No description provided for @chatStatusToolDrafting.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing tool call'**
+  String get chatStatusToolDrafting;
+
+  /// No description provided for @chatStatusProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider status'**
+  String get chatStatusProvider;
+
+  /// No description provided for @previewScriptError.
+  ///
+  /// In en, this message translates to:
+  /// **'Script error'**
+  String get previewScriptError;
+
+  /// No description provided for @previewUnhandledPromiseRejection.
+  ///
+  /// In en, this message translates to:
+  /// **'Unhandled promise rejection: '**
+  String get previewUnhandledPromiseRejection;
+
+  /// No description provided for @botGroupSessionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Group: {roomId}'**
+  String botGroupSessionTitle(String roomId);
+
+  /// No description provided for @errorExpectedObjectResponse.
+  ///
+  /// In en, this message translates to:
+  /// **'The server returned an invalid object response'**
+  String get errorExpectedObjectResponse;
+
+  /// No description provided for @errorTtsNoAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Text-to-speech returned no audio'**
+  String get errorTtsNoAudio;
+
+  /// No description provided for @errorInvalidDataUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'The server returned an invalid data URL'**
+  String get errorInvalidDataUrl;
+
+  /// No description provided for @errorExportDirectoryMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not provide an export directory'**
+  String get errorExportDirectoryMissing;
+
+  /// No description provided for @errorImportDirectoryMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not provide an import directory'**
+  String get errorImportDirectoryMissing;
+
+  /// No description provided for @errorRawConfigInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The server returned an invalid raw configuration'**
+  String get errorRawConfigInvalid;
+
+  /// No description provided for @errorPluginToggleRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'The backend rejected the plugin change'**
+  String get errorPluginToggleRejected;
+
+  /// No description provided for @errorConnectionNotConfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'The connection is not configured'**
+  String get errorConnectionNotConfigured;
+
+  /// No description provided for @errorSessionOwnerUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The session owner is unknown: {sessionId}'**
+  String errorSessionOwnerUnknown(String sessionId);
+
+  /// No description provided for @errorRemotePushUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote push is unavailable for this connection'**
+  String get errorRemotePushUnavailable;
+
+  /// No description provided for @sshCommandTimedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'SSH command timed out'**
+  String get sshCommandTimedOut;
+
+  /// No description provided for @sshRemoteHomeUnsafe.
+  ///
+  /// In en, this message translates to:
+  /// **'The remote Hermes home is unsafe'**
+  String get sshRemoteHomeUnsafe;
+
+  /// No description provided for @sshOwnershipVerificationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not verify remote Hermes process ownership'**
+  String get sshOwnershipVerificationFailed;
+
+  /// No description provided for @sshOwnershipProbeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote ownership probe failed ({status})'**
+  String sshOwnershipProbeFailed(String status);
+
+  /// No description provided for @sshHelperInvalidJson.
+  ///
+  /// In en, this message translates to:
+  /// **'The remote helper returned invalid JSON'**
+  String get sshHelperInvalidJson;
+
+  /// No description provided for @sshWindowsOwnershipVerificationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not verify remote Windows process ownership'**
+  String get sshWindowsOwnershipVerificationFailed;
+
+  /// No description provided for @sshRemotePathInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The remote Hermes path must be absolute or start with ~/'**
+  String get sshRemotePathInvalid;
+
+  /// No description provided for @sshExecutableNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The configured Hermes executable was not found on the remote host'**
+  String get sshExecutableNotFound;
+
+  /// No description provided for @sshHermesNotInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Hermes is not installed on the remote host'**
+  String get sshHermesNotInstalled;
+
+  /// No description provided for @sshBootstrapFlagsUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote Hermes must support secure SSH ownership bootstrap flags'**
+  String get sshBootstrapFlagsUnsupported;
+
+  /// No description provided for @sshWindowsIdentityInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The remote Windows backend returned an invalid identity'**
+  String get sshWindowsIdentityInvalid;
+
+  /// No description provided for @sshWindowsExitedBeforeReady.
+  ///
+  /// In en, this message translates to:
+  /// **'The remote Windows backend exited before becoming ready'**
+  String get sshWindowsExitedBeforeReady;
+
+  /// No description provided for @sshWindowsOwnershipProofFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote Windows ownership proof failed'**
+  String get sshWindowsOwnershipProofFailed;
+
+  /// No description provided for @sshProcessIdMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote Hermes did not return a process ID'**
+  String get sshProcessIdMissing;
+
+  /// No description provided for @sshExitedBeforeReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote Hermes exited before becoming ready'**
+  String get sshExitedBeforeReady;
+
+  /// No description provided for @sshOwnershipProofFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote Hermes ownership proof failed'**
+  String get sshOwnershipProofFailed;
+
+  /// No description provided for @errorSessionBranchIdMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Hermes did not return a durable branched session ID'**
+  String get errorSessionBranchIdMissing;
+
+  /// No description provided for @errorDuplicateImportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Hermes did not import the duplicated session'**
+  String get errorDuplicateImportFailed;
+
+  /// No description provided for @errorSessionNoTitleableMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'The session has no messages that can be used to generate a title'**
+  String get errorSessionNoTitleableMessages;
+
+  /// No description provided for @errorTitleGeneratorEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'The title generator returned an empty title'**
+  String get errorTitleGeneratorEmpty;
+
+  /// No description provided for @errorProjectIdRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'A project is required'**
+  String get errorProjectIdRequired;
+
+  /// No description provided for @errorProjectWorkingFolderMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The target project has no working folder'**
+  String get errorProjectWorkingFolderMissing;
+
+  /// No description provided for @errorDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Download failed'**
+  String get errorDownloadFailed;
+
+  /// No description provided for @errorMessagingPlatformNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Messaging platform not found'**
+  String get errorMessagingPlatformNotFound;
+
+  /// No description provided for @errorBotGroupSessionStartFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s group session did not start'**
+  String errorBotGroupSessionStartFailed(String name);
+
+  /// No description provided for @sshRemoteCommandFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote command failed ({code})'**
+  String sshRemoteCommandFailed(String code);
+
+  /// No description provided for @sshHostAndUserRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'SSH host and user are required'**
+  String get sshHostAndUserRequired;
+
+  /// No description provided for @sshPortInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'SSH port must be between 1 and 65535'**
+  String get sshPortInvalid;
+
+  /// No description provided for @sshHostKeyChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The SSH host key for {host} changed. Expected {expected}; received {received}'**
+  String sshHostKeyChanged(String host, String expected, String received);
+
+  /// No description provided for @sshProfileInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The remote profile name is invalid'**
+  String get sshProfileInvalid;
+
+  /// No description provided for @errorDirectGatewayFeatureUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This feature requires Hermes Mobile Server and is unavailable on a direct Gateway connection'**
+  String get errorDirectGatewayFeatureUnavailable;
+
+  /// No description provided for @errorOperationFailedWithDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Operation failed: {error}'**
+  String errorOperationFailedWithDetail(String error);
+
+  /// No description provided for @gatewayOauthRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Gateway rejected sign-in: {error}'**
+  String gatewayOauthRejected(String error);
+
+  /// No description provided for @gatewayOauthCodeMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The Gateway callback is missing the authorization code'**
+  String get gatewayOauthCodeMissing;
+
+  /// No description provided for @gatewayOauthStateMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The Gateway callback state did not match. Sign-in was cancelled for security.'**
+  String get gatewayOauthStateMismatch;
+
+  /// No description provided for @gatewayOauthRefreshTokenMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The Gateway session expired and has no refresh token'**
+  String get gatewayOauthRefreshTokenMissing;
+
+  /// No description provided for @gatewayOauthTicketMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The Gateway did not return a WebSocket ticket'**
+  String get gatewayOauthTicketMissing;
+
+  /// No description provided for @gatewayOauthAccessTokenMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The Gateway token response did not include an access token'**
+  String get gatewayOauthAccessTokenMissing;
+
+  /// No description provided for @gatewayOauthTimedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Gateway sign-in timed out'**
+  String get gatewayOauthTimedOut;
+
+  /// No description provided for @gatewayOauthNativeUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Native Gateway OAuth is not supported on this platform'**
+  String get gatewayOauthNativeUnsupported;
+
+  /// No description provided for @updateManifestInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The update manifest is invalid'**
+  String get updateManifestInvalid;
+
+  /// No description provided for @sshRemotePlatformUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'The remote platform is unsupported: {error}'**
+  String sshRemotePlatformUnsupported(String error);
+
+  /// No description provided for @sshWebUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Native SSH connections are not supported on web'**
+  String get sshWebUnsupported;
+
+  /// No description provided for @filesDownloadPlatformUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Local file download is unavailable on this platform'**
+  String get filesDownloadPlatformUnsupported;
+
+  /// No description provided for @sessionExportPlatformUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Local file export is unavailable on this platform'**
+  String get sessionExportPlatformUnsupported;
+
+  /// No description provided for @errorPluginCanonicalKeyRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'This plugin needs a canonical key before it can be changed'**
+  String get errorPluginCanonicalKeyRequired;
+
+  /// No description provided for @connectGatewayToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Gateway token'**
+  String get connectGatewayToken;
+
+  /// No description provided for @modelMoaTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Mixture of Agents'**
+  String get modelMoaTitle;
+
+  /// No description provided for @insightsTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens'**
+  String get insightsTokens;
+
+  /// No description provided for @messageWebFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Web'**
+  String get messageWebFallback;
+
+  /// No description provided for @mcpLogsSourceStdio.
+  ///
+  /// In en, this message translates to:
+  /// **'stdio'**
+  String get mcpLogsSourceStdio;
+
+  /// No description provided for @mcpLogsSourceAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent'**
+  String get mcpLogsSourceAgent;
+
+  /// No description provided for @projectPrimaryFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Main'**
+  String get projectPrimaryFolder;
+
+  /// No description provided for @botGroupNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a group name'**
+  String get botGroupNameRequired;
+
+  /// No description provided for @botGroupMembersMinimum.
+  ///
+  /// In en, this message translates to:
+  /// **'A group needs at least two bots'**
+  String get botGroupMembersMinimum;
+
+  /// No description provided for @botGroupMembersRange.
+  ///
+  /// In en, this message translates to:
+  /// **'A group needs 2–{max} bots'**
+  String botGroupMembersRange(int max);
+
+  /// No description provided for @botGroupMembersMaximum.
+  ///
+  /// In en, this message translates to:
+  /// **'A group supports at most {max} bots'**
+  String botGroupMembersMaximum(int max);
+
+  /// No description provided for @botGroupMemberUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No group member is available'**
+  String get botGroupMemberUnavailable;
+
+  /// No description provided for @botProfileNameUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No free profile name is available'**
+  String get botProfileNameUnavailable;
+
+  /// No description provided for @botDefaultProfileDeleteForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'The default profile cannot be deleted'**
+  String get botDefaultProfileDeleteForbidden;
+
+  /// No description provided for @botConnectionUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The bot connection is unavailable'**
+  String get botConnectionUnavailable;
+
+  /// No description provided for @botTurnFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The bot turn failed'**
+  String get botTurnFailed;
+
+  /// No description provided for @mcpInvalidJsonSyntax.
+  ///
+  /// In en, this message translates to:
+  /// **'The JSON syntax is invalid'**
+  String get mcpInvalidJsonSyntax;
+
+  /// No description provided for @mcpJsonObjectRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'The top-level JSON value must be an object'**
+  String get mcpJsonObjectRequired;
+
+  /// No description provided for @voiceWakeMicStreamEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'The wake word microphone stream ended unexpectedly'**
+  String get voiceWakeMicStreamEnded;
+
+  /// No description provided for @httpStatusError.
+  ///
+  /// In en, this message translates to:
+  /// **'The server returned HTTP {statusCode}'**
+  String httpStatusError(int statusCode);
 }
 
 class _AppLocalizationsDelegate

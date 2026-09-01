@@ -213,17 +213,22 @@ class _ConnectScreenState extends State<ConnectScreen> {
     try {
       // Never replace a working configuration with unverified credentials.
       await connection.validateConnection(settings);
-      if (_saveAsProfile) {
-        final store = connection.store;
-        final name = _profileNameCtrl.text.trim().isNotEmpty
-            ? _profileNameCtrl.text.trim()
-            : Uri.tryParse(url)?.host ?? url;
-        await store.saveProfile(name, settings);
-        await store.activateProfile(name);
-        await _loadProfiles();
-      }
       await connection.saveConnection(settings);
       await connection.connect();
+      if (_saveAsProfile && connection.isConnected) {
+        try {
+          final store = connection.store;
+          final name = _profileNameCtrl.text.trim().isNotEmpty
+              ? _profileNameCtrl.text.trim()
+              : Uri.tryParse(url)?.host ?? url;
+          await store.saveProfile(name, settings);
+          await store.activateProfile(name);
+          await _loadProfiles();
+        } catch (_) {
+          // The primary connection has already committed successfully. A
+          // secondary label/bookmark failure must not present it as offline.
+        }
+      }
       if (!mounted) return;
       if (connection.isConnected) {
         // C1 (first run): rendered inline as AppShell's own body while
@@ -345,14 +350,15 @@ class _ConnectScreenState extends State<ConnectScreen> {
           : null;
       _replaceHeaderDrafts(profile.settings.normalizedHeaders);
     });
-    await connection.store.activateProfile(profile.name);
     try {
       final id = ConnectionStore.savedConnectionId(profile.name);
       if (connection.registry.runtime(id) == null) {
         await connection.addConnection(id, profile.settings, makeActive: true);
       } else {
+        await connection.registry.runtime(id)!.connect();
         connection.activateConnection(id);
       }
+      await connection.store.activateProfile(profile.name);
       if (!mounted) return;
       if (connection.isConnected) {
         final navigator = Navigator.of(context);
@@ -730,11 +736,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                 labelText:
                                     _transport == ConnectionTransport.companion
                                     ? context.l10n.connectApiKey
-                                    : 'Gateway Token',
+                                    : context.l10n.connectGatewayToken,
                                 hintText:
                                     _transport == ConnectionTransport.companion
                                     ? 'hm_...'
-                                    : 'Token',
+                                    : context.l10n.connectAuthToken,
                                 prefixIcon: const Icon(Icons.key_outlined),
                                 suffixIcon: IconButton(
                                   tooltip: _keyVisible

@@ -2,6 +2,8 @@
 /// rendered as searchable/filterable node list with detail edit + delete.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -29,6 +31,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
   String _query = '';
   String? _kindFilter; // null = all, 'skill' | 'memory'
   int _loadGeneration = 0;
+  bool _detailOpen = false;
 
   @override
   void initState() {
@@ -39,7 +42,22 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    observeConnection(context.read<ConnectionStore>(), _load);
+    observeConnection(context.read<ConnectionStore>(), _reloadForConnection);
+  }
+
+  void _reloadForConnection() {
+    if (!mounted) return;
+    if (_detailOpen) {
+      _detailOpen = false;
+      unawaited(Navigator.of(context).maybePop());
+    }
+    ++_loadGeneration;
+    setState(() {
+      _graph = null;
+      _error = null;
+      _busy = false;
+    });
+    _load();
   }
 
   @override
@@ -58,18 +76,24 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
     if (mounted) setState(() => _busy = true);
     try {
       final graph = await api.knowledgeGraph();
-      if (mounted && generation == _loadGeneration) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          identical(api, context.read<ConnectionStore>().api)) {
         setState(() {
           _graph = graph;
           _error = null;
         });
       }
     } catch (e) {
-      if (mounted && generation == _loadGeneration) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          identical(api, context.read<ConnectionStore>().api)) {
         setState(() => _error = '$e');
       }
     } finally {
-      if (mounted && generation == _loadGeneration) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          identical(api, context.read<ConnectionStore>().api)) {
         setState(() => _busy = false);
       }
     }
@@ -95,22 +119,27 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
     try {
       final detail = await api.knowledgeNode(node['id'].toString());
       if (!mounted || !identical(api, connection.api)) return;
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(HermesRadius.sheet),
+      _detailOpen = true;
+      try {
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(HermesRadius.sheet),
+            ),
           ),
-        ),
-        builder: (_) => _NodeDetailSheet(
-          node: node,
-          detail: detail,
-          ownerApi: api,
-          onChanged: _load,
-        ),
-      );
+          builder: (_) => _NodeDetailSheet(
+            node: node,
+            detail: detail,
+            ownerApi: api,
+            onChanged: _load,
+          ),
+        );
+      } finally {
+        _detailOpen = false;
+      }
     } catch (e) {
       if (mounted && identical(api, connection.api)) {
         showHermesToast(context, message: l10n.knowledgeLoadDetailFailed('$e'));

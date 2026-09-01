@@ -120,11 +120,19 @@ PreviewBridgeEvent? parsePreviewBridgeMessage(String raw, String token) {
 /// The caller must never use this document for an arbitrary remote URL. The
 /// channel lets agent-authored local HTML resize, report console output, and
 /// submit a short hidden user intent through `window.hermes.send(prompt)`.
-String withPreviewBridge(String document, String token) {
+String withPreviewBridge(
+  String document,
+  String token, {
+  required String scriptErrorLabel,
+  required String unhandledPromiseRejectionLabel,
+}) {
   final encodedToken = jsonEncode(token);
+  final encodedScriptError = jsonEncode(scriptErrorLabel);
+  final encodedUnhandledRejection = jsonEncode(unhandledPromiseRejectionLabel);
   final script =
       '''<script>(function(){
 var token=$encodedToken;
+var scriptErrorLabel=$encodedScriptError,unhandledRejectionLabel=$encodedUnhandledRejection;
 function emit(value){try{$_bridgeChannel.postMessage(JSON.stringify(value))}catch(_){}}
 function send(prompt){if(typeof prompt!=="string"||!prompt.trim())return false;
  emit({type:"$_intentMessageType",token:token,prompt:prompt.slice(0,$kPreviewMaxIntentLength)});return true}
@@ -141,9 +149,9 @@ function valueText(value){if(typeof value==="string")return value;
  token:token,level:level,message:args.map(valueText).join(" ").slice(0,$kPreviewMaxConsoleLength)});
  if(typeof original==="function")return original.apply(console,args)}});
 addEventListener("error",function(event){emit({type:"$_consoleMessageType",token:token,level:"error",
- message:String(event.message||event.error||"Script error").slice(0,$kPreviewMaxConsoleLength)})});
+ message:String(event.message||event.error||scriptErrorLabel).slice(0,$kPreviewMaxConsoleLength)})});
 addEventListener("unhandledrejection",function(event){emit({type:"$_consoleMessageType",token:token,level:"error",
- message:("Unhandled promise rejection: "+valueText(event.reason)).slice(0,$kPreviewMaxConsoleLength)})});
+ message:(unhandledRejectionLabel+valueText(event.reason)).slice(0,$kPreviewMaxConsoleLength)})});
 var lastHeight=0,lastWidth=0;function measure(){var root=document.documentElement,body=document.body;
  var height=Math.max(root?root.scrollHeight:0,body?body.scrollHeight:0);var width=0;
  if(body){var children=body.children,left=Infinity,right=0;for(var i=0;i<children.length;i++){
@@ -164,10 +172,21 @@ if(typeof ResizeObserver==="function"){var observer=new ResizeObserver(measure);
 
 /// Builds the self-contained DOM tour action executed in the live preview.
 /// The payload is JSON encoded and never interpolated as JavaScript source.
-String previewTourScript(Map<String, dynamic> action) {
+String previewTourScript(
+  Map<String, dynamic> action, {
+  required String backLabel,
+  required String doneLabel,
+  required String nextLabel,
+}) {
   final payload = jsonEncode(action);
+  final labels = jsonEncode({
+    'back': backLabel,
+    'done': doneLabel,
+    'next': nextLabel,
+  });
   return '''(() => {
 const action=$payload;
+const labels=$labels;
 const state=window.__hermesMobileTour||(window.__hermesMobileTour={steps:[],index:0});
 const rootId="__hermes-mobile-tour";
 function clear(){const old=document.getElementById(rootId);if(old)old.remove()}
@@ -202,8 +221,8 @@ function render(step,withControls){clear();let target=null;if(step.selector){try
  if(step.text){const text=document.createElement("div");text.textContent=String(step.text);pop.appendChild(text)}
  if(withControls){const controls=document.createElement("div");controls.style.cssText="display:flex;justify-content:flex-end;gap:8px;margin-top:12px";
  function button(label,handler,disabled){const item=document.createElement("button");item.textContent=label;item.disabled=disabled;item.style.cssText="border:1px solid #bbb;background:#f5f5f5;color:#171717;border-radius:6px;padding:6px 10px";item.onclick=handler;controls.appendChild(item)}
- button("Back",function(){if(state.index>0){state.index--;render(state.steps[state.index],true)}},state.index<=0);
- button(state.index>=state.steps.length-1?"Done":"Next",function(){if(state.index>=state.steps.length-1){state.steps=[];clear()}else{state.index++;render(state.steps[state.index],true)}},false);pop.appendChild(controls)}
+ button(labels.back,function(){if(state.index>0){state.index--;render(state.steps[state.index],true)}},state.index<=0);
+ button(state.index>=state.steps.length-1?labels.done:labels.next,function(){if(state.index>=state.steps.length-1){state.steps=[];clear()}else{state.index++;render(state.steps[state.index],true)}},false);pop.appendChild(controls)}
  root.appendChild(pop);document.body.appendChild(root);return {success:true}}
 const kind=String(action.action||action.kind||"stop").toLowerCase();
 if(kind==="targets")return JSON.stringify({success:true,targets:targets(),title:document.title,url:location.href});

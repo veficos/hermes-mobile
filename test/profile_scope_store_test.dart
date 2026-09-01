@@ -125,6 +125,24 @@ void main() {
     expect(store.profiles, hasLength(2));
   });
 
+  test(
+    'session snapshot updates active profile and drops a deleted override',
+    () {
+      final store = ProfileScopeStore();
+      addTearDown(store.dispose);
+      store.updateSnapshot(const [
+        ProfileInfo(name: 'default'),
+        ProfileInfo(name: 'work'),
+      ], 'default');
+      store.setOverride('work');
+
+      store.updateSnapshot(const [ProfileInfo(name: 'default')], 'default');
+
+      expect(store.override, isNull);
+      expect(store.profiles.map((profile) => profile.name), ['default']);
+    },
+  );
+
   test('bindApi to a new connection resets the override and cache', () {
     final store = ProfileScopeStore()..bindApi(_ProfilesApi());
     store.setOverride('work');
@@ -168,4 +186,54 @@ void main() {
     await oldRefresh;
     expect(store.activeProfile, 'new');
   });
+
+  test(
+    'session snapshot invalidates an older refresh on the same API',
+    () async {
+      final api = _DelayedProfilesApi('old');
+      final store = ProfileScopeStore()..bindApi(api);
+      addTearDown(store.dispose);
+      final refresh = store.refresh();
+
+      store.syncFromSession(const [
+        ProfileInfo(name: 'new', isActive: true),
+      ], 'new');
+      api.gate.complete();
+      await refresh;
+
+      expect(store.activeProfile, 'new');
+      expect(store.profiles.single.name, 'new');
+    },
+  );
+
+  test(
+    'a later update wins when an older backend sink finishes last',
+    () async {
+      final api = _ProfilesApi();
+      final store = ProfileScopeStore()..bindApi(api);
+      addTearDown(store.dispose);
+      final oldGate = Completer<void>();
+      store.bindBackendSnapshotSink((payload, _) async {
+        if (payload.active == 'old') await oldGate.future;
+      });
+
+      final oldUpdate = store.updateProfiles(
+        const ProfilesPayload(
+          profiles: [ProfileInfo(name: 'old')],
+          active: 'old',
+        ),
+      );
+      await store.updateProfiles(
+        const ProfilesPayload(
+          profiles: [ProfileInfo(name: 'new')],
+          active: 'new',
+        ),
+      );
+      oldGate.complete();
+      await oldUpdate;
+
+      expect(store.activeProfile, 'new');
+      expect(store.profiles.single.name, 'new');
+    },
+  );
 }

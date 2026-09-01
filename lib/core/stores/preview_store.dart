@@ -42,8 +42,11 @@ class PreviewStore extends ChangeNotifier {
   OwnerRoute? _owner;
   final List<PreviewTab> _tabs = <PreviewTab>[];
   String? _activeTabId;
+  late ConnectionId _activeConnectionId;
 
   PreviewStore(this.connection) {
+    _activeConnectionId = connection.activeConnectionId;
+    connection.addListener(_onConnectionChanged);
     _events = connection.routedEvents.listen(_onGatewayEvent);
   }
   String? get url => _url;
@@ -51,13 +54,26 @@ class PreviewStore extends ChangeNotifier {
   String get title => _title;
   bool get hasContent =>
       (_url?.isNotEmpty ?? false) || (_html?.isNotEmpty ?? false);
-  List<PreviewTab> get tabs => List.unmodifiable(_tabs);
+  List<PreviewTab> get tabs => List.unmodifiable(
+    _tabs.where(
+      (tab) =>
+          tab.owner == null ||
+          tab.owner!.connectionId == connection.activeConnectionId,
+    ),
+  );
   PreviewTab? get activeTab {
     final id = _activeTabId;
     if (id == null) return null;
     final index = _tabs.indexWhere((tab) => tab.id == id);
-    return index < 0 ? null : _tabs[index];
+    if (index < 0) return null;
+    final tab = _tabs[index];
+    return tab.owner == null ||
+            tab.owner!.connectionId == connection.activeConnectionId
+        ? tab
+        : null;
   }
+
+  String _ownerKey(OwnerRoute? owner) => owner?.key ?? 'legacy';
 
   void attachDriver(PreviewDriver driver, {String? tabId}) {
     if (tabId == null) {
@@ -83,7 +99,7 @@ class PreviewStore extends ChangeNotifier {
   }) {
     final resolvedTitle = title ?? runtimeL10n.previewTitle;
     final tab = PreviewTab(
-      id: 'url:$url',
+      id: 'url:${_ownerKey(owner)}:$url',
       title: resolvedTitle,
       url: url,
       sessionId: sessionId,
@@ -106,7 +122,7 @@ class PreviewStore extends ChangeNotifier {
   }) {
     final resolvedTitle = title ?? runtimeL10n.previewTitle;
     final tab = PreviewTab(
-      id: 'html:${sessionId ?? ''}:${html.hashCode}',
+      id: 'html:${_ownerKey(owner)}:${sessionId ?? ''}:${html.hashCode}',
       title: resolvedTitle,
       html: html,
       sessionId: sessionId,
@@ -135,6 +151,10 @@ class PreviewStore extends ChangeNotifier {
     final index = _tabs.indexWhere((tab) => tab.id == id);
     if (index < 0) return;
     final tab = _tabs[index];
+    if (tab.owner != null &&
+        tab.owner!.connectionId != connection.activeConnectionId) {
+      return;
+    }
     _activeTabId = id;
     _url = tab.url;
     _html = tab.html;
@@ -177,6 +197,22 @@ class PreviewStore extends ChangeNotifier {
     _activeTabId = null;
   }
 
+  void _onConnectionChanged() {
+    final next = connection.activeConnectionId;
+    if (next == _activeConnectionId) return;
+    _activeConnectionId = next;
+    final matching = _tabs
+        .where((tab) => tab.owner == null || tab.owner!.connectionId == next)
+        .lastOrNull;
+    if (matching == null) {
+      _clearActive();
+    } else {
+      activate(matching.id);
+      return;
+    }
+    notifyListeners();
+  }
+
   Future<void> _onGatewayEvent(RoutedGatewayEvent routed) async {
     final event = routed.event;
     if (!event.type.startsWith('preview.') && event.type != 'tour.request') {
@@ -185,7 +221,8 @@ class PreviewStore extends ChangeNotifier {
     final p = event.payload;
     final route = OwnerRoute(
       connectionId: routed.route.connectionId,
-      profile: p['profile']?.toString(),
+      profile:
+          p['profile']?.toString() ?? event.profile ?? routed.route.profile,
     );
     if (event.type == 'preview.open.request') {
       final url = p['url']?.toString() ?? '',
@@ -280,6 +317,7 @@ class PreviewStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    connection.removeListener(_onConnectionChanged);
     _events?.cancel();
     super.dispose();
   }

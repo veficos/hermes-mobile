@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../l10n/runtime_l10n.dart';
 import 'stores/notification_store.dart';
 
 class NotificationTarget {
@@ -21,6 +22,7 @@ class NotificationTarget {
   final String? sessionId;
   final String? connectionId;
   final String? profile;
+  final String? requestId;
   final bool approval;
 
   const NotificationTarget({
@@ -28,6 +30,7 @@ class NotificationTarget {
     this.sessionId,
     this.connectionId,
     this.profile,
+    this.requestId,
     this.approval = false,
   });
 
@@ -52,6 +55,7 @@ class NotificationTarget {
         sessionId: _nonEmpty(json['session_id']),
         connectionId: _nonEmpty(json['connection_id']),
         profile: _nonEmpty(json['profile']),
+        requestId: _nonEmpty(json['request_id']),
         approval:
             json['approval'] == true || json['approval']?.toString() == 'true',
       );
@@ -66,6 +70,7 @@ class NotificationTarget {
     'session_id': sessionId,
     'connection_id': connectionId,
     'profile': profile,
+    'request_id': requestId,
     'approval': approval,
   });
 }
@@ -169,11 +174,11 @@ class NotificationsService {
       NotificationKind.info => 'hermes-info',
     };
     final channelName = switch (item.kind) {
-      NotificationKind.error => 'Errors',
-      NotificationKind.warning => 'Warnings',
-      NotificationKind.success => 'Success',
-      NotificationKind.approval => 'Approvals',
-      NotificationKind.info => 'Info',
+      NotificationKind.error => runtimeL10n.notificationChannelErrors,
+      NotificationKind.warning => runtimeL10n.notificationChannelWarnings,
+      NotificationKind.success => runtimeL10n.notificationChannelSuccess,
+      NotificationKind.approval => runtimeL10n.notificationChannelApprovals,
+      NotificationKind.info => runtimeL10n.notificationChannelInfo,
     };
     final importance = switch (item.kind) {
       NotificationKind.error || NotificationKind.approval => Importance.high,
@@ -202,6 +207,7 @@ class NotificationsService {
           sessionId: item.sessionId,
           connectionId: item.connectionId,
           profile: item.profile,
+          requestId: item.requestId,
           approval: item.kind == NotificationKind.approval,
         ).toPayload(),
       );
@@ -290,6 +296,7 @@ class NotificationsService {
       sessionId: target.sessionId,
       connectionId: target.connectionId,
       profile: target.profile,
+      requestId: target.requestId,
     );
     if (tapped) _dispatchTarget(target);
   }

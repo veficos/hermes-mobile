@@ -10407,4 +10407,434 @@ class AppLocalizationsJa extends AppLocalizations {
   String billingPaymentMethodKind(String kind) {
     return '支払い方法 · $kind';
   }
+
+  @override
+  String get previewTourBack => '戻る';
+
+  @override
+  String get previewTourDone => '完了';
+
+  @override
+  String get previewTourNext => '次へ';
+
+  @override
+  String get chatMermaidParseError => 'Mermaid 図を解析できません';
+
+  @override
+  String get petDefaultName => 'Hermes ペット';
+
+  @override
+  String get sessionDetailProfile => 'プロファイル';
+
+  @override
+  String get profileArchiveType => 'Hermes プロファイル';
+
+  @override
+  String get profilesTemperature => '温度';
+
+  @override
+  String get profilesTopP => 'Top P';
+
+  @override
+  String get profilesMaxTokens => '最大トークン数';
+
+  @override
+  String get sessionDesktopFallback => 'デスクトップセッション';
+
+  @override
+  String get backgroundProcessFallback => 'バックグラウンドプロセス';
+
+  @override
+  String get insightsUnknownModel => '不明なモデル';
+
+  @override
+  String get billingCard => 'カード';
+
+  @override
+  String get billingLink => 'Link';
+
+  @override
+  String get slashGroupSkills => 'スキル';
+
+  @override
+  String get slashGroupCommands => 'コマンド';
+
+  @override
+  String get botAuthorYou => 'あなた';
+
+  @override
+  String get botAuthorSystem => 'システム';
+
+  @override
+  String get botAuthorFallback => 'Bot';
+
+  @override
+  String terminalErrorMessage(String error) {
+    return 'ターミナルエラー: $error';
+  }
+
+  @override
+  String sessionCopyTitle(String title) {
+    return '$title（コピー）';
+  }
+
+  @override
+  String get gitRemoteFallback => 'リモート';
+
+  @override
+  String get gitStashFallback => 'スタッシュ';
+
+  @override
+  String get notificationChannelErrors => 'エラー';
+
+  @override
+  String get notificationChannelWarnings => '警告';
+
+  @override
+  String get notificationChannelSuccess => '成功';
+
+  @override
+  String get notificationChannelApprovals => '承認';
+
+  @override
+  String get notificationChannelInfo => '情報';
+
+  @override
+  String get memoryCuratorTitle => 'キュレーター';
+
+  @override
+  String get messageSourceServer => 'サーバー';
+
+  @override
+  String get messageSourceMobile => 'モバイル';
+
+  @override
+  String get kanbanRunQueued => '待機中';
+
+  @override
+  String get kanbanRunCompleted => '完了';
+
+  @override
+  String get kanbanRunFailed => '失敗';
+
+  @override
+  String get kanbanRunCancelled => 'キャンセル済み';
+
+  @override
+  String get kanbanEventTaskCreated => 'タスクを作成';
+
+  @override
+  String get kanbanEventTaskUpdated => 'タスクを更新';
+
+  @override
+  String get kanbanEventTaskDeleted => 'タスクを削除';
+
+  @override
+  String get kanbanEventRunStarted => '実行を開始';
+
+  @override
+  String get kanbanEventRunCompleted => '実行が完了';
+
+  @override
+  String get kanbanEventRunFailed => '実行に失敗';
+
+  @override
+  String get kanbanEventRunCancelled => '実行をキャンセル';
+
+  @override
+  String get kanbanEventCommentCreated => 'コメントを追加';
+
+  @override
+  String get kanbanEventAttachmentAdded => '添付ファイルを追加';
+
+  @override
+  String get kanbanEventAttachmentDeleted => '添付ファイルを削除';
+
+  @override
+  String get cloudRoleOwner => '所有者';
+
+  @override
+  String get cloudRoleAdmin => '管理者';
+
+  @override
+  String get cloudRoleMember => 'メンバー';
+
+  @override
+  String get cloudRoleViewer => '閲覧者';
+
+  @override
+  String get chatStatusToolDrafting => 'ツール呼び出しを準備中';
+
+  @override
+  String get chatStatusProvider => 'プロバイダーの状態';
+
+  @override
+  String get previewScriptError => 'スクリプトエラー';
+
+  @override
+  String get previewUnhandledPromiseRejection => '未処理の Promise 拒否：';
+
+  @override
+  String botGroupSessionTitle(String roomId) {
+    return 'グループ：$roomId';
+  }
+
+  @override
+  String get errorExpectedObjectResponse => 'サーバーから無効なオブジェクト応答が返されました';
+
+  @override
+  String get errorTtsNoAudio => '音声合成から音声が返されませんでした';
+
+  @override
+  String get errorInvalidDataUrl => 'サーバーから無効なデータ URL が返されました';
+
+  @override
+  String get errorExportDirectoryMissing => 'サーバーからエクスポート先が返されませんでした';
+
+  @override
+  String get errorImportDirectoryMissing => 'サーバーからインポート先が返されませんでした';
+
+  @override
+  String get errorRawConfigInvalid => 'サーバーから無効な設定が返されました';
+
+  @override
+  String get errorPluginToggleRejected => 'バックエンドがプラグイン変更を拒否しました';
+
+  @override
+  String get errorConnectionNotConfigured => '接続が設定されていません';
+
+  @override
+  String errorSessionOwnerUnknown(String sessionId) {
+    return 'セッション所有者が不明です：$sessionId';
+  }
+
+  @override
+  String get errorRemotePushUnavailable => 'この接続ではリモートプッシュを利用できません';
+
+  @override
+  String get sshCommandTimedOut => 'SSH コマンドがタイムアウトしました';
+
+  @override
+  String get sshRemoteHomeUnsafe => 'リモートの Hermes ホームは安全ではありません';
+
+  @override
+  String get sshOwnershipVerificationFailed =>
+      'リモート Hermes プロセスの所有権を確認できませんでした';
+
+  @override
+  String sshOwnershipProbeFailed(String status) {
+    return 'リモート所有権の確認に失敗しました（$status）';
+  }
+
+  @override
+  String get sshHelperInvalidJson => 'リモートヘルパーから無効な JSON が返されました';
+
+  @override
+  String get sshWindowsOwnershipVerificationFailed =>
+      'リモート Windows プロセスの所有権を確認できませんでした';
+
+  @override
+  String get sshRemotePathInvalid => 'リモート Hermes パスは絶対パスまたは ~/ で始める必要があります';
+
+  @override
+  String get sshExecutableNotFound => '設定された Hermes 実行ファイルがリモートホストにありません';
+
+  @override
+  String get sshHermesNotInstalled => 'リモートホストに Hermes がインストールされていません';
+
+  @override
+  String get sshBootstrapFlagsUnsupported =>
+      'リモート Hermes は安全な SSH 所有権ブートストラップフラグをサポートする必要があります';
+
+  @override
+  String get sshWindowsIdentityInvalid => 'リモート Windows バックエンドから無効な ID が返されました';
+
+  @override
+  String get sshWindowsExitedBeforeReady => 'リモート Windows バックエンドが準備完了前に終了しました';
+
+  @override
+  String get sshWindowsOwnershipProofFailed => 'リモート Windows の所有権証明に失敗しました';
+
+  @override
+  String get sshProcessIdMissing => 'リモート Hermes からプロセス ID が返されませんでした';
+
+  @override
+  String get sshExitedBeforeReady => 'リモート Hermes が準備完了前に終了しました';
+
+  @override
+  String get sshOwnershipProofFailed => 'リモート Hermes の所有権証明に失敗しました';
+
+  @override
+  String get errorSessionBranchIdMissing => 'Hermes から分岐セッションの永続 ID が返されませんでした';
+
+  @override
+  String get errorDuplicateImportFailed => 'Hermes が複製セッションをインポートできませんでした';
+
+  @override
+  String get errorSessionNoTitleableMessages => 'タイトル生成に使用できるメッセージがありません';
+
+  @override
+  String get errorTitleGeneratorEmpty => 'タイトル生成機能から空のタイトルが返されました';
+
+  @override
+  String get errorProjectIdRequired => 'プロジェクトを選択してください';
+
+  @override
+  String get errorProjectWorkingFolderMissing => '対象プロジェクトに作業フォルダーがありません';
+
+  @override
+  String get errorDownloadFailed => 'ダウンロードに失敗しました';
+
+  @override
+  String get errorMessagingPlatformNotFound => 'メッセージングプラットフォームが見つかりません';
+
+  @override
+  String errorBotGroupSessionStartFailed(String name) {
+    return '$name のグループセッションを開始できませんでした';
+  }
+
+  @override
+  String sshRemoteCommandFailed(String code) {
+    return 'リモートコマンドに失敗しました（$code）';
+  }
+
+  @override
+  String get sshHostAndUserRequired => 'SSH ホストとユーザーが必要です';
+
+  @override
+  String get sshPortInvalid => 'SSH ポートは 1～65535 の範囲で指定してください';
+
+  @override
+  String sshHostKeyChanged(String host, String expected, String received) {
+    return '$host の SSH ホストキーが変更されました。期待値：$expected、受信値：$received';
+  }
+
+  @override
+  String get sshProfileInvalid => 'リモートプロファイル名が無効です';
+
+  @override
+  String get errorDirectGatewayFeatureUnavailable =>
+      'この機能には Hermes Mobile Server が必要で、直接 Gateway 接続では利用できません';
+
+  @override
+  String errorOperationFailedWithDetail(String error) {
+    return '操作に失敗しました：$error';
+  }
+
+  @override
+  String gatewayOauthRejected(String error) {
+    return 'Gateway がサインインを拒否しました：$error';
+  }
+
+  @override
+  String get gatewayOauthCodeMissing => 'Gateway コールバックに認証コードがありません';
+
+  @override
+  String get gatewayOauthStateMismatch =>
+      'Gateway コールバックの状態が一致しません。安全のためサインインを中止しました。';
+
+  @override
+  String get gatewayOauthRefreshTokenMissing =>
+      'Gateway セッションの期限が切れ、更新トークンがありません';
+
+  @override
+  String get gatewayOauthTicketMissing => 'Gateway から WebSocket チケットが返されませんでした';
+
+  @override
+  String get gatewayOauthAccessTokenMissing => 'Gateway のトークン応答にアクセストークンがありません';
+
+  @override
+  String get gatewayOauthTimedOut => 'Gateway のサインインがタイムアウトしました';
+
+  @override
+  String get gatewayOauthNativeUnsupported =>
+      'このプラットフォームではネイティブ Gateway OAuth を利用できません';
+
+  @override
+  String get updateManifestInvalid => '更新マニフェストが無効です';
+
+  @override
+  String sshRemotePlatformUnsupported(String error) {
+    return 'リモートプラットフォームはサポートされていません：$error';
+  }
+
+  @override
+  String get sshWebUnsupported => 'Web ではネイティブ SSH 接続を利用できません';
+
+  @override
+  String get filesDownloadPlatformUnsupported =>
+      'このプラットフォームではローカルファイルへダウンロードできません';
+
+  @override
+  String get sessionExportPlatformUnsupported =>
+      'このプラットフォームではローカルファイルへエクスポートできません';
+
+  @override
+  String get errorPluginCanonicalKeyRequired => 'このプラグインを変更するには正規キーが必要です';
+
+  @override
+  String get connectGatewayToken => 'Gateway トークン';
+
+  @override
+  String get modelMoaTitle => 'エージェント混合';
+
+  @override
+  String get insightsTokens => 'トークン';
+
+  @override
+  String get messageWebFallback => 'Web';
+
+  @override
+  String get mcpLogsSourceStdio => 'stdio';
+
+  @override
+  String get mcpLogsSourceAgent => 'エージェント';
+
+  @override
+  String get projectPrimaryFolder => 'メイン';
+
+  @override
+  String get botGroupNameRequired => 'グループ名を入力してください';
+
+  @override
+  String get botGroupMembersMinimum => 'グループには少なくとも 2 つの Bot が必要です';
+
+  @override
+  String botGroupMembersRange(int max) {
+    return 'グループには 2～$max 個の Bot が必要です';
+  }
+
+  @override
+  String botGroupMembersMaximum(int max) {
+    return 'グループに追加できる Bot は最大 $max 個です';
+  }
+
+  @override
+  String get botGroupMemberUnavailable => '利用できるグループメンバーがいません';
+
+  @override
+  String get botProfileNameUnavailable => '利用できるプロファイル名がありません';
+
+  @override
+  String get botDefaultProfileDeleteForbidden => 'デフォルトプロファイルは削除できません';
+
+  @override
+  String get botConnectionUnavailable => 'Bot 接続を利用できません';
+
+  @override
+  String get botTurnFailed => 'Bot のターンに失敗しました';
+
+  @override
+  String get mcpInvalidJsonSyntax => 'JSON の構文が無効です';
+
+  @override
+  String get mcpJsonObjectRequired => 'JSON のトップレベル値はオブジェクトである必要があります';
+
+  @override
+  String get voiceWakeMicStreamEnded => 'ウェイクワードのマイクストリームが予期せず終了しました';
+
+  @override
+  String httpStatusError(int statusCode) {
+    return 'サーバーが HTTP $statusCode を返しました';
+  }
 }

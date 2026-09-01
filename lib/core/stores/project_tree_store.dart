@@ -5,6 +5,8 @@
 /// persists node open/closed state plus the drill-in scope locally.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +16,9 @@ import '../../l10n/runtime_l10n.dart';
 
 class ProjectTreeStore extends ChangeNotifier {
   final ApiClient? Function() _apiProvider;
+  ApiClient? _boundApi;
+  bool _apiInitialized = false;
+  int _apiGeneration = 0;
 
   ProjectTreeStore(this._apiProvider);
 
@@ -117,34 +122,86 @@ class ProjectTreeStore extends ChangeNotifier {
   // ── 刷新树 ──
   Future<void> refresh() async {
     final api = _apiProvider();
-    if (api == null) return;
+    _bindApi(api);
+    final generation = _apiGeneration;
+    if (api == null) {
+      _loading = false;
+      notifyListeners();
+      return;
+    }
     _loading = true;
     _error = null;
     notifyListeners();
     try {
       final payload = await api.projectTree();
+      if (generation != _apiGeneration || !identical(api, _apiProvider())) {
+        return;
+      }
       _projects = payload.projects;
       _activeProjectId = payload.activeId;
       _scopedSessionIds = payload.scopedSessionIds;
       _error = null;
     } catch (e) {
+      if (generation != _apiGeneration || !identical(api, _apiProvider())) {
+        return;
+      }
       _error = '$e';
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (generation == _apiGeneration && identical(api, _apiProvider())) {
+        _loading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void _bindApi(ApiClient? api) {
+    if (_apiInitialized && identical(api, _boundApi)) return;
+    // A cold start commonly observes null before the first connection opens.
+    // Preserve the persisted scope for that null -> first API transition.
+    final changed = _apiInitialized && _boundApi != null;
+    _apiInitialized = true;
+    _boundApi = api;
+    _apiGeneration++;
+    _scopeGeneration++;
+    if (!changed) return;
+    _projects = const [];
+    _activeProjectId = null;
+    _scopedSessionIds = const {};
+    _scopedProject = null;
+    _scopeLoading = false;
+    _scopeError = null;
+    _error = null;
+    _scope = null;
+    unawaited(_persistScope());
+  }
+
+  Future<void> refreshVisible() async {
+    await refresh();
+    final projectId = _scope;
+    if (projectId != null &&
+        _projects.any((project) => project.id == projectId)) {
+      await enterProject(projectId, persist: false, showLoading: false);
     }
   }
 
   // ── 钻取（desktop $projectScope + fetchProjectSessions parity） ──
-  Future<void> enterProject(String projectId, {bool persist = true}) async {
+  Future<void> enterProject(
+    String projectId, {
+    bool persist = true,
+    bool showLoading = true,
+  }) async {
+    final api = _apiProvider();
+    _bindApi(api);
+    final apiGeneration = _apiGeneration;
     final generation = ++_scopeGeneration;
     _scope = projectId;
-    _scopeLoading = true;
+    _scopeLoading = showLoading;
     _scopeError = null;
-    _scopedProject = null;
-    notifyListeners();
+    if (showLoading) {
+      _scopedProject = null;
+      notifyListeners();
+    }
     if (persist) await _persistScope();
-    final api = _apiProvider();
     if (api == null) {
       if (generation != _scopeGeneration) return;
       _scopeLoading = false;
@@ -153,14 +210,24 @@ class ProjectTreeStore extends ChangeNotifier {
     }
     try {
       final scopedProject = await api.projectSessions(projectId);
-      if (generation != _scopeGeneration) return;
+      if (generation != _scopeGeneration ||
+          apiGeneration != _apiGeneration ||
+          !identical(api, _apiProvider())) {
+        return;
+      }
       _scopedProject = scopedProject;
       _scopeError = _scopedProject == null ? runtimeL10n.projectMissing : null;
     } catch (e) {
-      if (generation != _scopeGeneration) return;
+      if (generation != _scopeGeneration ||
+          apiGeneration != _apiGeneration ||
+          !identical(api, _apiProvider())) {
+        return;
+      }
       _scopeError = '$e';
     } finally {
-      if (generation == _scopeGeneration) {
+      if (generation == _scopeGeneration &&
+          apiGeneration == _apiGeneration &&
+          identical(api, _apiProvider())) {
         _scopeLoading = false;
         notifyListeners();
       }

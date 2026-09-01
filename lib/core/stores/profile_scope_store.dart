@@ -11,6 +11,8 @@
 /// which profile is actually active for the running session.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../api_client.dart';
@@ -24,6 +26,11 @@ class ProfileScopeStore extends ChangeNotifier {
   bool _loaded = false;
   Future<void>? _inflight;
   int _generation = 0;
+  int _updateGeneration = 0;
+  Timer? _refreshTimer;
+  bool _autoRefreshEnabled = false;
+  FutureOr<void> Function(ProfilesPayload payload, ApiClient api)?
+  _backendSnapshotSink;
 
   /// The user-picked override, or null to follow the active profile.
   String? get override => _override;
@@ -35,12 +42,36 @@ class ProfileScopeStore extends ChangeNotifier {
     if (identical(_api, api)) return;
     _api = api;
     _generation++;
+    _updateGeneration++;
     _override = null;
     _profiles = const [];
     _activeProfile = null;
     _loaded = false;
     _inflight = null;
+    _restartRefreshTimer();
     notifyListeners();
+  }
+
+  void startAutoRefresh() {
+    if (_autoRefreshEnabled) return;
+    _autoRefreshEnabled = true;
+    _restartRefreshTimer();
+  }
+
+  void bindBackendSnapshotSink(
+    FutureOr<void> Function(ProfilesPayload payload, ApiClient api)? sink,
+  ) {
+    _backendSnapshotSink = sink;
+  }
+
+  void _restartRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = !_autoRefreshEnabled || _api == null
+        ? null
+        : Timer.periodic(
+            const Duration(seconds: 30),
+            (_) => unawaited(refresh()),
+          );
   }
 
   void setOverride(String? profile) {
@@ -52,10 +83,63 @@ class ProfileScopeStore extends ChangeNotifier {
   /// Adopts a `ProfilesPayload` a screen already fetched itself, so other
   /// scope-aware screens get a populated profile list for free instead of
   /// each independently re-fetching it.
-  void updateProfiles(ProfilesPayload payload) {
-    _profiles = payload.profiles;
-    _activeProfile = payload.active;
-    _loaded = true;
+  Future<void> updateProfiles(ProfilesPayload payload) async {
+    final api = _api;
+    final sink = _backendSnapshotSink;
+    final generation = _generation;
+    final updateGeneration = ++_updateGeneration;
+    if (api != null && sink != null) {
+      await sink(payload, api);
+    }
+    if (generation != _generation ||
+        updateGeneration != _updateGeneration ||
+        !identical(api, _api)) {
+      return;
+    }
+    updateSnapshot(payload.profiles, payload.active, markLoaded: true);
+  }
+
+  void syncFromSession(List<ProfileInfo> profiles, String? active) {
+    final changed =
+        active != _activeProfile ||
+        profiles.length != _profiles.length ||
+        List.generate(
+          profiles.length,
+          (index) =>
+              profiles[index].name != _profiles[index].name ||
+              profiles[index].isActive != _profiles[index].isActive,
+        ).any((different) => different);
+    if (changed) {
+      _generation++;
+      _updateGeneration++;
+      _inflight = null;
+    }
+    updateSnapshot(profiles, active);
+  }
+
+  void updateSnapshot(
+    List<ProfileInfo> profiles,
+    String? active, {
+    bool markLoaded = false,
+  }) {
+    if (profiles.isEmpty && active == null && !markLoaded) return;
+    final unchanged =
+        active == _activeProfile &&
+        profiles.length == _profiles.length &&
+        List.generate(
+          profiles.length,
+          (index) =>
+              profiles[index].name == _profiles[index].name &&
+              profiles[index].isActive == _profiles[index].isActive,
+        ).every((same) => same);
+    if (unchanged && (!markLoaded || _loaded)) return;
+    _profiles = List.unmodifiable(profiles);
+    _activeProfile = active;
+    _loaded = markLoaded || profiles.isNotEmpty || active != null;
+    if (_override != null &&
+        !profiles.any((profile) => profile.name == _override)) {
+      _override = null;
+    }
     notifyListeners();
   }
 
@@ -78,10 +162,8 @@ class ProfileScopeStore extends ChangeNotifier {
     try {
       final payload = await api.listProfiles();
       if (generation != _generation || !identical(api, _api)) return;
-      _profiles = payload.profiles;
-      _activeProfile = payload.active;
-      _loaded = true;
-      notifyListeners();
+      updateSnapshot(payload.profiles, payload.active, markLoaded: true);
+      await _backendSnapshotSink?.call(payload, api);
     } catch (_) {
       // Best-effort — dependent screens simply fall back to the ambient
       // active profile until a retry succeeds.
@@ -90,5 +172,11 @@ class ProfileScopeStore extends ChangeNotifier {
         _inflight = null;
       }
     }
+  }
+
+  // ignore: annotate_overrides
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 }

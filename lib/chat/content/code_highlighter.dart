@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import 'package:re_highlight/languages/bash.dart';
 import 'package:re_highlight/languages/c.dart';
@@ -57,6 +59,21 @@ class CodeHighlighter {
       'yaml': langYaml,
     });
 
+  static const int _maxCacheEntries = 64;
+  static const int _maxCachedSourceChars = 1000000;
+  final LinkedHashMap<_HighlightCacheKey, _HighlightCacheValue> _cache =
+      LinkedHashMap<_HighlightCacheKey, _HighlightCacheValue>();
+  int _cachedSourceChars = 0;
+
+  /// Exposed for performance regression tests and diagnostics.
+  int get cacheEntryCount => _cache.length;
+  int get cachedSourceChars => _cachedSourceChars;
+
+  void clearCache() {
+    _cache.clear();
+    _cachedSourceChars = 0;
+  }
+
   static const _aliases = <String, String>{
     'sh': 'bash',
     'shell': 'bash',
@@ -106,6 +123,12 @@ class CodeHighlighter {
   TextSpan? highlight(String code, String language, bool isDark) {
     final resolved = _resolve(language);
     if (resolved == null) return null;
+    final key = _HighlightCacheKey(code, resolved, isDark);
+    final cached = _cache.remove(key);
+    if (cached != null) {
+      _cache[key] = cached;
+      return cached.span;
+    }
     try {
       final result = _hl.highlight(code: code, language: resolved);
       final theme = Map<String, TextStyle>.from(
@@ -113,11 +136,46 @@ class CodeHighlighter {
       )..['root'] = const TextStyle();
       final renderer = TextSpanRenderer(const TextStyle(), theme);
       result.render(renderer);
-      return renderer.span;
+      final span = renderer.span;
+      if (span == null) return null;
+      // A single pathological response must not evict the useful working set.
+      if (code.length <= _maxCachedSourceChars ~/ 2) {
+        _cache[key] = _HighlightCacheValue(span, code.length);
+        _cachedSourceChars += code.length;
+        while (_cache.length > _maxCacheEntries ||
+            _cachedSourceChars > _maxCachedSourceChars) {
+          final oldest = _cache.keys.first;
+          _cachedSourceChars -= _cache.remove(oldest)!.sourceChars;
+        }
+      }
+      return span;
     } catch (_) {
       return null;
     }
   }
+}
+
+class _HighlightCacheKey {
+  const _HighlightCacheKey(this.code, this.language, this.isDark);
+  final String code;
+  final String language;
+  final bool isDark;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _HighlightCacheKey &&
+      other.code == code &&
+      other.language == language &&
+      other.isDark == isDark;
+
+  @override
+  int get hashCode => Object.hash(code, language, isDark);
+}
+
+class _HighlightCacheValue {
+  const _HighlightCacheValue(this.span, this.sourceChars);
+  final TextSpan span;
+  final int sourceChars;
 }
 
 /// Lightweight regex tokenizer — the fallback for languages outside
@@ -127,7 +185,24 @@ class CodeHighlighter {
 class HermesSyntaxHighlighter {
   HermesSyntaxHighlighter._();
 
+  static const int _maxCacheEntries = 64;
+  static const int _maxSourceChars = 500000;
+  static final LinkedHashMap<_FallbackCacheKey, _HighlightCacheValue> _cache =
+      LinkedHashMap<_FallbackCacheKey, _HighlightCacheValue>();
+  static int _sourceChars = 0;
+
+  static void clearCache() {
+    _cache.clear();
+    _sourceChars = 0;
+  }
+
   static TextSpan highlight(String source, String language, bool isDark) {
+    final cacheKey = _FallbackCacheKey(source, language, isDark);
+    final cached = _cache.remove(cacheKey);
+    if (cached != null) {
+      _cache[cacheKey] = cached;
+      return cached.span;
+    }
     final kwColor = isDark ? const Color(0xFFC084FC) : const Color(0xFFA855F7);
     final strColor = isDark ? const Color(0xFF86EFAC) : const Color(0xFF16A34A);
     final numColor = isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706);
@@ -211,7 +286,17 @@ class HermesSyntaxHighlighter {
       );
       i = end;
     }
-    return TextSpan(children: children);
+    final span = TextSpan(children: children);
+    if (source.length <= _maxSourceChars ~/ 2) {
+      _cache[cacheKey] = _HighlightCacheValue(span, source.length);
+      _sourceChars += source.length;
+      while (_cache.length > _maxCacheEntries ||
+          _sourceChars > _maxSourceChars) {
+        final oldest = _cache.keys.first;
+        _sourceChars -= _cache.remove(oldest)!.sourceChars;
+      }
+    }
+    return span;
   }
 
   static int _nextMatch(String s, int start, Iterable<RegExp> patterns) {
@@ -226,6 +311,23 @@ class HermesSyntaxHighlighter {
     }
     return best ?? -1;
   }
+}
+
+class _FallbackCacheKey {
+  const _FallbackCacheKey(this.source, this.language, this.isDark);
+  final String source;
+  final String language;
+  final bool isDark;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _FallbackCacheKey &&
+      other.source == source &&
+      other.language == language &&
+      other.isDark == isDark;
+
+  @override
+  int get hashCode => Object.hash(source, language, isDark);
 }
 
 enum _RegexTok {

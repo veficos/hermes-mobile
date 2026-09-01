@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import '../../l10n/l10n.dart';
+
 /// Touch/mouse-resizable GFM table. Drag the handle at a header's right edge.
 class ResizableMarkdownTableBuilder extends MarkdownElementBuilder {
   @override
@@ -32,7 +34,43 @@ class ResizableMarkdownTableBuilder extends MarkdownElementBuilder {
         );
       }
     }
-    return rows.isEmpty ? null : _ResizableTable(rows: rows);
+    if (rows.isEmpty) return null;
+    return rows.length > 12
+        ? _ExpandableResizableTable(rows: rows)
+        : _ResizableTable(rows: rows);
+  }
+}
+
+class _ExpandableResizableTable extends StatefulWidget {
+  const _ExpandableResizableTable({required this.rows});
+  final List<List<String>> rows;
+
+  @override
+  State<_ExpandableResizableTable> createState() =>
+      _ExpandableResizableTableState();
+}
+
+class _ExpandableResizableTableState extends State<_ExpandableResizableTable> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _expanded ? widget.rows : widget.rows.take(12).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ResizableTable(rows: rows),
+        TextButton.icon(
+          onPressed: () => setState(() => _expanded = !_expanded),
+          icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+          label: Text(
+            _expanded
+                ? context.l10n.commonCollapse
+                : context.l10n.commonViewAll,
+          ),
+        ),
+      ],
+    );
   }
 }
 

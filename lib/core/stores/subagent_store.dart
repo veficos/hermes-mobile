@@ -7,6 +7,8 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 
 import '../../l10n/runtime_l10n.dart';
+import '../api_client.dart';
+import '../connections/connection_registry.dart';
 import '../gateway.dart';
 import '../models.dart';
 import 'connection_store.dart';
@@ -17,6 +19,15 @@ const _maxStream = 24;
 const _previewMax = 220;
 const _toolPreviewMax = 96;
 const _terminalSubagentStatuses = {'completed', 'failed', 'interrupted'};
+
+String _subagentStatus(dynamic value, {bool terminalEvent = false}) {
+  final status = value?.toString().toLowerCase();
+  if (_terminalSubagentStatuses.contains(status)) return status!;
+  if (status == 'timeout' || status == 'error') return 'failed';
+  if (status == 'cancelled' || status == 'canceled') return 'interrupted';
+  if (terminalEvent) return 'failed';
+  return status == 'queued' ? 'queued' : 'running';
+}
 
 String _compactLine(String text, [int max = _previewMax]) {
   final line = text.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -157,20 +168,51 @@ class SubagentStore extends ChangeNotifier {
 
   final ConnectionStore connection;
   SubagentStore({required this.connection}) {
-    _eventSub = connection.events.listen(_onEvent);
+    _activeConnectionId = connection.activeConnectionId.value;
+    _activeApi = connection.api;
+    _eventSub = connection.routedEvents.listen(_onRoutedEvent);
     _reconnectSub = connection.reconnected.listen((_) {
       unawaited(refreshProjection());
     });
+    connection.addListener(_onConnectionChanged);
   }
 
-  final Map<String, SessionRow> _childrenById = {};
-  final Map<String, Map<String, SubagentNode>> _runtimeByParent = {};
-  final Map<String, List<SubagentNode>> _bySession = {};
-  StreamSubscription<GatewayEvent>? _eventSub;
+  final Map<String, Map<String, SessionRow>> _childrenByConnection = {};
+  final Map<String, Map<String, Map<String, SubagentNode>>>
+  _runtimeByConnection = {};
+  final Map<String, Map<String, List<SubagentNode>>> _treesByConnection = {};
+  late String _activeConnectionId;
+  ApiClient? _activeApi;
+  StreamSubscription<RoutedGatewayEvent>? _eventSub;
   StreamSubscription<void>? _reconnectSub;
   bool _loading = false;
   bool _refreshPending = false;
+  int _refreshGeneration = 0;
   Object? _error;
+
+  Map<String, SessionRow> get _childrenById => _childrenByConnection
+      .putIfAbsent(connection.activeConnectionId.value, () => {});
+  Map<String, Map<String, SubagentNode>> get _runtimeByParent =>
+      _runtimeForConnection(connection.activeConnectionId.value);
+  Map<String, List<SubagentNode>> get _bySession => _treesByConnection
+      .putIfAbsent(connection.activeConnectionId.value, () => {});
+
+  Map<String, Map<String, SubagentNode>> _runtimeForConnection(String id) =>
+      _runtimeByConnection.putIfAbsent(id, () => {});
+
+  void _onConnectionChanged() {
+    final id = connection.activeConnectionId.value;
+    final api = connection.api;
+    if (id == _activeConnectionId && identical(api, _activeApi)) return;
+    _activeConnectionId = id;
+    _activeApi = api;
+    _refreshGeneration++;
+    _loading = false;
+    _refreshPending = false;
+    _error = null;
+    notifyListeners();
+    if (api != null) unawaited(refreshProjection());
+  }
 
   bool get loading => _loading;
   Object? get error => _error;
@@ -200,6 +242,14 @@ class SubagentStore extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  OwnerRoute routeForChildSession(String sessionId, OwnerRoute fallback) {
+    final row = _childrenById[sessionId];
+    return OwnerRoute(
+      connectionId: fallback.connectionId,
+      profile: row?.profile ?? fallback.profile,
+    );
   }
 
   int runtimeDescendantCount(String parentSessionId) {
@@ -280,9 +330,12 @@ class SubagentStore extends ChangeNotifier {
     return value == null || value.isEmpty ? null : value;
   }
 
-  void _onEvent(GatewayEvent event) {
+  void _onRoutedEvent(RoutedGatewayEvent routed) {
+    final event = routed.event;
     if (event.type == 'sessions.changed') {
-      unawaited(refreshProjection());
+      if (routed.route.connectionId == connection.activeConnectionId) {
+        unawaited(refreshProjection());
+      }
       return;
     }
     if (!event.type.startsWith('subagent.')) return;
@@ -298,7 +351,8 @@ class SubagentStore extends ChangeNotifier {
       return;
     }
 
-    final flat = _runtimeByParent.putIfAbsent(sid, () => {});
+    final connectionId = routed.route.connectionId.value;
+    final flat = _runtimeForConnection(connectionId).putIfAbsent(sid, () => {});
     final payload = Map<String, dynamic>.from(event.payload);
     if (childId != null) payload['child_session_id'] = childId;
     final id = (payload['subagent_id'] ?? payload['id'] ?? '').toString();
@@ -307,7 +361,7 @@ class SubagentStore extends ChangeNotifier {
       case 'subagent.spawn_requested':
         final node = SubagentNode.fromJson({
           ...payload,
-          'status': payload['status']?.toString() ?? 'running',
+          'status': _subagentStatus(payload['status']),
         });
         if (node.id.isNotEmpty) {
           flat[node.id] = _enrichFromPayload(node, payload, event.type);
@@ -316,7 +370,10 @@ class SubagentStore extends ChangeNotifier {
         if (id.isNotEmpty && flat[id] != null) {
           final updated = _copyWith(
             flat[id]!,
-            status: (payload['status'] ?? 'completed').toString(),
+            status: _subagentStatus(
+              payload['status'] ?? 'completed',
+              terminalEvent: true,
+            ),
             summary: payload['summary']?.toString(),
             updatedAt: DateTime.now(),
           );
@@ -338,52 +395,67 @@ class SubagentStore extends ChangeNotifier {
           flat[id] = _enrichFromPayload(updated, payload, event.type);
         }
     }
-    _rebuildTrees();
+    _rebuildTrees(connectionId);
     notifyListeners();
   }
 
   Future<void> refreshProjection() async {
     final api = connection.api;
     if (api == null) return;
+    final connectionId = connection.activeConnectionId.value;
     if (_loading) {
       _refreshPending = true;
       return;
     }
     _loading = true;
+    final generation = ++_refreshGeneration;
     _error = null;
     notifyListeners();
     _log('projection refresh start');
     try {
       final projection = await api.subagentProjection();
-      _childrenById
+      if (generation != _refreshGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
+      final children = _childrenByConnection.putIfAbsent(
+        connectionId,
+        () => {},
+      );
+      final runtime = _runtimeForConnection(connectionId);
+      children
         ..clear()
         ..addEntries(
           projection.sessions
               .where((row) => row.id.isNotEmpty)
               .map((row) => MapEntry(row.id, row)),
         );
-      _runtimeByParent
+      runtime
         ..clear()
         ..addEntries(
           projection.bySession.entries.map(
             (entry) => MapEntry(entry.key, _flatten(entry.value)),
           ),
         );
-      _rebuildTrees();
+      _rebuildTrees(connectionId);
       _log(
-        'projection refresh complete children=${_childrenById.length} '
-        'groups=${_runtimeByParent.length} total=${projection.total}',
+        'projection refresh complete children=${children.length} '
+        'groups=${runtime.length} total=${projection.total}',
       );
     } catch (error, stackTrace) {
+      if (generation != _refreshGeneration) return;
       _error = error;
       _log('projection refresh failed', error, stackTrace);
       rethrow;
     } finally {
-      _loading = false;
-      notifyListeners();
-      if (_refreshPending) {
-        _refreshPending = false;
-        unawaited(refreshProjection());
+      if (generation == _refreshGeneration) {
+        _loading = false;
+        notifyListeners();
+        if (_refreshPending) {
+          _refreshPending = false;
+          unawaited(refreshProjection());
+        }
       }
     }
   }
@@ -392,7 +464,11 @@ class SubagentStore extends ChangeNotifier {
     final result = <String, SubagentNode>{};
     void visit(SubagentNode node) {
       if (node.id.isEmpty) return;
-      result[node.id] = _copyWith(node, children: const []);
+      result[node.id] = _copyWith(
+        node,
+        status: _subagentStatus(node.status),
+        children: const [],
+      );
       for (final child in node.children) {
         visit(child);
       }
@@ -404,13 +480,17 @@ class SubagentStore extends ChangeNotifier {
     return result;
   }
 
-  void _rebuildTrees() {
-    _bySession.clear();
-    final durableChildIds = _childrenById.values
+  void _rebuildTrees([String? forConnectionId]) {
+    final connectionId = forConnectionId ?? connection.activeConnectionId.value;
+    final trees = _treesByConnection.putIfAbsent(connectionId, () => {});
+    final children = _childrenByConnection.putIfAbsent(connectionId, () => {});
+    final runtime = _runtimeForConnection(connectionId);
+    trees.clear();
+    final durableChildIds = children.values
         .where((row) => row.isDelegatedChild)
         .map((row) => row.id)
         .toSet();
-    for (final entry in _runtimeByParent.entries) {
+    for (final entry in runtime.entries) {
       final nodes = entry.value.values
           .where(
             (node) =>
@@ -449,7 +529,7 @@ class SubagentStore extends ChangeNotifier {
       for (final node in nodes) {
         if (seenRoots.add(node.id)) roots.add(build(node));
       }
-      _bySession[entry.key] = roots;
+      trees[entry.key] = roots;
     }
   }
 
@@ -457,6 +537,8 @@ class SubagentStore extends ChangeNotifier {
   Future<void> refreshSessions(Iterable<String> sessionIds) async {
     final ids = sessionIds.toList();
     final api = connection.api;
+    final connectionId = connection.activeConnectionId.value;
+    final generation = _refreshGeneration;
     if (api == null) {
       throw StateError(runtimeL10n.backendDisconnected);
     }
@@ -466,22 +548,38 @@ class SubagentStore extends ChangeNotifier {
     _log('refresh start parents=${ids.length} ids=$ids');
     try {
       final entries = await api.subagentsForSessions(ids);
+      if (generation != _refreshGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
       for (final entry in entries.entries) {
         _runtimeByParent[entry.key] = _flatten(entry.value);
       }
       _rebuildTrees();
     } catch (error, stackTrace) {
+      if (generation != _refreshGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
       _error = error;
       _log('refresh failed parents=${ids.length}', error, stackTrace);
       rethrow;
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (generation == _refreshGeneration &&
+          identical(api, connection.api) &&
+          connectionId == connection.activeConnectionId.value) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> refreshTree(String sessionId) async {
     final api = connection.api;
+    final connectionId = connection.activeConnectionId.value;
+    final generation = _refreshGeneration;
     if (api == null) {
       throw StateError(runtimeL10n.backendDisconnected);
     }
@@ -490,24 +588,40 @@ class SubagentStore extends ChangeNotifier {
     notifyListeners();
     try {
       final entries = await api.subagents(sessionId);
+      if (generation != _refreshGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
       _runtimeByParent[sessionId] = _flatten(entries);
       _rebuildTrees();
     } catch (error, stackTrace) {
+      if (generation != _refreshGeneration ||
+          !identical(api, connection.api) ||
+          connectionId != connection.activeConnectionId.value) {
+        return;
+      }
       _error = error;
       _log('refresh tree failed parent=$sessionId', error, stackTrace);
       rethrow;
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (generation == _refreshGeneration &&
+          identical(api, connection.api) &&
+          connectionId == connection.activeConnectionId.value) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
-  Future<void> interrupt(String subagentId) async {
-    final api = connection.api;
+  Future<void> interrupt(String subagentId, {OwnerRoute? ownerRoute}) async {
+    final api = ownerRoute == null
+        ? connection.api
+        : connection.runtimeFor(ownerRoute).api;
     if (api == null) {
       throw StateError(runtimeL10n.backendDisconnected);
     }
-    await api.interruptSubagent(subagentId);
+    await api.interruptSubagent(subagentId, profile: ownerRoute?.profile);
   }
 
   SubagentNode _copyWith(
@@ -587,6 +701,7 @@ class SubagentStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    connection.removeListener(_onConnectionChanged);
     _eventSub?.cancel();
     _reconnectSub?.cancel();
     super.dispose();

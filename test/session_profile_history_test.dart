@@ -103,20 +103,27 @@ class _SwitchProfileApi extends ApiClient {
     : super(baseUrl: 'http://profile.invalid', apiKey: 'test');
 
   String active = 'experts';
+  List<ProfileInfo> availableProfiles = const [
+    ProfileInfo(name: 'default'),
+    ProfileInfo(name: 'experts'),
+  ];
   final List<String> activations = [];
   final List<String?> configProfiles = [];
   final List<String?> sessionProfiles = [];
   final Map<String, Completer<void>> activationGates = {};
   final Map<String, Completer<void>> sessionGates = {};
   final Set<String> failingSessionRequests = {};
+  final Set<String> failingActivations = {};
+  final Set<String> failingConfigs = {};
   final Set<String> profilesWithMore = {};
+  Map<String, dynamic> batchDeleteResult = const {
+    'deleted': <String>[],
+    'failed': <dynamic>[],
+  };
 
   @override
   Future<ProfilesPayload> listProfiles() async => ProfilesPayload(
-    profiles: const [
-      ProfileInfo(name: 'default'),
-      ProfileInfo(name: 'experts'),
-    ],
+    profiles: availableProfiles,
     active: active,
     current: 'default',
     source: 'upstream',
@@ -126,13 +133,25 @@ class _SwitchProfileApi extends ApiClient {
   Future<Map<String, dynamic>> activateProfile(String name) async {
     activations.add(name);
     await activationGates[name]?.future;
+    if (failingActivations.contains(name)) {
+      throw StateError('cannot activate $name');
+    }
     active = name;
     return {'active': name, 'current': 'default'};
   }
 
   @override
+  Future<Map<String, dynamic>> deleteSessions(
+    List<String> ids, {
+    String? profile,
+  }) async => batchDeleteResult;
+
+  @override
   Future<Map<String, dynamic>> getConfig({String? profile}) async {
     configProfiles.add(profile);
+    if (failingConfigs.contains(profile)) {
+      throw StateError('cannot load config for $profile');
+    }
     return {'profile': profile};
   }
 
@@ -537,6 +556,141 @@ void main() {
       expect(api.sessionProfiles, ['default']);
     },
   );
+
+  test(
+    'failed profile activation preserves the old UI and open session',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _SwitchProfileApi()..failingActivations.add('default');
+      final gateway = _ProfileGateway();
+      final connection = _ProfileConnection(apiClient: api, gw: gateway);
+      final store = SessionStore(
+        connection: connection,
+        chat: ChatStore(),
+        requests: RequestStore(),
+      );
+      addTearDown(() {
+        store.dispose();
+        connection.dispose();
+      });
+
+      await store.loadProfileContext(listLimit: 20);
+      await store.resumeSession('expert-session', profile: 'experts');
+
+      await expectLater(
+        store.switchActiveProfile('default', listLimit: 20),
+        throwsStateError,
+      );
+
+      expect(store.activeProfile, 'experts');
+      expect(store.sessionListProfile, 'experts');
+      expect(store.durableId, 'expert-session');
+      expect(store.profile, 'experts');
+      expect(
+        gateway.calls.where((call) => call.$1 == 'session.close'),
+        isEmpty,
+      );
+    },
+  );
+
+  test('external active profile deletion closes its open session', () async {
+    SharedPreferences.setMockInitialValues({});
+    final api = _SwitchProfileApi();
+    final gateway = _ProfileGateway();
+    final connection = _ProfileConnection(apiClient: api, gw: gateway);
+    final store = SessionStore(
+      connection: connection,
+      chat: ChatStore(),
+      requests: RequestStore(),
+    );
+    addTearDown(() {
+      store.dispose();
+      connection.dispose();
+    });
+
+    await store.loadProfileContext(listLimit: 20);
+    await store.resumeSession('expert-session', profile: 'experts');
+    api
+      ..availableProfiles = const [ProfileInfo(name: 'default')]
+      ..active = '';
+    final payload = ProfilesPayload(
+      profiles: api.availableProfiles,
+      active: null,
+      current: 'default',
+      source: 'upstream',
+    );
+
+    await store.syncProfilesFromBackend(payload, api);
+
+    expect(store.durableId, isNull);
+    expect(store.profile, isNull);
+    expect(store.activeProfile, isNull);
+    expect(store.sessionListProfile, isNull);
+    expect(
+      gateway.calls.where((call) => call.$1 == 'session.close'),
+      hasLength(1),
+    );
+  });
+
+  test('post-activation failure reconciles UI to backend profile', () async {
+    SharedPreferences.setMockInitialValues({});
+    final api = _SwitchProfileApi()..failingConfigs.add('default');
+    final gateway = _ProfileGateway();
+    final connection = _ProfileConnection(apiClient: api, gw: gateway);
+    final store = SessionStore(
+      connection: connection,
+      chat: ChatStore(),
+      requests: RequestStore(),
+    );
+    addTearDown(() {
+      store.dispose();
+      connection.dispose();
+    });
+    await store.loadProfileContext(listLimit: 20);
+    await store.resumeSession('expert-session', profile: 'experts');
+
+    await expectLater(
+      store.switchActiveProfile('default', listLimit: 20),
+      throwsStateError,
+    );
+
+    expect(api.active, 'default');
+    expect(store.activeProfile, 'default');
+    expect(store.sessionListProfile, 'default');
+    expect(store.durableId, isNull);
+    expect(store.profileConfig, isEmpty);
+  });
+
+  test('partial batch deletion keeps a current session that failed', () async {
+    SharedPreferences.setMockInitialValues({});
+    final api = _SwitchProfileApi()
+      ..batchDeleteResult = {
+        'deleted': ['other-session'],
+        'failed': [
+          {'id': 'expert-session', 'error': 'busy'},
+        ],
+      };
+    final gateway = _ProfileGateway();
+    final connection = _ProfileConnection(apiClient: api, gw: gateway);
+    final store = SessionStore(
+      connection: connection,
+      chat: ChatStore(),
+      requests: RequestStore(),
+    );
+    addTearDown(() {
+      store.dispose();
+      connection.dispose();
+    });
+    await store.resumeSession('expert-session', profile: 'experts');
+
+    await expectLater(
+      store.deleteSessions(['expert-session', 'other-session']),
+      throwsStateError,
+    );
+
+    expect(store.durableId, 'expert-session');
+    expect(store.profile, 'experts');
+  });
 
   test(
     'session events and reconnects preserve the active list profile',

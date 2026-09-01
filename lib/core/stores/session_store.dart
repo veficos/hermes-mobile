@@ -461,6 +461,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     this.composerStatus,
     this.persistLastSession = true,
   }) {
+    _observedConnectionId = connection.activeConnectionId;
+    _observedApi = connection.api;
     unawaited(restoreQueues());
     unawaited(requests.restore());
     connection.addListener(_onConnectionChanged);
@@ -482,6 +484,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     requests.addListener(_onRequestsChanged);
     _eventSub = connection.routedEvents.listen((routed) {
       final e = routed.event;
+      if (routed.route.connectionId != connection.activeConnectionId) return;
+      final listEventProfile = e.profile ?? routed.route.profile;
+      if (listEventProfile != null &&
+          listEventProfile.isNotEmpty &&
+          _sessionListProfile != null &&
+          listEventProfile != _sessionListProfile) {
+        return;
+      }
       _applyListLiveEvent(e);
       final currentRoute = _owner?.route;
       if (currentRoute != null &&
@@ -610,6 +620,34 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   }
 
   void _onConnectionChanged() {
+    final nextId = connection.activeConnectionId;
+    final nextApi = connection.api;
+    final identityChanged =
+        nextId != _observedConnectionId || !identical(nextApi, _observedApi);
+    if (identityChanged) {
+      final sid = _durableId;
+      if (sid != null) unawaited(flushInflightTurnJournal(sid));
+      _observedConnectionId = nextId;
+      _observedApi = nextApi;
+      ++_listGeneration;
+      ++_profileGeneration;
+      _sessions = null;
+      _listOffset = 0;
+      _listHasMore = false;
+      _liveStreamingById.clear();
+      _liveCronRunningById.clear();
+      _liveAttentionById.clear();
+      _liveActiveStreamIdById.clear();
+      _profiles = const [];
+      _activeProfile = null;
+      _runtimeCurrentProfile = null;
+      _sessionListProfile = null;
+      _profileConfig = const {};
+      _reset(notify: false);
+      notifyListeners();
+      if (nextApi != null) unawaited(refreshList(limit: 500));
+      return;
+    }
     if (connection.phase != ConnectionPhase.disconnected) return;
     final sid = _durableId;
     if (sid != null) unawaited(flushInflightTurnJournal(sid));
@@ -658,6 +696,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   int _generation = 0; // F3: guards async session switches
   int _listGeneration = 0;
   int _profileGeneration = 0;
+  int _profileSyncGeneration = 0;
+  late ConnectionId _observedConnectionId;
+  ApiClient? _observedApi;
   String? _profileSwitchTarget;
   Future<void> _profileSwitchTail = Future<void>.value();
   List<ProfileInfo> _profiles = const [];
@@ -1376,6 +1417,43 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     return payload;
   }
 
+  Future<void> syncProfilesFromBackend(
+    ProfilesPayload payload,
+    ApiClient source,
+  ) async {
+    final syncGeneration = ++_profileSyncGeneration;
+    if (!identical(source, connection.api) || _profileSwitchTarget != null) {
+      return;
+    }
+    final activeChanged = payload.active != _activeProfile;
+    final activeWasKnown = _profiles.isNotEmpty || _activeProfile != null;
+    final openProfileRemoved =
+        _durableId != null &&
+        _profile != null &&
+        !payload.profiles.any((profile) => profile.name == _profile);
+    if ((activeChanged && activeWasKnown) || openProfileRemoved) {
+      _profileGeneration++;
+      await closeSession(notify: false);
+      if (!identical(source, connection.api) ||
+          _profileSwitchTarget != null ||
+          syncGeneration != _profileSyncGeneration) {
+        return;
+      }
+    }
+    _profiles = payload.profiles;
+    _activeProfile = payload.active;
+    _runtimeCurrentProfile = payload.current;
+    if (activeChanged) {
+      _sessionListProfile = payload.active;
+      _profileConfig = const {};
+      clearSessionList(notify: false);
+      if (payload.active != null) {
+        unawaited(refreshList(limit: 500, profile: payload.active));
+      }
+    }
+    notifyListeners();
+  }
+
   Future<ProfilesPayload> loadProfileContext({int listLimit = 100}) async {
     final api = connection.api;
     if (api == null) throw StateError(runtimeL10n.sessionServerNotConnected);
@@ -1403,17 +1481,16 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   }) async {
     final switchGeneration = ++_profileGeneration;
     _profileSwitchTarget = name;
-    _sessionListProfile = name;
     ++_listGeneration;
     final previous = _profileSwitchTail;
     final done = Completer<void>();
     _profileSwitchTail = done.future;
     await previous;
+    ApiClient? switchApi;
     try {
       final api = connection.api;
       if (api == null) throw StateError(runtimeL10n.sessionServerNotConnected);
-      await closeSession(notify: false);
-      clearSessionList(notify: false);
+      switchApi = api;
       final activation = await api.activateProfile(name);
       final payload = await api.listProfiles();
       final responseActive = activation['active']?.toString().trim();
@@ -1430,11 +1507,12 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
           source: payload.source,
         );
       }
+      _profileSwitchTarget = active;
+      await closeSession(notify: false);
+      clearSessionList(notify: false);
+      _sessionListProfile = active;
       final config = await api.getConfig(profile: active);
       await refreshList(limit: listLimit, profile: active, notify: false);
-      if (_sessionListProfile != active) {
-        await refreshList(limit: listLimit, profile: active, notify: false);
-      }
       _profiles = payload.profiles;
       _activeProfile = active;
       _runtimeCurrentProfile = payload.current;
@@ -1449,9 +1527,52 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         current: payload.current,
         source: payload.source,
       );
+    } catch (_) {
+      final api = switchApi;
+      if (api != null &&
+          identical(api, connection.api) &&
+          switchGeneration == _profileGeneration) {
+        try {
+          final authoritative = await api.listProfiles();
+          if (switchGeneration == _profileGeneration &&
+              identical(api, connection.api)) {
+            final backendActive = authoritative.active;
+            if (backendActive != _activeProfile) {
+              _profileSwitchTarget = backendActive;
+              await closeSession(notify: false);
+              clearSessionList(notify: false);
+              _sessionListProfile = backendActive;
+              _profileConfig = const {};
+              if (backendActive != null) {
+                try {
+                  _profileConfig = await api.getConfig(profile: backendActive);
+                } catch (_) {}
+                try {
+                  await refreshList(
+                    limit: listLimit,
+                    profile: backendActive,
+                    notify: false,
+                  );
+                } catch (_) {}
+              }
+            }
+            _profiles = authoritative.profiles;
+            _activeProfile = backendActive;
+            _runtimeCurrentProfile = authoritative.current;
+            notifyListeners();
+          }
+        } catch (_) {
+          // Preserve the last consistent UI snapshot when reconciliation is
+          // unavailable; the original activation error remains authoritative.
+        }
+      }
+      rethrow;
     } finally {
       if (switchGeneration == _profileGeneration) {
-        _profileSwitchTarget = null;
+        if (_profileSwitchTarget != null) {
+          _profileSwitchTarget = null;
+          notifyListeners();
+        }
       }
       done.complete();
     }
@@ -1628,11 +1749,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     OwnerRoute? route,
     SessionInfoView? info,
   }) {
-    // Only clear pending interactive requests on an actual session SWITCH.
-    // A WS reconnect re-resumes the SAME session (same durableId); wiping the
-    // queue there would strand pending approvals while the agent stays
-    // blocked server-side. A backend re-emit after resume is deduped by
-    // request_id in RequestStore.enqueue.
+    // Interactive requests are globally owner-scoped and survive session
+    // navigation. A backend re-emit after resume is deduped by RequestStore.
     _durableId = durableId;
     _runtimeId = runtimeId;
     _profile = profile;
@@ -1675,6 +1793,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     if (id == null) return;
     final api = _apiForStored(id);
     final gen = _generation;
+    final cacheScope = _cacheScope(_profile, route: _owner?.route);
     chat.startLoadingTranscript();
     try {
       // The backend's messages endpoint offsets from the OLDEST message, so
@@ -1724,6 +1843,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
               .toList(),
           startOffset: firstOffset,
           hasMore: firstOffset > 0,
+          scope: cacheScope,
         ),
       );
       chat.loadHistory(
@@ -1751,7 +1871,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       // flight; don't touch its transcript or surface a stale error.
       if (gen != _generation) return;
       // Offline fallback: replay the cached transcript page.
-      final cached = await _cache.cachedTranscript(id);
+      final cached = await _cache.cachedTranscript(id, scope: cacheScope);
       if (cached != null) {
         final raw = cached['messages'] as List? ?? const [];
         final msgs = raw
@@ -1804,6 +1924,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final id = _durableId;
     if (id == null) return;
     final api = _apiForStored(id);
+    final generation = _generation;
     if (chat.loadingHistory || !chat.hasMoreHistory) return;
     if (_historyStartOffset <= 0) {
       chat.appendOlderHistory(const [], hasMore: false);
@@ -1820,12 +1941,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         offset: next,
         profile: _profile,
       );
+      if (generation != _generation) return;
       _historyStartOffset = next;
       chat.appendOlderHistory(
         chat.fromSessionMessages(msgs, sessionModel: _info?.model),
         hasMore: next > 0,
       );
     } catch (e) {
+      if (generation != _generation) return;
       connection.error = runtimeL10n.sessionOlderMessagesFailed('$e');
       // Leave hasMoreHistory untouched: marking the end of history here would
       // disarm both the scroll trigger and pull-to-refresh until the session
@@ -1837,9 +1960,12 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   Future<void> closeSession({bool notify = true}) async {
     final gen = _generation;
     final id = _runtimeId;
+    final owner = _owner;
+    var closedRemotely = false;
     if (id != null) {
       try {
         await _requestCurrent('session.close', {'session_id': id});
+        closedRemotely = true;
       } catch (error) {
         developer.log(
           'session.close failed for $id; resetting locally',
@@ -1851,6 +1977,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     // A newer session may have been opened while the close RPC was in flight;
     // resetting now would wipe it.
     if (gen != _generation) return;
+    if (closedRemotely && owner != null) {
+      requests.clearScope(ownerRoute: owner.route, sessionId: owner.durableId);
+    }
     _reset(notify: notify);
   }
 
@@ -1863,11 +1992,11 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     ++_generation;
     _durableId = null;
     _runtimeId = null;
+    _owner = null;
     _profile = null;
     _info = null;
     _readOnly = false;
     chat.resetSession();
-    requests.clear();
     if (notify) notifyListeners();
   }
 
@@ -1880,18 +2009,22 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   }) async {
     final api = connection.api;
     if (api == null) return;
+    final connectionId = connection.activeConnectionId;
     if (profile != null && _profileSwitchTarget == null) {
       _sessionListProfile = profile;
     }
     final requestGeneration = ++_listGeneration;
     final listProfile = profile ?? _sessionListProfile;
-    // Cache-first is only safe for the legacy unscoped list.
-    if (listProfile == null) {
-      final cached = await _cache.cachedSessions();
-      if (cached.isNotEmpty && _sessions == null) {
-        _sessions = cached.map(SessionRow.fromJson).toList();
-        if (notify) notifyListeners();
-      }
+    final cacheScope = _cacheScope(listProfile, connectionId: connectionId);
+    final cached = await _cache.cachedSessions(scope: cacheScope);
+    if (requestGeneration != _listGeneration ||
+        connectionId != connection.activeConnectionId ||
+        !identical(api, connection.api)) {
+      return;
+    }
+    if (cached.isNotEmpty && _sessions == null) {
+      _sessions = cached.map(SessionRow.fromJson).toList();
+      if (notify) notifyListeners();
     }
     try {
       final page = await api.listSessionsPage(
@@ -1901,6 +2034,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         profile: listProfile,
       );
       if (requestGeneration != _listGeneration ||
+          connectionId != connection.activeConnectionId ||
+          !identical(api, connection.api) ||
           listProfile != _sessionListProfile ||
           (_profileSwitchTarget != null &&
               listProfile != _profileSwitchTarget)) {
@@ -1923,11 +2058,21 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       _listOffset = fresh.length;
       _listHasMore = page.hasMore;
       if (!includeArchived) {
-        unawaited(_cache.cacheSessions(fresh.map((s) => s.toJson()).toList()));
+        unawaited(
+          _cache.cacheSessions(
+            fresh.map((s) => s.toJson()).toList(),
+            scope: cacheScope,
+          ),
+        );
       }
       // WebUI parity: snapshot streaming state and reconcile any background
       // completion transitions (streaming -> idle with new messages -> unread).
       await reconcileStreamingTransitions();
+      if (requestGeneration != _listGeneration ||
+          connectionId != connection.activeConnectionId ||
+          !identical(api, connection.api)) {
+        return;
+      }
       // Record per-profile session count so subsequent profile switches can
       // decide whether to paint a full skeleton (WebUI #4717 honest skeleton).
       unawaited(
@@ -1939,10 +2084,13 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       connection.error = null;
       if (notify) notifyListeners();
     } catch (e) {
-      if (requestGeneration != _listGeneration) return;
-      // The shared cache is only valid for the legacy unscoped list.
-      if (listProfile == null && (_sessions == null || _sessions!.isEmpty)) {
-        final cb = await _cache.cachedSessions();
+      if (requestGeneration != _listGeneration ||
+          connectionId != connection.activeConnectionId ||
+          !identical(api, connection.api)) {
+        return;
+      }
+      if (_sessions == null || _sessions!.isEmpty) {
+        final cb = await _cache.cachedSessions(scope: cacheScope);
         if (cb.isNotEmpty) {
           _sessions = cb.map(SessionRow.fromJson).toList();
         }
@@ -1951,6 +2099,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       if (notify) notifyListeners();
     }
   }
+
+  String _cacheScope(
+    String? profile, {
+    ConnectionId? connectionId,
+    OwnerRoute? route,
+  }) =>
+      '${(route?.connectionId ?? connectionId ?? connection.activeConnectionId).value}'
+      '\u0000${route?.profile ?? profile ?? ''}';
 
   void clearSessionList({bool notify = true}) {
     ++_listGeneration;
@@ -1994,15 +2150,13 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   // ------------------------------------------------------------ management
   void _rememberListedSession(SessionRow row, String? listProfile) {
     final existing = connection.sessionOwners.byDurable(row.id);
-    if (existing != null) return;
+    final route = OwnerRoute(
+      connectionId: connection.activeConnectionId,
+      profile: row.profile ?? listProfile,
+    );
+    if (existing?.route == route) return;
     connection.sessionOwners.remember(
-      SessionOwner(
-        durableId: row.id,
-        route: OwnerRoute(
-          connectionId: connection.activeConnectionId,
-          profile: row.profile ?? listProfile,
-        ),
-      ),
+      SessionOwner(durableId: row.id, route: route),
     );
   }
 
@@ -2023,6 +2177,18 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     throw StateError(
       runtimeL10n.sessionConnectionUnavailable('${route.connectionId}'),
     );
+  }
+
+  Future<ComposerDraft> loadStoredDraft(String id) {
+    final route = _routeForStored(id);
+    return _apiForStored(id).getDraft(id, profile: route.profile);
+  }
+
+  Future<void> setStoredSessionWorkspace(String id, String cwd) {
+    final route = _routeForStored(id);
+    return _apiForStored(
+      id,
+    ).setSessionWorkspace(id, cwd, profile: route.profile);
   }
 
   Future<void> rename(String title) async {
@@ -2094,20 +2260,27 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
 
   Future<void> setPinned(String id, bool pinned) async {
     final api = _apiForStored(id);
-    await api.pinSession(id, pinned);
+    await api.pinSession(id, pinned, profile: _routeForStored(id).profile);
     await refreshList(limit: 500);
   }
 
   Future<SessionRow> branchStoredSession(String id, {int? keepCount}) async {
     final api = _apiForStored(id);
-    final row = await api.branchStoredSession(id, keepCount: keepCount);
+    final row = await api.branchStoredSession(
+      id,
+      keepCount: keepCount,
+      profile: _routeForStored(id).profile,
+    );
     await refreshList(limit: 500);
     return row;
   }
 
   Future<SessionRow> duplicateStoredSession(String id) async {
     final api = _apiForStored(id);
-    final row = await api.duplicateSession(id);
+    final row = await api.duplicateSession(
+      id,
+      profile: _routeForStored(id).profile,
+    );
     await refreshList(limit: 500);
     return row;
   }
@@ -2120,6 +2293,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final title = await api.regenerateSessionTitle(
       id,
       preferLatest: preferLatest,
+      profile: _routeForStored(id).profile,
     );
     await refreshList(limit: 500);
     return title;
@@ -2159,7 +2333,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
 
   Future<String> createStoredSessionShare(String id) async {
     final api = _apiForStored(id);
-    final result = await api.createSessionShare(id);
+    final result = await api.createSessionShare(
+      id,
+      profile: _routeForStored(id).profile,
+    );
     final share = result['share'] as Map?;
     final url = share?['url']?.toString() ?? '';
     if (url.isEmpty) throw StateError(runtimeL10n.sessionShareLinkMissing);
@@ -2175,13 +2352,13 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
 
   Future<void> revokeStoredSessionShare(String id) async {
     final api = _apiForStored(id);
-    await api.revokeSessionShare(id);
+    await api.revokeSessionShare(id, profile: _routeForStored(id).profile);
     await refreshList(limit: 500);
   }
 
   Future<void> moveStoredSession(String id, String? projectId) async {
     final api = _apiForStored(id);
-    await api.moveSession(id, projectId);
+    await api.moveSession(id, projectId, profile: _routeForStored(id).profile);
     await refreshList(limit: 500);
   }
 
@@ -2190,14 +2367,22 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     String format = 'json',
   }) async {
     final api = _apiForStored(id);
-    return api.exportSession(id, format: format);
+    return api.exportSession(
+      id,
+      format: format,
+      profile: _routeForStored(id).profile,
+    );
   }
 
   Future<void> stopStoredSession(SessionRow row) async {
     final streamId = row.activeStreamId;
     final api = _apiForStored(row.id);
     if (streamId == null || streamId.isEmpty) return;
-    await api.stopSessionStream(row.id, streamId);
+    await api.stopSessionStream(
+      row.id,
+      streamId,
+      profile: _routeForStored(row.id).profile,
+    );
     if (row.id == _durableId) chat.markIdle();
     await refreshList(limit: 500);
   }
@@ -2205,8 +2390,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   Future<void> delete(String id) async {
     if (id == _durableId || id == _runtimeId) _ensureWritable();
     final api = _apiForStored(id);
-    await api.deleteSession(id);
-    if (id == _durableId) _reset();
+    await api.deleteSession(id, profile: _routeForStored(id).profile);
+    if (id == _durableId) {
+      final owner = _owner;
+      if (owner != null) {
+        requests.clearScope(ownerRoute: owner.route, sessionId: id);
+      }
+      _reset();
+    }
     await refreshList();
   }
 
@@ -2219,13 +2410,28 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     }
     var deleted = 0;
     var failedCount = 0;
+    final deletedIds = <String>{};
     for (final entry in byRoute.entries) {
       final api = _apiForStored(entry.value.first);
-      final result = await api.deleteSessions(entry.value);
-      deleted += (result['deleted'] as List? ?? const []).length;
+      final result = await api.deleteSessions(
+        entry.value,
+        profile: entry.key.profile,
+      );
+      final routeDeleted = (result['deleted'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toSet();
+      deletedIds.addAll(routeDeleted);
+      deleted += routeDeleted.length;
       failedCount += (result['failed'] as List? ?? const []).length;
     }
-    if (ids.contains(_durableId ?? '')) _reset();
+    final currentId = _durableId;
+    if (currentId != null && deletedIds.contains(currentId)) {
+      final owner = _owner;
+      if (owner != null) {
+        requests.clearScope(ownerRoute: owner.route, sessionId: currentId);
+      }
+      _reset();
+    }
     await refreshList();
     if (failedCount > 0) {
       throw StateError(
@@ -2832,13 +3038,20 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       _draftRestoreSuppress.remove(sid);
       _knownDraftPayloads.add(sid);
     }
+    final route = _routeForStored(sid);
+    final draftApi = _apiForStored(sid);
     _draftSaveTimers[sid] = Timer(
       const Duration(milliseconds: _draftSaveDelayMs),
       () {
         _draftSaveTimers.remove(sid);
         unawaited(
-          connection.api
-              ?.saveDraft(sid, text: normText, files: normFiles)
+          draftApi
+              .saveDraft(
+                sid,
+                text: normText,
+                files: normFiles,
+                profile: route.profile,
+              )
               .then((d) {
                 _rememberDraftPayloadState(sid, normText, normFiles);
               })
@@ -2874,14 +3087,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final hasKnown = _knownDraftPayloads.contains(sid);
     if (!hasLocal && !hasServer && !hasKnown) return; // no-op: nothing to clear
     try {
-      final saved = await connection.api?.saveDraft(
+      final route = _routeForStored(sid);
+      await _apiForStored(sid).saveDraft(
         sid,
         text: normText,
         files: normFiles,
+        profile: route.profile,
       );
-      if (saved != null) {
-        _rememberDraftPayloadState(sid, normText, normFiles);
-      }
+      _rememberDraftPayloadState(sid, normText, normFiles);
     } catch (_) {}
   }
 

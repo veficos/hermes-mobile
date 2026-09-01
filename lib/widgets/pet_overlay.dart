@@ -183,7 +183,7 @@ class _PetOverlayState extends State<PetOverlay> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  store.info?.displayName ?? 'Hermes Pet',
+                  store.info?.displayName ?? context.l10n.petDefaultName,
                   style: HermesType.onSurface(HermesType.headline, theme),
                 ),
                 const SizedBox(height: 12),

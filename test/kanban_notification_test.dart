@@ -113,6 +113,37 @@ void main() {
     );
   });
 
+  test('notification target normalizes provider payloads for session taps', () {
+    final camelCase = NotificationTarget.fromMap({
+      'notificationId': 'remote-1',
+      'sessionId': 'session-camel',
+      'connectionId': 'saved:work',
+      'profileId': 'expert',
+    });
+    expect(camelCase.notificationId, 'remote-1');
+    expect(camelCase.sessionId, 'session-camel');
+    expect(camelCase.connectionId, 'saved:work');
+    expect(camelCase.profile, 'expert');
+
+    final nested = NotificationTarget.fromMap({
+      'data': {
+        'stored_session_id': 'session-nested',
+        'connection_id': 'primary',
+        'event_type': 'approval.request',
+        'request_id': 'request-2',
+      },
+    });
+    expect(nested.sessionId, 'session-nested');
+    expect(nested.connectionId, 'primary');
+    expect(nested.requestId, 'request-2');
+    expect(nested.approval, isTrue);
+
+    final encoded = NotificationTarget.fromMap({
+      'payload': '{"durableSessionId":"session-json"}',
+    });
+    expect(encoded.sessionId, 'session-json');
+  });
+
   test(
     'gateway notifications keep owner route and clear only matching key',
     () async {

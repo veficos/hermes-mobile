@@ -324,6 +324,14 @@ class ConnectionStore extends ChangeNotifier {
     await connect();
   }
 
+  /// Propagates application lifecycle state to every registered backend so
+  /// iOS background suspension cannot strand inactive connection runtimes.
+  void setForeground(bool foreground) {
+    for (final runtime in registry.runtimes) {
+      runtime.setForeground(foreground);
+    }
+  }
+
   /// Restarts an exhausted reconnect cycle when the app returns to the
   /// foreground. [refreshSocket] also replaces a socket that may look alive
   /// locally after the operating system suspended its network path.

@@ -279,6 +279,9 @@ class NotificationScreen extends StatelessWidget {
             ),
           ],
         ),
+        trailing: n.sessionId == null
+            ? null
+            : Icon(Icons.chevron_right, size: 20, color: palette.text3),
         isThreeLine: true,
       ),
     );

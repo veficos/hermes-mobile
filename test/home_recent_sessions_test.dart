@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
 import 'package:hermes_mobile/core/models.dart';
+import 'package:hermes_mobile/core/settings_store.dart';
 import 'package:hermes_mobile/core/stores/chat_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/notification_store.dart';
@@ -110,8 +111,61 @@ class _RecordingSessionStore extends SessionStore {
   }
 }
 
+class _ReconnectConnection extends ConnectionStore {
+  int reconnectCount = 0;
+
+  @override
+  Future<void> reconnectAfterResume({bool refreshSocket = false}) async {
+    reconnectCount++;
+    expect(refreshSocket, isTrue);
+  }
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('home app bar can force a connection refresh', (tester) async {
+    final api = _HomeApi([]);
+    final connection = _ReconnectConnection()
+      ..settings = const ConnectionSettings(
+        serverUrl: 'http://home.invalid',
+        apiKey: 'test',
+      )
+      ..api = api;
+    final store = SessionStore(
+      connection: connection,
+      chat: ChatStore(),
+      requests: RequestStore(),
+    );
+    final notifications = NotificationStore(connection: connection);
+    addTearDown(() {
+      notifications.dispose();
+      store.dispose();
+      connection.dispose();
+    });
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<SessionStore>.value(value: store),
+          ChangeNotifierProvider<SessionAppearanceStore>.value(
+            value: SessionAppearanceStore(),
+          ),
+          ChangeNotifierProvider<NotificationStore>.value(value: notifications),
+        ],
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('home-reconnect')), findsOneWidget);
+    expect(find.byTooltip('重新连接到服务器'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('home-reconnect')));
+    await tester.pumpAndSettle();
+
+    expect(connection.reconnectCount, 1);
+    expect(find.text('已连接'), findsOneWidget);
+  });
 
   testWidgets('quick tools render first and persist editable order', (
     tester,

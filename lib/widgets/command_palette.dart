@@ -5,12 +5,15 @@
 /// a search button in the app bar; on tablet by a keyboard shortcut.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/models.dart';
 import '../core/stores/command_palette_store.dart';
+import '../core/stores/connection_store.dart';
 import '../core/stores/plugin_contribution_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
@@ -394,7 +397,12 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
         // Triggered by the voice store elsewhere; just close.
         break;
       case 'reconnect':
-        // Handled at a higher level via a callback.
+        unawaited(
+          context
+              .read<ConnectionStore>()
+              .reconnectAfterResume(refreshSocket: true)
+              .catchError((_) {}),
+        );
         break;
     }
   }

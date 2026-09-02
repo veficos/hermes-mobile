@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/models.dart';
 import '../core/session_tree.dart';
 import '../core/stores/notification_store.dart';
+import '../core/stores/connection_store.dart';
 import '../core/stores/session_appearance_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
@@ -123,6 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _toolOrder = List.of(_defaultToolOrder);
   bool _loading = true;
   bool _opening = false;
+  bool _reconnecting = false;
   int _generation = 0;
 
   SessionStore get _store => context.read<SessionStore>();
@@ -229,6 +231,31 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted && generation == _generation) {
         setState(() => _loading = false);
       }
+    }
+  }
+
+  Future<void> _reconnect() async {
+    if (_reconnecting) return;
+    final connection = _store.connection;
+    setState(() => _reconnecting = true);
+    try {
+      await connection.reconnectAfterResume(refreshSocket: true);
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.commonConnected)));
+    } catch (error) {
+      if (!mounted) return;
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.backendDisconnected,
+        onRetry: _reconnect,
+      );
+    } finally {
+      if (mounted) setState(() => _reconnecting = false);
     }
   }
 
@@ -370,6 +397,25 @@ class _HomeScreenState extends State<HomeScreen> {
     return MobilePageScaffold(
       title: 'Hermes',
       actions: [
+        ListenableBuilder(
+          listenable: store.connection,
+          builder: (context, _) {
+            final connection = store.connection;
+            final busy =
+                _reconnecting || connection.phase == ConnectionPhase.connecting;
+            return IconButton(
+              key: const ValueKey('home-reconnect'),
+              tooltip: context.l10n.paletteReconnectDesc,
+              onPressed: connection.isConfigured && !busy ? _reconnect : null,
+              icon: busy
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync),
+            );
+          },
+        ),
         if (store.profiles.isNotEmpty) _profileMenu(store),
         Consumer<NotificationStore>(
           builder: (context, notifications, _) => IconButton(

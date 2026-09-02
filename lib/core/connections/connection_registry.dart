@@ -106,7 +106,9 @@ class ConnectionRuntime {
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
   bool _disposed = false;
+  bool _foreground = true;
   Future<void>? _connectFlight;
+  Future<void>? _resumeFlight;
 
   ConnectionRuntime({
     required this.id,
@@ -181,14 +183,15 @@ class ConnectionRuntime {
   }
 
   void _scheduleReconnect() {
-    if (_disposed || _reconnectTimer != null) return;
-    if (_reconnectAttempt >= 8) {
-      phase = RuntimePhase.exhausted;
-      onStateChanged?.call(this);
-      return;
-    }
-    final delayMs = min(15000, 300 * pow(2, _reconnectAttempt).toInt());
-    _reconnectAttempt++;
+    if (_disposed || !_foreground || _reconnectTimer != null) return;
+    // A mobile device can remain offline longer than the initial backoff
+    // window (for example while iOS changes between Wi-Fi and cellular).
+    // Keep retrying transient failures at the capped interval instead of
+    // permanently exhausting after roughly one minute. Authentication
+    // failures are still terminal and are handled by the drop listener.
+    final exponent = min(_reconnectAttempt, 6);
+    final delayMs = min(15000, 300 * pow(2, exponent).toInt());
+    if (_reconnectAttempt < 6) _reconnectAttempt++;
     _reconnectTimer = Timer(Duration(milliseconds: delayMs), () async {
       _reconnectTimer = null;
       if (_disposed) return;
@@ -218,17 +221,55 @@ class ConnectionRuntime {
     }
   }
 
+  /// Suspends retry timers while the application is in the background. iOS
+  /// may freeze Dart between a socket attempt and its timeout, so allowing
+  /// backoff timers to continue there can leave the runtime in a stale phase.
+  /// Returning to the foreground restarts a stopped transient retry cycle.
+  void setForeground(bool foreground) {
+    if (_disposed || _foreground == foreground) return;
+    _foreground = foreground;
+    if (!foreground) {
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+      return;
+    }
+    if (phase == RuntimePhase.reconnecting ||
+        phase == RuntimePhase.disconnected) {
+      _reconnectAttempt = 0;
+      _scheduleReconnect();
+    }
+  }
+
   /// Revalidates a socket after the application returns from the background.
   /// Mobile operating systems may preserve the Dart object while silently
   /// dropping the underlying network path.
-  Future<void> reconnectAfterResume({bool refreshSocket = false}) async {
+  Future<void> reconnectAfterResume({bool refreshSocket = false}) {
+    final flight = _resumeFlight;
+    if (flight != null) return flight;
+    final next = _reconnectAfterResume(refreshSocket: refreshSocket);
+    _resumeFlight = next;
+    return next.whenComplete(() {
+      if (identical(_resumeFlight, next)) _resumeFlight = null;
+    });
+  }
+
+  Future<void> _reconnectAfterResume({required bool refreshSocket}) async {
+    _foreground = true;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
-    if (refreshSocket && gateway.isConnected) {
+    if (refreshSocket) {
       phase = RuntimePhase.reconnecting;
       onStateChanged?.call(this);
+      final staleConnect = _connectFlight;
       await gateway.disconnect();
+      if (staleConnect != null) {
+        try {
+          await staleConnect;
+        } catch (_) {
+          // The old handshake was intentionally cancelled above.
+        }
+      }
     }
     await reconnectNow();
   }

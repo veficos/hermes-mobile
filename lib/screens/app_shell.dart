@@ -167,7 +167,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.inactive) {
-      _backgroundedAt ??= DateTime.now();
+      final enteredBackground =
+          state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden;
+      if (enteredBackground) {
+        _backgroundedAt ??= DateTime.now();
+        context.read<ConnectionStore>().setForeground(false);
+      }
       _setNetworkPollingForeground(false);
       _backgroundStreamingIds = {
         for (final row
@@ -183,6 +189,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       final backgroundedAt = _backgroundedAt;
       _backgroundedAt = null;
+      context.read<ConnectionStore>().setForeground(true);
       _setNetworkPollingForeground(true);
       unawaited(_reconcileAfterResume(backgroundedAt));
     }
@@ -222,11 +229,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       return;
     }
     try {
-      final suspendedFor = backgroundedAt == null
-          ? Duration.zero
-          : DateTime.now().difference(backgroundedAt);
       await connection.reconnectAfterResume(
-        refreshSocket: suspendedFor >= const Duration(seconds: 10),
+        // iOS may retain the Dart WebSocket object after its underlying
+        // network path has gone away. Any observed background transition is
+        // enough reason to replace it; checking isConnected is not a useful
+        // liveness probe in that state.
+        refreshSocket: backgroundedAt != null,
       );
     } catch (_) {
       return;
@@ -716,7 +724,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => connection.connect(),
+                    onPressed: () => unawaited(
+                      connection
+                          .reconnectAfterResume(refreshSocket: true)
+                          .catchError((_) {}),
+                    ),
                     child: Text(context.l10n.shellReconnectNow),
                   ),
                 ],

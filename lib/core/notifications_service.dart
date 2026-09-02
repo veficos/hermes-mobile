@@ -49,16 +49,66 @@ class NotificationTarget {
     return NotificationTarget(notificationId: '', sessionId: payload);
   }
 
-  factory NotificationTarget.fromMap(Map<String, dynamic> json) =>
-      NotificationTarget(
-        notificationId: json['notification_id']?.toString() ?? '',
-        sessionId: _nonEmpty(json['session_id']),
-        connectionId: _nonEmpty(json['connection_id']),
-        profile: _nonEmpty(json['profile']),
-        requestId: _nonEmpty(json['request_id']),
-        approval:
-            json['approval'] == true || json['approval']?.toString() == 'true',
-      );
+  factory NotificationTarget.fromMap(Map<String, dynamic> json) {
+    // Push providers may wrap custom values in data/payload, and older
+    // gateways used camelCase or stored_session_id. Normalize all supported
+    // forms so foreground, background, and cold-start taps behave alike.
+    final values = <String, dynamic>{...json};
+    for (final key in const ['data', 'payload']) {
+      final nested = json[key];
+      if (nested is Map) {
+        for (final entry in nested.entries) {
+          values.putIfAbsent(entry.key.toString(), () => entry.value);
+        }
+      } else if (nested is String && nested.trim().startsWith('{')) {
+        try {
+          final decoded = jsonDecode(nested);
+          if (decoded is Map) {
+            for (final entry in decoded.entries) {
+              values.putIfAbsent(entry.key.toString(), () => entry.value);
+            }
+          }
+        } catch (_) {
+          // Top-level fields may still contain a valid target.
+        }
+      }
+    }
+    Object? first(Iterable<String> keys) {
+      for (final key in keys) {
+        final value = values[key];
+        if (_nonEmpty(value) != null) return value;
+      }
+      return null;
+    }
+
+    final eventType = _nonEmpty(first(const ['event_type', 'eventType']));
+    final approvalValue = first(const [
+      'approval',
+      'is_approval',
+      'isApproval',
+    ]);
+    return NotificationTarget(
+      notificationId:
+          _nonEmpty(first(const ['notification_id', 'notificationId'])) ?? '',
+      sessionId: _nonEmpty(
+        first(const [
+          'session_id',
+          'sessionId',
+          'stored_session_id',
+          'storedSessionId',
+          'durable_session_id',
+          'durableSessionId',
+        ]),
+      ),
+      connectionId: _nonEmpty(first(const ['connection_id', 'connectionId'])),
+      profile: _nonEmpty(first(const ['profile', 'profile_id', 'profileId'])),
+      requestId: _nonEmpty(first(const ['request_id', 'requestId'])),
+      approval:
+          approvalValue == true ||
+          approvalValue?.toString().toLowerCase() == 'true' ||
+          eventType == 'approval.request',
+    );
+  }
 
   static String? _nonEmpty(Object? value) {
     final text = value?.toString().trim() ?? '';

@@ -87,7 +87,7 @@ class GatewayClient {
 
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
-  Future<void>? _connecting; // F12: dedupe concurrent connect() calls
+  Completer<void>? _connecting; // F12: dedupe/cancel concurrent handshakes
   int _nextId = 1;
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
   final StreamController<GatewayEvent> _events = StreamController.broadcast();
@@ -120,17 +120,22 @@ class GatewayClient {
   Future<void> connect() async {
     final existing = _connecting;
     if (existing != null) {
-      return existing;
+      return existing.future;
     }
     if (_channel != null) return;
 
     final connecting = Completer<void>();
-    _connecting = connecting.future;
+    _connecting = connecting;
     try {
       // Explicit platform connector — avoids dart:io Platform._version on web.
       final uri = webSocketUriProvider == null
           ? _wsUri
           : await webSocketUriProvider!();
+      if (connecting.isCompleted) {
+        // disconnect() may have cancelled this attempt while OAuth, DNS, or
+        // another asynchronous URI lookup was still in progress.
+        return await connecting.future;
+      }
       final channel = connectWs(uri, headers: extraHeaders);
       // Swallow the channel's handshake-failure future: without a listener it
       // surfaces as an unhandled zone error. The stream onError below reports
@@ -139,9 +144,11 @@ class GatewayClient {
       _channel = channel;
 
       _sub = channel.stream.listen(
-        _onFrame,
+        (raw) {
+          if (identical(_channel, channel)) _onFrame(raw);
+        },
         onError: (Object e) {
-          _handleSocketClosed('$e', byClient: false);
+          _handleSocketClosed('$e', byClient: false, socket: channel);
           if (!connecting.isCompleted) {
             connecting.completeError(
               GatewayException(-1, 'connection failed: $e'),
@@ -151,7 +158,7 @@ class GatewayClient {
         onDone: () {
           final code = channel.closeCode;
           final message = gatewayCloseMessage(code, channel.closeReason);
-          _handleSocketClosed(message, byClient: false);
+          _handleSocketClosed(message, byClient: false, socket: channel);
           if (!connecting.isCompleted) {
             connecting.completeError(
               GatewayException(
@@ -172,10 +179,14 @@ class GatewayClient {
       await connecting.future.timeout(const Duration(seconds: 20));
     } on TimeoutException {
       // F12: a timed-out connect must not leave a half-open channel behind.
-      _handleSocketClosed('connect timed out', byClient: true);
+      _handleSocketClosed(
+        'connect timed out',
+        byClient: true,
+        socket: _channel,
+      );
       rethrow;
     } finally {
-      _connecting = null;
+      if (identical(_connecting, connecting)) _connecting = null;
     }
   }
 
@@ -214,7 +225,15 @@ class GatewayClient {
     }
   }
 
-  void _handleSocketClosed(String reason, {required bool byClient}) {
+  void _handleSocketClosed(
+    String reason, {
+    required bool byClient,
+    WebSocketChannel? socket,
+  }) {
+    // onDone/onError from an old socket can arrive after a replacement has
+    // already connected. Never let that stale callback tear down the current
+    // iOS network-path generation.
+    if (socket != null && !identical(_channel, socket)) return;
     _channel = null;
     final sub = _sub;
     _sub = null;
@@ -265,12 +284,14 @@ class GatewayClient {
       channel.sink.add(frame);
     } catch (e) {
       _pending.remove(id);
+      _invalidateSocket(channel, 'send failed: $e');
       throw GatewayException(-1, 'send failed: $e');
     }
     try {
       return await completer.future.timeout(timeout);
     } on TimeoutException {
       _pending.remove(id);
+      _invalidateSocket(channel, 'request timed out');
       throw GatewayException(
         -2,
         'timeout waiting for "$method" response',
@@ -279,9 +300,23 @@ class GatewayClient {
     }
   }
 
+  void _invalidateSocket(WebSocketChannel socket, String reason) {
+    if (!identical(_channel, socket)) return;
+    _handleSocketClosed(reason, byClient: false, socket: socket);
+    // Closing is best-effort: the important part is making the stale channel
+    // unavailable synchronously so the runtime can begin reconnecting.
+    unawaited(socket.sink.close().catchError((_) {}));
+  }
+
   Future<void> disconnect() async {
     // F13: a client-initiated disconnect must not emit onDisconnect.
     final channel = _channel;
+    final connecting = _connecting;
+    if (connecting != null && !connecting.isCompleted) {
+      connecting.completeError(
+        GatewayException(-1, 'connection attempt cancelled'),
+      );
+    }
     _handleSocketClosed('disconnected by client', byClient: true);
     await _sub?.cancel();
     await channel?.sink.close();

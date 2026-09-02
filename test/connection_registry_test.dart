@@ -38,6 +38,7 @@ class _Gateway extends GatewayClient {
   bool connected = false;
   Completer<Map<String, dynamic>>? resumeGate;
   Object? connectError;
+  Completer<void>? connectGate;
   int connectCount = 0;
   int disconnectCount = 0;
 
@@ -58,6 +59,8 @@ class _Gateway extends GatewayClient {
     connectCount++;
     final error = connectError;
     if (error != null) throw error;
+    final gate = connectGate;
+    if (gate != null) await gate.future;
     connected = true;
   }
 
@@ -318,7 +321,7 @@ void main() {
   });
 
   test(
-    'runtime reconnect increments generation and is bounded per runtime',
+    'runtime reconnect increments generation and applies bounded backoff',
     () async {
       final gateway = _Gateway('remote');
       final runtime = _runtime('remote', gateway);
@@ -377,6 +380,68 @@ void main() {
       expect(gateway.connectCount, 2);
     },
   );
+
+  test(
+    'background pauses retries until the runtime returns foreground',
+    () async {
+      final gateway = _Gateway('remote');
+      final runtime = _runtime('remote', gateway);
+      addTearDown(runtime.dispose);
+      gateway.connectError = StateError('offline');
+      runtime.setForeground(false);
+
+      await expectLater(runtime.reconnectAfterResume(), throwsStateError);
+      runtime.setForeground(false);
+      gateway.connectError = null;
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+
+      expect(gateway.connectCount, 1);
+      expect(runtime.phase, RuntimePhase.reconnecting);
+
+      runtime.setForeground(true);
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(gateway.connectCount, 2);
+      expect(runtime.phase, RuntimePhase.connected);
+    },
+  );
+
+  test('manual reconnect replaces a socket that only appears alive', () async {
+    final gateway = _Gateway('remote');
+    final store = ConnectionStore()
+      ..settings = const ConnectionSettings(
+        serverUrl: 'http://remote.invalid',
+        apiKey: 'test-key',
+      );
+    final runtime = _runtime('remote', gateway);
+    store.registry.add(runtime, makeActive: true);
+    addTearDown(store.dispose);
+    await runtime.connect();
+
+    await store.reconnectAfterResume(refreshSocket: true);
+
+    expect(gateway.disconnectCount, 1);
+    expect(gateway.connectCount, 2);
+    expect(store.phase, ConnectionPhase.connected);
+    expect(store.isConnected, isTrue);
+  });
+
+  test('concurrent foreground resumes share one socket replacement', () async {
+    final gateway = _Gateway('remote');
+    final runtime = _runtime('remote', gateway);
+    addTearDown(runtime.dispose);
+    await runtime.connect();
+    gateway.connectGate = Completer<void>();
+
+    final first = runtime.reconnectAfterResume(refreshSocket: true);
+    final second = runtime.reconnectAfterResume(refreshSocket: true);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(gateway.disconnectCount, 1);
+    expect(gateway.connectCount, 2);
+    gateway.connectGate!.complete();
+    await Future.wait([first, second]);
+    expect(runtime.socketGeneration, 2);
+  });
 
   test('ambiguous send failure keeps queue durably partitioned', () async {
     final connection = ConnectionStore();

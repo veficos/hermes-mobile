@@ -4,6 +4,62 @@
 /// string, so tool calls and reasoning interleave naturally with text.
 library;
 
+import 'dart:convert';
+
+/// Every path or URL that a successful image-generation tool result may be
+/// echoed into assistant prose. The tool card is the canonical image slot.
+List<String> generatedImageEchoSources(Iterable<ChatPart> parts) {
+  final sources = <String>{};
+  for (final part in parts) {
+    if (part.kind != 'tool' || part.tool?['name'] != 'image_generate') continue;
+    dynamic result = part.tool?['result'] ?? part.tool?['result_text'];
+    if (result is String) {
+      try {
+        result = jsonDecode(result);
+      } catch (_) {}
+    }
+    if (result is! Map || result['success'] == false) continue;
+    for (final key in const ['host_image', 'image', 'agent_visible_image']) {
+      final source = result[key]?.toString().trim();
+      if (source?.isNotEmpty == true) sources.add(source!);
+    }
+  }
+  return sources.toList(growable: false);
+}
+
+/// Remove image/media echoes once the same generated image has a successful
+/// tool result. This mirrors desktop's generated-images projection.
+String stripGeneratedImageEchoes(String text, Iterable<String> sources) {
+  final uniqueSources = sources.where((source) => source.isNotEmpty).toSet();
+  if (text.isEmpty || uniqueSources.isEmpty) return text;
+  var next = text
+      .replaceAll(RegExp(r'!\[[^\]\n]*\]\([^)\n]*\)'), '')
+      .replaceAll(RegExp(r'\[[^\]\n]*\]\(\s*#media:[^)\n]*\)'), '');
+  for (final source in uniqueSources) {
+    next = next.replaceAll(source, '');
+  }
+  return next
+      .replaceAll(RegExp(r'[ \t]+\n'), '\n')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+      .trim();
+}
+
+List<ChatPart> dedupeGeneratedImageEchoesInParts(Iterable<ChatPart> parts) {
+  final materialized = parts.toList(growable: false);
+  final sources = generatedImageEchoSources(materialized);
+  if (sources.isEmpty) return materialized;
+  return [
+    for (final part in materialized)
+      if (part.kind != 'text')
+        part
+      else
+        ...[
+          stripGeneratedImageEchoes(part.text, sources),
+        ].where((text) => text.isNotEmpty).map(ChatPart.text),
+  ];
+}
+
 class MessageReaction {
   final String emoji;
   final String author;
@@ -21,6 +77,100 @@ class MessageReaction {
         author: (json['author'] ?? '').toString(),
         at: (json['at'] as num?)?.toDouble() ?? 0,
       );
+}
+
+/// Structured inference-credit wall forwarded by the gateway on a terminal
+/// frame. This is deliberately separate from the account-wide BillingStore:
+/// third-party providers have their own billing URL and the block belongs to
+/// the session/turn that raised it.
+class ChatBillingBlock {
+  final String provider;
+  final String providerLabel;
+  final String? model;
+  final Uri? billingUrl;
+  final bool isNous;
+  final String message;
+
+  const ChatBillingBlock({
+    required this.provider,
+    required this.providerLabel,
+    this.model,
+    this.billingUrl,
+    required this.isNous,
+    required this.message,
+  });
+
+  static ChatBillingBlock? tryParse(dynamic value) {
+    if (value is! Map) return null;
+    final provider = value['provider']?.toString().trim() ?? '';
+    if (provider.isEmpty) return null;
+    final rawLabel = value['provider_label']?.toString().trim();
+    final rawModel = value['model']?.toString().trim();
+    final rawUrl = value['billing_url']?.toString().trim();
+    final uri = rawUrl == null || rawUrl.isEmpty ? null : Uri.tryParse(rawUrl);
+    return ChatBillingBlock(
+      provider: provider,
+      providerLabel: rawLabel?.isNotEmpty == true ? rawLabel! : provider,
+      model: rawModel?.isNotEmpty == true ? rawModel : null,
+      billingUrl: uri?.hasScheme == true ? uri : null,
+      isNous: value['is_nous'] == true,
+      message: value['message']?.toString().trim() ?? '',
+    );
+  }
+}
+
+const chatErrorSurfaceLayers = {
+  'provider',
+  'endpoint',
+  'streaming',
+  'auth',
+  'billing',
+  'gateway',
+  'runtime',
+  'disk',
+};
+
+/// Structured descriptor attached to a failed turn by newer gateways.
+/// Older servers omit it, so callers must retain their text fallback.
+class ChatErrorSurface {
+  final String layer;
+  final String code;
+  final bool retryable;
+  final String? provider;
+  final String? model;
+
+  const ChatErrorSurface({
+    required this.layer,
+    required this.code,
+    required this.retryable,
+    this.provider,
+    this.model,
+  });
+
+  static ChatErrorSurface? tryParse(dynamic value) {
+    if (value is! Map) return null;
+    final layer = value['layer']?.toString() ?? '';
+    if (!chatErrorSurfaceLayers.contains(layer)) return null;
+    final provider = value['provider']?.toString().trim();
+    final model = value['model']?.toString().trim();
+    return ChatErrorSurface(
+      layer: layer,
+      code: value['code']?.toString().trim().isNotEmpty == true
+          ? value['code'].toString().trim()
+          : 'unknown',
+      retryable: value['retryable'] != false,
+      provider: provider?.isEmpty == true ? null : provider,
+      model: model?.isEmpty == true ? null : model,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'layer': layer,
+    'code': code,
+    'retryable': retryable,
+    if (provider != null) 'provider': provider,
+    if (model != null) 'model': model,
+  };
 }
 
 class ChatPart {
@@ -92,6 +242,9 @@ class ChatMessage {
   final bool pending; // optimistic user bubble
   final bool interim; // assistant comment between tool calls
   final bool isError;
+  final ChatErrorSurface? errorSurface;
+  final double? durationS;
+  final List<String> attachmentRefs;
   final int? rowId;
   final int? historyOrdinal;
   final DateTime? timestamp;
@@ -114,6 +267,9 @@ class ChatMessage {
     this.pending = false,
     this.interim = false,
     this.isError = false,
+    this.errorSurface,
+    this.durationS,
+    this.attachmentRefs = const [],
     this.rowId,
     this.historyOrdinal,
     this.timestamp,
@@ -126,6 +282,14 @@ class ChatMessage {
 
   String get fullText =>
       parts.where((p) => p.kind == 'text').map((p) => p.text).join('');
+
+  /// Exact prompt shape expected by the gateway when this user turn is
+  /// retried. Attachment refs are presentation metadata in the timeline but
+  /// remain part of the submitted prompt contract.
+  String get promptText => [
+    ...attachmentRefs,
+    if (fullText.trim().isNotEmpty) fullText,
+  ].join('\n').trim();
 
   /// True when any text part has non-whitespace content. Unlike
   /// `fullText.trim().isNotEmpty` this short-circuits on the first non-empty
@@ -187,6 +351,9 @@ class ChatMessage {
     bool? pending,
     bool? interim,
     bool? isError,
+    ChatErrorSurface? errorSurface,
+    double? durationS,
+    List<String>? attachmentRefs,
     String? source,
     List<MessageReaction>? reactions,
   }) {
@@ -197,6 +364,9 @@ class ChatMessage {
       pending: pending ?? this.pending,
       interim: interim ?? this.interim,
       isError: isError ?? this.isError,
+      errorSurface: errorSurface ?? this.errorSurface,
+      durationS: durationS ?? this.durationS,
+      attachmentRefs: attachmentRefs ?? this.attachmentRefs,
       rowId: rowId,
       historyOrdinal: historyOrdinal,
       timestamp: timestamp,
@@ -219,6 +389,10 @@ class MutableAssistantMessage {
   bool completed = false;
   String? status;
   Map<String, dynamic>? usage;
+  ChatErrorSurface? errorSurface;
+  double? durationS;
+  int? rowId;
+  List<MessageReaction> reactions = const [];
   // 元数据字段（由 message.complete / session.info 事件填充）
   String? model;
   String? provider;
@@ -243,11 +417,16 @@ class MutableAssistantMessage {
   factory MutableAssistantMessage.fromChatMessage(ChatMessage message) {
     final mutable = MutableAssistantMessage(message.id)
       ..rowAdded = true
+      ..completed = !message.pending
       ..model = message.model
       ..provider = message.provider
       ..source = message.source
       ..timestamp = message.timestamp
-      ..usage = message.usage;
+      ..usage = message.usage
+      ..errorSurface = message.errorSurface
+      ..durationS = message.durationS
+      ..rowId = message.rowId
+      ..reactions = message.reactions;
     mutable._parts.addAll(message.parts);
     return mutable;
   }
@@ -348,7 +527,7 @@ class MutableAssistantMessage {
     String toolId,
     String? name,
     String? argsText, {
-    String? result,
+    dynamic result,
     String? summary,
     bool running = false,
     bool isError = false,
@@ -446,7 +625,10 @@ class MutableAssistantMessage {
       this.provider ??= (usage['provider'] ?? usage['billing_provider'])
           ?.toString();
     }
-    if (text != null && text.isNotEmpty) {
+    final visibleText = text == null
+        ? null
+        : stripGeneratedImageEchoes(text, generatedImageEchoSources(_parts));
+    if (visibleText != null && visibleText.isNotEmpty) {
       // Drop streamed text parts, keep tool/reasoning, then append final.
       _parts.removeWhere((p) => p.kind == 'text');
       // Mark all tools complete.
@@ -457,7 +639,7 @@ class MutableAssistantMessage {
       }
       final finalParts = <ChatPart>[
         for (final p in _parts) p,
-        ChatPart.text(text),
+        ChatPart.text(visibleText),
       ];
       _parts
         ..clear()
@@ -475,14 +657,18 @@ class MutableAssistantMessage {
     return ChatMessage(
       id: id,
       role: 'assistant',
-      parts: parts,
+      parts: dedupeGeneratedImageEchoesInParts(parts),
+      pending: !completed,
       isError: isError,
-      rowId: rowId,
+      errorSurface: errorSurface,
+      durationS: durationS,
+      rowId: rowId ?? this.rowId,
       source: source,
       model: model,
       provider: provider,
       timestamp: timestamp,
       usage: usage,
+      reactions: reactions,
     );
   }
 }

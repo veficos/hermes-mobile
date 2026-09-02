@@ -17,6 +17,14 @@ void main() {
       ChatGatewayEventFamily.delegation,
     );
     expect(
+      chatGatewayEventFamily('subagent.progress'),
+      ChatGatewayEventFamily.delegation,
+    );
+    expect(
+      chatGatewayEventFamily('reaction'),
+      ChatGatewayEventFamily.message,
+    );
+    expect(
       chatGatewayEventFamily('browser.progress'),
       ChatGatewayEventFamily.preview,
     );

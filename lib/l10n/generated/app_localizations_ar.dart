@@ -6301,6 +6301,10 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get mcpPersistenceFailed =>
+      'لم يحفظ الخادم تغيير إعداد MCP بشكل دائم.';
+
+  @override
   String mcpTestSuccess(Object prompts, Object resources, Object tools) {
     return 'تم الاتصال: $tools أدوات، $prompts موجّهات، $resources موارد';
   }

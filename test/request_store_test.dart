@@ -49,6 +49,7 @@ class _FakeGateway extends GatewayClient {
     : super(serverBaseUrl: 'http://requests.invalid', apiKey: 'test');
 
   final calls = <(String, Map<String, dynamic>)>[];
+  Object? promptSubmitError;
 
   @override
   bool get isConnected => true;
@@ -60,6 +61,9 @@ class _FakeGateway extends GatewayClient {
     Duration timeout = const Duration(seconds: 120),
   }) async {
     calls.add((method, params));
+    if (method == 'prompt.submit' && promptSubmitError != null) {
+      throw promptSubmitError!;
+    }
     if (method == 'session.resume') {
       return {'session_id': 'runtime-${params['session_id']}'};
     }
@@ -78,6 +82,7 @@ class _FakeConnection extends ConnectionStore {
 
   final eventController = StreamController<GatewayEvent>.broadcast();
   final reconnectController = StreamController<void>.broadcast();
+  Completer<void>? ensureGate;
 
   @override
   Stream<GatewayEvent> get events => eventController.stream;
@@ -86,7 +91,11 @@ class _FakeConnection extends ConnectionStore {
   Stream<void> get reconnected => reconnectController.stream;
 
   @override
-  Future<void> ensureConnected() async {}
+  Future<void> ensureConnected() async {
+    final gate = ensureGate;
+    ensureGate = null;
+    await gate?.future;
+  }
 
   @override
   void dispose() {
@@ -141,6 +150,74 @@ void main() {
         'text': 'update the chart',
         'display_kind': 'hidden',
       });
+      expect(chat.messages, isEmpty);
+    },
+  );
+
+  test(
+    'failed hidden intent leaves no user bubble and releases busy',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final gateway = _FakeGateway()
+        ..promptSubmitError = StateError('rejected');
+      final connection = _FakeConnection(apiClient: _FakeApi(), gw: gateway);
+      final requests = RequestStore();
+      final chat = ChatStore();
+      final store = SessionStore(
+        connection: connection,
+        chat: chat,
+        requests: requests,
+      );
+      addTearDown(() {
+        store.dispose();
+        requests.dispose();
+        connection.dispose();
+      });
+
+      await store.openNewSession();
+      await expectLater(
+        store.sendHiddenMessage('update preview'),
+        throwsStateError,
+      );
+
+      expect(chat.messages, isEmpty);
+      expect(chat.busy, isFalse);
+      expect(chat.recoveryJournal, hasLength(1));
+    },
+  );
+
+  test(
+    'hidden intent cannot cross a session switch while connecting',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final gateway = _FakeGateway();
+      final connection = _FakeConnection(apiClient: _FakeApi(), gw: gateway);
+      final requests = RequestStore();
+      final chat = ChatStore();
+      final store = SessionStore(
+        connection: connection,
+        chat: chat,
+        requests: requests,
+      );
+      addTearDown(() {
+        store.dispose();
+        requests.dispose();
+        connection.dispose();
+      });
+
+      await store.openNewSession();
+      final gate = Completer<void>();
+      connection.ensureGate = gate;
+      final sending = store.sendHiddenMessage('stale preview intent');
+      await Future<void>.delayed(Duration.zero);
+      await store.resumeSession('other-session');
+      gate.complete();
+
+      await expectLater(sending, throwsStateError);
+      expect(
+        gateway.calls.where((call) => call.$1 == 'prompt.submit'),
+        isEmpty,
+      );
       expect(chat.messages, isEmpty);
     },
   );

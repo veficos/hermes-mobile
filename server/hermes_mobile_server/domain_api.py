@@ -3074,9 +3074,15 @@ def build_domain_router(
     @router.get("/analytics/usage")
     async def analytics_usage(
         days: int = Query(30, ge=1, le=365),
+        profile: str | None = Query(None),
     ) -> Any:
         """Daily token/cost/session series + totals + skills/tools breakdown."""
-        return await _backend_json(require_backend(), "GET", "/api/analytics/usage", query={"days": days})
+        return await _backend_json(
+            require_backend(),
+            "GET",
+            "/api/analytics/usage",
+            query={"days": days, **({"profile": profile} if profile else {})},
+        )
 
     @router.get("/analytics/models")
     async def analytics_models(
@@ -3224,6 +3230,18 @@ def build_domain_router(
             require_backend(), "GET", f"/api/mcp/oauth/flows/{flow_id}", query=query
         )
 
+    @router.delete("/mcp/oauth/flows/{flow_id}")
+    async def mcp_oauth_flow_cancel(
+        flow_id: str, profile: str | None = Query(None)
+    ) -> Any:
+        query = {"profile": profile} if profile else None
+        return await _backend_json(
+            require_backend(),
+            "DELETE",
+            f"/api/mcp/oauth/flows/{flow_id}",
+            query=query,
+        )
+
     @router.get("/mcp/catalog")
     async def mcp_catalog(profile: str | None = Query(None)) -> Any:
         be = require_backend()
@@ -3243,12 +3261,13 @@ def build_domain_router(
     async def action_status(
         name: str,
         lines: int = Query(200, ge=1, le=2000),
+        profile: str | None = Query(None),
     ) -> Any:
         return await _backend_json(
             require_backend(),
             "GET",
             f"/api/actions/{name}/status",
-            query={"lines": lines},
+            query={"lines": lines, **({"profile": profile} if profile else {})},
         )
 
     # -------------------------------------------------------------- plugins
@@ -4247,9 +4266,16 @@ def build_domain_router(
         return await _backend_json(require_backend(), "POST", "/api/gateway/restart")
 
     @router.get("/messaging/{platform}/config")
-    async def messaging_config(platform: str) -> Any:
+    async def messaging_config(
+        platform: str, profile: str | None = Query(None)
+    ) -> Any:
         be = require_backend()
-        result = await _backend_json(be, "GET", "/api/messaging/platforms")
+        result = await _backend_json(
+            be,
+            "GET",
+            "/api/messaging/platforms",
+            query={"profile": profile} if profile else None,
+        )
         item = next(
             (
                 row
@@ -4265,14 +4291,26 @@ def build_domain_router(
         return item
 
     @router.put("/messaging/{platform}/config")
-    async def messaging_set_config(platform: str, payload: dict = Body(...)) -> Any:
+    async def messaging_set_config(
+        platform: str,
+        payload: dict = Body(...),
+        profile: str | None = Query(None),
+    ) -> Any:
         be = require_backend()
         return await _backend_json(
-            be, "PUT", f"/api/messaging/platforms/{platform}", body=payload
+            be,
+            "PUT",
+            f"/api/messaging/platforms/{platform}",
+            query={"profile": profile} if profile else None,
+            body=payload,
         )
 
     @router.post("/messaging/{platform}/env")
-    async def messaging_set_env(platform: str, payload: dict = Body(...)) -> Any:
+    async def messaging_set_env(
+        platform: str,
+        payload: dict = Body(...),
+        profile: str | None = Query(None),
+    ) -> Any:
         be = require_backend()
         key = str(payload.get("key") or "").strip()
         if not key:
@@ -4280,13 +4318,24 @@ def build_domain_router(
         value = str(payload.get("value") or "")
         body = {"env": {key: value}} if value.strip() else {"clear_env": [key]}
         return await _backend_json(
-            be, "PUT", f"/api/messaging/platforms/{platform}", body=body
+            be,
+            "PUT",
+            f"/api/messaging/platforms/{platform}",
+            query={"profile": profile} if profile else None,
+            body=body,
         )
 
     @router.get("/messaging/{platform}/pending")
-    async def messaging_pending(platform: str) -> Any:
+    async def messaging_pending(
+        platform: str, profile: str | None = Query(None)
+    ) -> Any:
         be = require_backend()
-        result = await _backend_json(be, "GET", "/api/pairing")
+        result = await _backend_json(
+            be,
+            "GET",
+            "/api/pairing",
+            query={"profile": profile} if profile else None,
+        )
         return {
             "pending": [
                 row
@@ -4297,13 +4346,21 @@ def build_domain_router(
         }
 
     @router.post("/messaging/{platform}/pair/{pairing_id}/approve")
-    async def messaging_approve_pair(platform: str, pairing_id: str) -> Any:
+    async def messaging_approve_pair(
+        platform: str,
+        pairing_id: str,
+        profile: str | None = Query(None),
+    ) -> Any:
         be = require_backend()
         return await _backend_json(
             be,
             "POST",
             "/api/pairing/approve",
-            body={"platform": platform, "request_id": pairing_id},
+            body={
+                "platform": platform,
+                "request_id": pairing_id,
+                **({"profile": profile} if profile else {}),
+            },
         )
 
     # ------------------------------------------------------------ webhooks

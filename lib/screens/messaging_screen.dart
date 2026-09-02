@@ -128,10 +128,14 @@ class _MessagingScreenState extends State<MessagingScreen>
       return;
     }
     try {
-      final results = await Future.wait([
-        api.messagingPlatforms(profile: requestedProfile),
-        api.messagingPairings(profile: requestedProfile),
-      ]);
+      final platforms = await api.messagingPlatforms(profile: requestedProfile);
+      var pairings = _pairings;
+      try {
+        pairings = await api.messagingPairings(profile: requestedProfile);
+      } catch (_) {
+        // Pairing is optional on older gateways. Keep the last known rows; a
+        // missing admin endpoint must not hide otherwise configurable channels.
+      }
       if (!mounted ||
           generation != _loadGeneration ||
           requestedProfile != _profile ||
@@ -139,8 +143,8 @@ class _MessagingScreenState extends State<MessagingScreen>
         return;
       }
       setState(() {
-        _platforms = results[0] as List<MessagingPlatform>;
-        _pairings = results[1] as MessagingPairings;
+        _platforms = platforms;
+        _pairings = pairings;
         _loadedProfile = requestedProfile;
         _loadedApi = api;
         _loading = false;
@@ -164,6 +168,7 @@ class _MessagingScreenState extends State<MessagingScreen>
     final api = _loadedApi;
     final profile = _loadedProfile;
     if (api == null || !_ownsTarget(api, profile)) return;
+    final persistenceFailed = context.l10n.messagingTestNotPassed;
     final generation = _mutationGeneration;
     setState(() => _busyPlatforms.add(platform.id));
     try {
@@ -172,6 +177,13 @@ class _MessagingScreenState extends State<MessagingScreen>
         enabled: enabled,
         profile: profile,
       );
+      final verified = await api.messagingPlatforms(profile: profile);
+      final persisted = verified
+          .where((item) => item.id == platform.id)
+          .firstOrNull;
+      if (persisted == null || persisted.enabled != enabled) {
+        throw StateError(persistenceFailed);
+      }
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, profile)) {
@@ -185,6 +197,16 @@ class _MessagingScreenState extends State<MessagingScreen>
       }
       if (generation == _mutationGeneration && _ownsTarget(api, profile)) {
         await _loadData(silent: true);
+      }
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, profile)) {
+        final restart = await _offerRestart(
+          enabled
+              ? context.l10n.messagingPlatformEnabled(platform.displayName)
+              : context.l10n.messagingPlatformDisabled(platform.displayName),
+        );
+        if (restart && mounted) await _restartGateway(confirm: false);
       }
     } catch (error) {
       if (mounted &&
@@ -259,11 +281,15 @@ class _MessagingScreenState extends State<MessagingScreen>
       builder: (_) => _PlatformConfigDialog(platform: platform),
     );
     if (result == null || !mounted) return;
+    if (result.env.isEmpty && result.clearEnv.isEmpty) return;
+    final disconnected = context.l10n.backendDisconnected;
+    final platformNotFound = context.l10n.errorMessagingPlatformNotFound;
+    final persistenceFailed = context.l10n.messagingTestNotPassed;
     setState(() => _busyPlatforms.add(platform.id));
     try {
       requireActiveApi(context, connection, api);
       if (profile != _profile) {
-        throw StateError(context.l10n.backendDisconnected);
+        throw StateError(disconnected);
       }
       await api.updateMessagingPlatform(
         platform.id,
@@ -271,6 +297,29 @@ class _MessagingScreenState extends State<MessagingScreen>
         clearEnv: result.clearEnv,
         profile: profile,
       );
+      final verified = await api.messagingPlatforms(profile: profile);
+      final persisted = verified
+          .where((item) => item.id == platform.id)
+          .firstOrNull;
+      if (persisted == null) {
+        throw StateError(platformNotFound);
+      }
+      for (final key in result.env.keys) {
+        final field = persisted.envVars
+            .where((item) => item.key == key)
+            .firstOrNull;
+        if (field == null || !field.isSet) {
+          throw StateError('$key: $persistenceFailed');
+        }
+      }
+      for (final key in result.clearEnv) {
+        final field = persisted.envVars
+            .where((item) => item.key == key)
+            .firstOrNull;
+        if (field != null && field.isSet) {
+          throw StateError('$key: $persistenceFailed');
+        }
+      }
       if (!mounted ||
           generation != _mutationGeneration ||
           !_ownsTarget(api, profile)) {
@@ -284,6 +333,14 @@ class _MessagingScreenState extends State<MessagingScreen>
         );
       }
       await _loadData(silent: true);
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, profile)) {
+        final restart = await _offerRestart(
+          context.l10n.messagingConfigSaved(platform.displayName),
+        );
+        if (restart && mounted) await _restartGateway(confirm: false);
+      }
     } catch (error) {
       if (mounted &&
           generation == _mutationGeneration &&
@@ -299,6 +356,27 @@ class _MessagingScreenState extends State<MessagingScreen>
         setState(() => _busyPlatforms.remove(platform.id));
       }
     }
+  }
+
+  Future<bool> _offerRestart(String message) async {
+    final restart = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(context.l10n.messagingRestartQuestion),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(context.l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(context.l10n.commonRestart),
+          ),
+        ],
+      ),
+    );
+    return restart == true;
   }
 
   Future<void> _approve(MessagingPairing pairing) async {
@@ -413,28 +491,30 @@ class _MessagingScreenState extends State<MessagingScreen>
     }
   }
 
-  Future<void> _restartGateway() async {
+  Future<void> _restartGateway({bool confirm = true}) async {
     final connection = context.read<ConnectionStore>();
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
     final generation = _mutationGeneration;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.l10n.messagingRestartQuestion),
-        content: Text(context.l10n.messagingRestartWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(context.l10n.commonRestart),
-          ),
-        ],
-      ),
-    );
+    final confirmed = !confirm
+        ? true
+        : await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(context.l10n.messagingRestartQuestion),
+              content: Text(context.l10n.messagingRestartWarning),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(context.l10n.commonCancel),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(context.l10n.commonRestart),
+                ),
+              ],
+            ),
+          );
     if (confirmed != true || !mounted) return;
     setState(() => _restarting = true);
     try {
@@ -744,6 +824,21 @@ class _PlatformConfigDialog extends StatefulWidget {
 }
 
 class _PlatformConfigDialogState extends State<_PlatformConfigDialog> {
+  static const _desktopAdvancedKeys = {
+    'TELEGRAM_PROXY',
+    'DISCORD_REPLY_TO_MODE',
+    'DISCORD_ALLOW_ALL_USERS',
+    'DISCORD_HOME_CHANNEL',
+    'DISCORD_HOME_CHANNEL_NAME',
+    'BLUEBUBBLES_ALLOW_ALL_USERS',
+    'MATTERMOST_ALLOW_ALL_USERS',
+    'MATTERMOST_HOME_CHANNEL',
+    'QQ_ALLOW_ALL_USERS',
+    'QQBOT_HOME_CHANNEL',
+    'QQBOT_HOME_CHANNEL_NAME',
+    'WHATSAPP_ENABLED',
+    'WHATSAPP_MODE',
+  };
   final Map<String, TextEditingController> _controllers = {};
   final Set<String> _clear = {};
   final Set<String> _visiblePasswords = {};
@@ -766,11 +861,23 @@ class _PlatformConfigDialogState extends State<_PlatformConfigDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final regular = widget.platform.envVars
-        .where((field) => !field.advanced)
+    final required = widget.platform.envVars
+        .where((field) => field.required)
+        .toList();
+    final recommended = widget.platform.envVars
+        .where(
+          (field) =>
+              !field.required &&
+              !field.advanced &&
+              !_desktopAdvancedKeys.contains(field.key),
+        )
         .toList();
     final advanced = widget.platform.envVars
-        .where((field) => field.advanced)
+        .where(
+          (field) =>
+              !field.required &&
+              (field.advanced || _desktopAdvancedKeys.contains(field.key)),
+        )
         .toList();
     return AlertDialog(
       title: Text(
@@ -783,8 +890,28 @@ class _PlatformConfigDialogState extends State<_PlatformConfigDialog> {
             : SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ...regular.map(_field),
+                    Text(
+                      context.l10n.mcpRequired,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 10),
+                    if (required.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: Text(context.l10n.messagingNoEditableConfig),
+                      )
+                    else
+                      ...required.map(_field),
+                    if (recommended.isNotEmpty) ...[
+                      Text(
+                        context.l10n.mcpOptional,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 10),
+                      ...recommended.map(_field),
+                    ],
                     if (advanced.isNotEmpty)
                       ExpansionTile(
                         tilePadding: EdgeInsets.zero,
@@ -879,6 +1006,19 @@ class _PlatformConfigDialogState extends State<_PlatformConfigDialog> {
       if (value.isNotEmpty && !_clear.contains(entry.key)) {
         env[entry.key] = value;
       }
+    }
+    final missing = widget.platform.envVars.where((field) {
+      if (!field.required || _clear.contains(field.key)) return false;
+      return !field.isSet && (env[field.key]?.isNotEmpty != true);
+    }).toList();
+    if (missing.isNotEmpty) {
+      final field = missing.first;
+      final label = field.prompt.isEmpty ? field.key : field.prompt;
+      final requiredMessage = '$label: ${context.l10n.pluginFieldRequired}';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(requiredMessage)));
+      return;
     }
     Navigator.pop(
       context,

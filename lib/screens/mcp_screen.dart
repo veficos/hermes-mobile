@@ -2,6 +2,7 @@
 /// backed by `/api/v1/mcp/*`.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -37,7 +38,12 @@ class _McpScreenState extends State<McpScreen>
   List<Map<String, dynamic>>? _catalog;
   String? _error;
   String _busyName = '';
+  String? _oauthFlowId;
+  ApiClient? _oauthApi;
+  String? _oauthProfile;
+  bool _oauthCancelled = false;
   final Map<String, Map<String, dynamic>> _probes = {};
+  final Map<String, String> _probeFingerprints = {};
   Map<String, int>? _usage30d;
 
   ProfileScopeStore? _scopeStore;
@@ -67,6 +73,11 @@ class _McpScreenState extends State<McpScreen>
 
   @override
   void dispose() {
+    final flowId = _oauthFlowId;
+    final oauthApi = _oauthApi;
+    if (flowId != null && oauthApi != null) {
+      unawaited(_abandonOAuth(oauthApi, flowId, _oauthProfile));
+    }
     disposeConnectionObserver();
     _scopeStore?.removeListener(_onScopeChanged);
     super.dispose();
@@ -79,6 +90,11 @@ class _McpScreenState extends State<McpScreen>
 
   void _reloadForTarget() {
     if (!mounted) return;
+    final flowId = _oauthFlowId;
+    final oauthApi = _oauthApi;
+    if (flowId != null && oauthApi != null) {
+      unawaited(_abandonOAuth(oauthApi, flowId, _oauthProfile));
+    }
     ++_loadGeneration;
     ++_mutationGeneration;
     setState(() {
@@ -86,13 +102,21 @@ class _McpScreenState extends State<McpScreen>
       _catalog = null;
       _usage30d = const {};
       _probes.clear();
+      _probeFingerprints.clear();
       _busyName = '';
+      _oauthFlowId = null;
+      _oauthApi = null;
+      _oauthProfile = null;
+      _oauthCancelled = false;
       _error = null;
     });
     _load();
   }
 
-  String? get _profile => _scopeStore?.override;
+  String? get _profile {
+    final scope = _scopeStore;
+    return scope?.override ?? scope?.activeProfile;
+  }
 
   bool _ownsTarget(ApiClient api, String? profile) {
     return mounted &&
@@ -103,6 +127,134 @@ class _McpScreenState extends State<McpScreen>
   void _requireTarget(ApiClient api, String? profile) {
     if (!_ownsTarget(api, profile)) {
       throw StateError(context.l10n.backendDisconnected);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _persistedServer(
+    ApiClient api,
+    String? profile,
+    String name,
+  ) async {
+    final servers = await api.mcpServers(profile: profile);
+    _requireTarget(api, profile);
+    for (final server in servers) {
+      if (server['name']?.toString() == name) return server;
+    }
+    return null;
+  }
+
+  Future<void> _verifyServerEnabled(
+    ApiClient api,
+    String? profile,
+    String name,
+    bool enabled,
+  ) async {
+    final persistenceFailed = context.l10n.mcpPersistenceFailed;
+    final persisted = await _persistedServer(api, profile, name);
+    if (persisted == null || (persisted['enabled'] == true) != enabled) {
+      throw StateError(persistenceFailed);
+    }
+  }
+
+  Future<void> _verifyServerExists(
+    ApiClient api,
+    String? profile,
+    String name,
+  ) async {
+    final persistenceFailed = context.l10n.mcpPersistenceFailed;
+    if (await _persistedServer(api, profile, name) == null) {
+      throw StateError(persistenceFailed);
+    }
+  }
+
+  Future<void> _verifyCreatedServer(
+    ApiClient api,
+    String? profile,
+    String name,
+    Map<String, dynamic> submitted,
+  ) async {
+    final persistenceFailed = context.l10n.mcpPersistenceFailed;
+    final persisted = await _persistedServer(api, profile, name);
+    if (persisted == null) throw StateError(persistenceFailed);
+    final expectedUrl = submitted['url']?.toString();
+    final expectedCommand = submitted['command']?.toString();
+    final expectedArgs = submitted['args'] as List? ?? const [];
+    final expectedAuth = submitted['auth']?.toString();
+    final env = submitted['env'] as Map? ?? const {};
+    final persistedEnv = persisted['env'] as Map? ?? const {};
+    final matches =
+        (expectedUrl == null || persisted['url']?.toString() == expectedUrl) &&
+        (expectedCommand == null ||
+            persisted['command']?.toString() == expectedCommand) &&
+        _sameJson(persisted['args'] as List? ?? const [], expectedArgs) &&
+        (expectedAuth == null ||
+            expectedAuth == 'none' ||
+            persisted['auth']?.toString() == expectedAuth) &&
+        env.keys.every(persistedEnv.containsKey);
+    if (!matches) throw StateError(persistenceFailed);
+  }
+
+  Future<void> _verifyServerDeleted(
+    ApiClient api,
+    String? profile,
+    String name,
+  ) async {
+    final persistenceFailed = context.l10n.mcpPersistenceFailed;
+    if (await _persistedServer(api, profile, name) != null) {
+      throw StateError(persistenceFailed);
+    }
+  }
+
+  bool _sameJson(dynamic left, dynamic right) {
+    if (left is Map && right is Map) {
+      if (left.length != right.length) return false;
+      for (final entry in left.entries) {
+        if (!right.containsKey(entry.key) ||
+            !_sameJson(entry.value, right[entry.key])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (left is List && right is List) {
+      if (left.length != right.length) return false;
+      for (var index = 0; index < left.length; index++) {
+        if (!_sameJson(left[index], right[index])) return false;
+      }
+      return true;
+    }
+    return left == right;
+  }
+
+  Future<void> _verifyRawServer(
+    ApiClient api,
+    String? profile,
+    String name,
+    Map<String, dynamic> expected,
+  ) async {
+    final persistenceFailed = context.l10n.mcpPersistenceFailed;
+    final config = await api.getConfig(profile: profile);
+    _requireTarget(api, profile);
+    final servers =
+        (config['mcp_servers'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final persisted = (servers[name] as Map?)?.cast<String, dynamic>();
+    if (persisted == null || !_sameJson(persisted, expected)) {
+      throw StateError(persistenceFailed);
+    }
+  }
+
+  Future<void> _verifyRawServers(
+    ApiClient api,
+    String? profile,
+    Map<String, Map<String, dynamic>> expected,
+  ) async {
+    final persistenceFailed = context.l10n.mcpPersistenceFailed;
+    final config = await api.getConfig(profile: profile);
+    _requireTarget(api, profile);
+    final persisted =
+        (config['mcp_servers'] as Map?)?.cast<String, dynamic>() ?? const {};
+    if (!_sameJson(persisted, expected)) {
+      throw StateError(persistenceFailed);
     }
   }
 
@@ -123,11 +275,30 @@ class _McpScreenState extends State<McpScreen>
         catalog = null;
       }
       if (_ownsTarget(api, profile) && generation == _loadGeneration) {
+        final names = servers
+            .map((server) => server['name'].toString())
+            .toSet();
         setState(() {
+          _probes.removeWhere((name, _) => !names.contains(name));
+          _probeFingerprints.removeWhere((name, _) => !names.contains(name));
+          for (final server in servers) {
+            final name = server['name'].toString();
+            final fingerprint = _serverFingerprint(server);
+            if (_probeFingerprints[name] != fingerprint) {
+              _probes.remove(name);
+              _probeFingerprints.remove(name);
+            }
+          }
           _servers = servers;
           _catalog = catalog;
           _error = null;
         });
+        for (final server in servers) {
+          final name = server['name'].toString();
+          if (server['enabled'] == true && !_probes.containsKey(name)) {
+            unawaited(_probeSilently(server, api, profile, generation));
+          }
+        }
       }
     } catch (e) {
       if (_ownsTarget(api, profile) && generation == _loadGeneration) {
@@ -136,12 +307,51 @@ class _McpScreenState extends State<McpScreen>
     }
     // Cosmetic 30-day usage overlay — best-effort, never blocks the list.
     try {
-      final usage = await api.toolCallCounts30d();
+      final usage = await api.toolCallCounts30d(profile: profile);
       if (_ownsTarget(api, profile) && generation == _loadGeneration) {
         setState(() => _usage30d = usage);
       }
     } catch (_) {
       // Analytics unavailable — the overlay simply omits usage.
+    }
+  }
+
+  String _serverFingerprint(Map<String, dynamic> server) => jsonEncode({
+    'transport': server['transport'],
+    'url': server['url'],
+    'command': server['command'],
+    'args': server['args'],
+    'env': server['env'],
+    'auth': server['auth'],
+    'enabled': server['enabled'],
+    'tools': server['tools'],
+  });
+
+  Future<void> _probeSilently(
+    Map<String, dynamic> server,
+    ApiClient api,
+    String? profile,
+    int loadGeneration,
+  ) async {
+    final name = server['name'].toString();
+    final fingerprint = _serverFingerprint(server);
+    try {
+      final result = await api.mcpTest(name, profile: profile);
+      if (!_ownsTarget(api, profile) || loadGeneration != _loadGeneration) {
+        return;
+      }
+      setState(() {
+        _probes[name] = result;
+        _probeFingerprints[name] = fingerprint;
+      });
+    } catch (error) {
+      if (!_ownsTarget(api, profile) || loadGeneration != _loadGeneration) {
+        return;
+      }
+      setState(() {
+        _probes[name] = {'ok': false, 'error': '$error', 'tools': const []};
+        _probeFingerprints[name] = fingerprint;
+      });
     }
   }
 
@@ -154,6 +364,7 @@ class _McpScreenState extends State<McpScreen>
     setState(() => _busyName = name);
     try {
       await api.mcpSetEnabled(name, enabled, profile: profile);
+      await _verifyServerEnabled(api, profile, name, enabled);
       if (generation != _mutationGeneration || !_ownsTarget(api, profile)) {
         return;
       }
@@ -192,6 +403,7 @@ class _McpScreenState extends State<McpScreen>
         return;
       }
       setState(() => _probes[name] = result);
+      _probeFingerprints[name] = _serverFingerprint(server);
       final ok = result['ok'] == true || result['reachable'] == true;
       final tools = result['tools'] as List? ?? const [];
       final prompts = (result['prompts'] as num?)?.toInt() ?? 0;
@@ -228,12 +440,16 @@ class _McpScreenState extends State<McpScreen>
     }
   }
 
-  Future<void> _reloadLive(ApiClient expectedApi, String? profile) async {
+  /// Apply a persisted config to the currently connected live session when
+  /// possible. REST writes are authoritative even when the optional Gateway
+  /// WebSocket is offline (for example while the backend is restarting), so a
+  /// reload failure must not turn a successful disk write into a false error.
+  Future<bool> _reloadLive(ApiClient expectedApi, String? profile) async {
     final connection = context.read<ConnectionStore>();
     _requireTarget(expectedApi, profile);
     final gateway = connection.gateway;
     if (gateway == null || !gateway.isConnected) {
-      throw StateError(context.l10n.backendDisconnected);
+      return false;
     }
     final runtimeId = context.read<SessionStore>().runtimeId;
     try {
@@ -242,6 +458,7 @@ class _McpScreenState extends State<McpScreen>
         'session_id': ?runtimeId,
       });
       _requireTarget(expectedApi, profile);
+      return true;
     } catch (error) {
       if (mounted) {
         showHermesToast(
@@ -250,7 +467,7 @@ class _McpScreenState extends State<McpScreen>
           kind: HermesToastKind.error,
         );
       }
-      rethrow;
+      return false;
     }
   }
 
@@ -280,6 +497,15 @@ class _McpScreenState extends State<McpScreen>
     }
     if (entries.length > 1) return entries;
     final entry = entries.single;
+    final representableKeys = entry.config['url'] is String
+        ? const {'url', 'auth'}
+        : const {'command', 'args', 'env'};
+    if (entry.config.keys.any((key) => !representableKeys.contains(key))) {
+      // The structured add form cannot faithfully represent headers, tool
+      // filters, enabled flags, OAuth extensions, or plugin-defined fields.
+      // Route these through the whole-map importer so no mcp.json data is lost.
+      return entries;
+    }
     setDialogState(() {
       name.text = entry.name;
       final url = entry.config['url'];
@@ -327,30 +553,49 @@ class _McpScreenState extends State<McpScreen>
     );
     if (confirmed != true || !mounted) return;
     _requireTarget(api, profile);
-    var failures = 0;
-    for (final entry in entries) {
-      try {
-        await api.mcpCreate({
-          'name': entry.name,
-          ...entry.config,
-        }, profile: profile);
-      } catch (_) {
-        failures++;
+    setState(() => _busyName = entries.first.name);
+    try {
+      final config = await api.getConfig(profile: profile);
+      _requireTarget(api, profile);
+      final raw =
+          (config['mcp_servers'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final next = <String, Map<String, dynamic>>{
+        for (final item in raw.entries)
+          item.key: (item.value as Map).cast<String, dynamic>(),
+      };
+      final imported = <String, Map<String, dynamic>>{};
+      for (final entry in entries) {
+        var name = entry.name;
+        for (var suffix = 2; next.containsKey(name); suffix++) {
+          name = '${entry.name}-$suffix';
+        }
+        final value = Map<String, dynamic>.from(entry.config);
+        next[name] = value;
+        imported[name] = value;
       }
+      await api.mcpReplaceServers(next, profile: profile);
+      for (final entry in imported.entries) {
+        await _verifyRawServer(api, profile, entry.key, entry.value);
+      }
+      await _reloadLive(api, profile);
+      await _load();
+      if (!mounted) return;
+      showHermesToast(
+        context,
+        message: context.l10n.mcpServersAdded(imported.length),
+        kind: HermesToastKind.success,
+      );
+    } catch (error) {
+      if (mounted && _ownsTarget(api, profile)) {
+        showHermesToast(
+          context,
+          message: context.l10n.mcpAddFailed('$error'),
+          kind: HermesToastKind.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyName = '');
     }
-    _requireTarget(api, profile);
-    await _reloadLive(api, profile);
-    await _load();
-    if (!mounted) return;
-    showHermesToast(
-      context,
-      message: failures == 0
-          ? context.l10n.mcpServersAdded(entries.length)
-          : context.l10n.mcpServersPartiallyAdded(
-              entries.length - failures,
-              failures,
-            ),
-    );
   }
 
   Future<void> _createServer() async {
@@ -558,6 +803,7 @@ class _McpScreenState extends State<McpScreen>
     setState(() => _busyName = serverName);
     try {
       await api.mcpCreate(payload, profile: profile);
+      await _verifyCreatedServer(api, profile, serverName, payload);
       _requireTarget(api, profile);
       await _reloadLive(api, profile);
       await _load();
@@ -608,6 +854,7 @@ class _McpScreenState extends State<McpScreen>
     setState(() => _busyName = name);
     try {
       await api.mcpDelete(name, profile: profile);
+      await _verifyServerDeleted(api, profile, name);
       _requireTarget(api, profile);
       await _reloadLive(api, profile);
       await _load();
@@ -720,6 +967,7 @@ class _McpScreenState extends State<McpScreen>
         next.map((k, v) => MapEntry(k, (v as Map).cast<String, dynamic>())),
         profile: profile,
       );
+      await _verifyRawServer(api, profile, name, parsed);
       _requireTarget(api, profile);
       await _reloadLive(api, profile);
       await _load();
@@ -735,6 +983,103 @@ class _McpScreenState extends State<McpScreen>
         showHermesToast(
           context,
           message: context.l10n.mcpSaveFailed('$e'),
+          kind: HermesToastKind.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyName = '');
+    }
+  }
+
+  Future<void> _editMcpDocument() async {
+    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    if (api == null) return;
+    final profile = _profile;
+    setState(() => _busyName = 'mcp.json');
+    Map<String, dynamic> current;
+    try {
+      final config = await api.getConfig(profile: profile);
+      _requireTarget(api, profile);
+      current =
+          (config['mcp_servers'] as Map?)?.cast<String, dynamic>() ?? const {};
+    } catch (error) {
+      if (mounted && _ownsTarget(api, profile)) {
+        showHermesToast(
+          context,
+          message: context.l10n.mcpReadConfigFailed('$error'),
+          kind: HermesToastKind.error,
+        );
+        setState(() => _busyName = '');
+      }
+      return;
+    }
+    if (!mounted) return;
+    final controller = TextEditingController(
+      text: const JsonEncoder.withIndent('  ').convert({'mcpServers': current}),
+    );
+    final edited = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('mcp.json'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            key: const ValueKey('mcp-document-editor'),
+            controller: controller,
+            minLines: 12,
+            maxLines: 22,
+            style: HermesType.code,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(context.l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: Text(context.l10n.commonSave),
+          ),
+        ],
+      ),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+    if (edited == null || !mounted) {
+      if (mounted) setState(() => _busyName = '');
+      return;
+    }
+    try {
+      final decoded = jsonDecode(edited);
+      if (decoded is! Map) throw const FormatException();
+      final document = decoded.cast<String, dynamic>();
+      final raw = document['mcpServers'] ?? document['mcp_servers'] ?? document;
+      if (raw is! Map) throw const FormatException();
+      final next = <String, Map<String, dynamic>>{};
+      for (final entry in raw.entries) {
+        if (entry.value is! Map) throw const FormatException();
+        next[entry.key.toString()] = (entry.value as Map)
+            .cast<String, dynamic>();
+      }
+      _requireTarget(api, profile);
+      await api.mcpReplaceServers(next, profile: profile);
+      await _verifyRawServers(api, profile, next);
+      await _reloadLive(api, profile);
+      await _load();
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.mcpServerSaved('mcp.json'),
+          kind: HermesToastKind.success,
+        );
+      }
+    } catch (error) {
+      if (mounted && _ownsTarget(api, profile)) {
+        showHermesToast(
+          context,
+          message: error is FormatException
+              ? context.l10n.mcpInvalidJsonSyntax
+              : context.l10n.mcpSaveFailed('$error'),
           kind: HermesToastKind.error,
         );
       }
@@ -765,6 +1110,7 @@ class _McpScreenState extends State<McpScreen>
         next.map((k, v) => MapEntry(k, (v as Map).cast<String, dynamic>())),
         profile: profile,
       );
+      await _verifyRawServer(api, profile, serverName, updated);
       _requireTarget(api, profile);
       await _reloadLive(api, profile);
       await _load();
@@ -787,13 +1133,43 @@ class _McpScreenState extends State<McpScreen>
     );
   }
 
+  Future<void> _cancelAuthentication() async {
+    final flowId = _oauthFlowId;
+    final api = _oauthApi;
+    if (flowId == null || api == null) return;
+    setState(() => _oauthCancelled = true);
+    try {
+      await api.mcpCancelAuthFlow(flowId, profile: _oauthProfile);
+    } catch (_) {
+      // Best effort. The backend also expires abandoned flows automatically.
+    }
+  }
+
+  Future<void> _abandonOAuth(
+    ApiClient api,
+    String flowId,
+    String? profile,
+  ) async {
+    try {
+      await api.mcpCancelAuthFlow(flowId, profile: profile);
+    } catch (_) {
+      // Best effort during navigation/profile teardown.
+    }
+  }
+
   Future<void> _authenticate(Map<String, dynamic> server) async {
     final name = (server['name'] ?? '').toString();
     final l10n = context.l10n;
     final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
     final profile = _profile;
-    setState(() => _busyName = name);
+    final generation = _mutationGeneration;
+    setState(() {
+      _busyName = name;
+      _oauthCancelled = false;
+      _oauthApi = api;
+      _oauthProfile = profile;
+    });
     try {
       final started = await api.mcpStartAuth(name, profile: profile);
       _requireTarget(api, profile);
@@ -807,6 +1183,7 @@ class _McpScreenState extends State<McpScreen>
       if (flowId.isEmpty || authorizationUrl.isEmpty) {
         throw StateError(l10n.mcpOAuthMissingUrl);
       }
+      setState(() => _oauthFlowId = flowId);
       final opened = await launchUrl(
         Uri.parse(authorizationUrl),
         mode: LaunchMode.externalApplication,
@@ -823,15 +1200,26 @@ class _McpScreenState extends State<McpScreen>
       var failures = 0;
       Map<String, dynamic>? approved;
       while (mounted) {
+        if (_oauthCancelled || generation != _mutationGeneration) return;
         Map<String, dynamic> current;
         try {
           current = await api.mcpAuthFlow(flowId, profile: profile);
           _requireTarget(api, profile);
           failures = 0;
         } catch (error) {
+          if (_oauthCancelled ||
+              generation != _mutationGeneration ||
+              !_ownsTarget(api, profile)) {
+            return;
+          }
           failures++;
           if (failures >= 3) rethrow;
           await Future<void>.delayed(const Duration(seconds: 1));
+          if (_oauthCancelled ||
+              generation != _mutationGeneration ||
+              !_ownsTarget(api, profile)) {
+            return;
+          }
           continue;
         }
         final status = current['status']?.toString();
@@ -845,8 +1233,14 @@ class _McpScreenState extends State<McpScreen>
           );
         }
         await Future<void>.delayed(const Duration(seconds: 1));
+        if (_oauthCancelled ||
+            generation != _mutationGeneration ||
+            !_ownsTarget(api, profile)) {
+          return;
+        }
       }
       if (!_ownsTarget(api, profile) || approved == null) return;
+      await _verifyCreatedServer(api, profile, name, const {'auth': 'oauth'});
       await _reloadLive(api, profile);
       await _load();
       final tools = approved['tools'] as List? ?? const [];
@@ -858,7 +1252,10 @@ class _McpScreenState extends State<McpScreen>
         );
       }
     } catch (error) {
-      if (mounted) {
+      if (mounted &&
+          !_oauthCancelled &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, profile)) {
         showHermesToast(
           context,
           message: context.l10n.mcpOAuthFailed('$error'),
@@ -866,7 +1263,15 @@ class _McpScreenState extends State<McpScreen>
         );
       }
     } finally {
-      if (mounted) setState(() => _busyName = '');
+      if (mounted && generation == _mutationGeneration) {
+        setState(() {
+          _busyName = '';
+          _oauthFlowId = null;
+          _oauthApi = null;
+          _oauthProfile = null;
+          _oauthCancelled = false;
+        });
+      }
     }
   }
 
@@ -972,7 +1377,11 @@ class _McpScreenState extends State<McpScreen>
       final action = result['action']?.toString();
       if (result['background'] == true && action?.isNotEmpty == true) {
         while (mounted) {
-          final status = await api.actionStatus(action!, lines: 50);
+          final status = await api.actionStatus(
+            action!,
+            lines: 50,
+            profile: profile,
+          );
           _requireTarget(api, profile);
           if (status['running'] != true) {
             final exitCode = (status['exit_code'] as num?)?.toInt();
@@ -985,6 +1394,13 @@ class _McpScreenState extends State<McpScreen>
         }
       }
       _requireTarget(api, profile);
+      await _verifyServerExists(
+        api,
+        profile,
+        result['name']?.toString().isNotEmpty == true
+            ? result['name'].toString()
+            : name,
+      );
       await _reloadLive(api, profile);
       await _load();
       if (mounted) {
@@ -1013,6 +1429,17 @@ class _McpScreenState extends State<McpScreen>
       appBar: AppBar(
         title: Text(context.l10n.mcpTitle),
         actions: [
+          if (_oauthFlowId != null)
+            IconButton(
+              tooltip: context.l10n.commonCancel,
+              onPressed: _oauthCancelled ? null : _cancelAuthentication,
+              icon: const Icon(Icons.stop_circle_outlined),
+            ),
+          IconButton(
+            tooltip: context.l10n.mcpEditConfiguration,
+            onPressed: _busyName.isEmpty ? _editMcpDocument : null,
+            icon: const Icon(Icons.data_object),
+          ),
           IconButton(
             tooltip: context.l10n.mcpViewLogs,
             onPressed: () => _viewLogs(),
@@ -1093,6 +1520,20 @@ class _McpScreenState extends State<McpScreen>
     final canAuthenticate =
         transport == 'http' && server['auth']?.toString() != 'header';
     final probe = _probes[name];
+    final probeOk = probe?['ok'] == true || probe?['reachable'] == true;
+    final needsAuth = RegExp(
+      r'auth|oauth|unauthorized|401|403|token',
+      caseSensitive: false,
+    ).hasMatch(probe?['error']?.toString() ?? '');
+    final statusColor = !enabled
+        ? HermesSemantic.gray
+        : probe == null
+        ? HermesSemantic.gray
+        : probeOk
+        ? HermesSemantic.green
+        : needsAuth
+        ? HermesSemantic.orange
+        : HermesSemantic.red;
     final probedTools = probe != null && probe['ok'] == true
         ? ((probe['tools'] as List?) ?? const [])
               .whereType<Map>()
@@ -1130,10 +1571,7 @@ class _McpScreenState extends State<McpScreen>
           children: [
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                Icons.hub_outlined,
-                color: enabled ? HermesSemantic.green : HermesSemantic.gray,
-              ),
+              leading: Icon(Icons.hub_outlined, color: statusColor),
               title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text(
                 subtitleParts.join(' · '),

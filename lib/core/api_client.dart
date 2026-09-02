@@ -107,6 +107,7 @@ class ApiClient {
   final Duration requestTimeout;
   final int readRetryAttempts;
   final Future<void> Function(Duration delay) _retryDelay;
+  final Map<String, Future<dynamic>> _inflightReads = {};
   late final ComposerDraftStore _draftStore = ComposerDraftStore(baseUrl);
 
   ApiClient({
@@ -328,13 +329,25 @@ class ApiClient {
     String path, {
     Map<String, String>? query,
     Duration? timeout,
-  }) async {
+  }) {
+    final uri = _uri(path, query);
+    final key = '${uri.toString()}\u0000${timeout?.inMicroseconds ?? -1}';
+    final existing = _inflightReads[key];
+    if (existing != null) return existing;
+    final request = _getWithRetry(uri, timeout: timeout);
+    _inflightReads[key] = request;
+    return request.whenComplete(() {
+      if (identical(_inflightReads[key], request)) _inflightReads.remove(key);
+    });
+  }
+
+  Future<dynamic> _getWithRetry(Uri uri, {Duration? timeout}) async {
     Object? lastError;
     StackTrace? lastStackTrace;
     for (var attempt = 0; attempt <= readRetryAttempts; attempt++) {
       try {
         final resp = await _bounded(
-          _client.get(_uri(path, query), headers: await _headers()),
+          _client.get(uri, headers: await _headers()),
           timeout: timeout,
         );
         if (_isTransientReadStatus(resp.statusCode) &&
@@ -2206,6 +2219,13 @@ class ApiClient {
     return _asMap(data);
   }
 
+  Future<void> mcpCancelAuthFlow(String flowId, {String? profile}) async {
+    await delete(
+      '/api/v1/mcp/oauth/flows/${_seg(flowId)}',
+      query: {'profile': ?profile},
+    );
+  }
+
   Future<List<Map<String, dynamic>>> mcpCatalog({String? profile}) async {
     final data = await get('/api/v1/mcp/catalog', query: {'profile': ?profile});
     final list = (data as Map)['entries'] as List? ?? [];
@@ -2226,8 +2246,14 @@ class ApiClient {
   }
 
   /// Raw `/api/analytics/usage` payload (totals, by_model, daily, tools, …).
-  Future<Map<String, dynamic>> analyticsUsage({int days = 30}) async {
-    final data = await get('/api/v1/analytics/usage', query: {'days': '$days'});
+  Future<Map<String, dynamic>> analyticsUsage({
+    int days = 30,
+    String? profile,
+  }) async {
+    final data = await get(
+      '/api/v1/analytics/usage',
+      query: {'days': '$days', 'profile': ?profile},
+    );
     return _asMap(data);
   }
 
@@ -2238,8 +2264,8 @@ class ApiClient {
 
   /// Per-tool 30-day call counts (`analyticsUsage`'s `tools` list flattened to
   /// a `{registry_name: count}` map) — feeds the MCP cost/usage overlay.
-  Future<Map<String, int>> toolCallCounts30d() async {
-    final data = await analyticsUsage(days: 30);
+  Future<Map<String, int>> toolCallCounts30d({String? profile}) async {
+    final data = await analyticsUsage(days: 30, profile: profile);
     final tools = (data['tools'] as List?) ?? const [];
     return {
       for (final entry in tools)
@@ -2251,10 +2277,11 @@ class ApiClient {
   Future<Map<String, dynamic>> actionStatus(
     String name, {
     int lines = 200,
+    String? profile,
   }) async {
     final data = await get(
       '/api/v1/actions/${_seg(name)}/status',
-      query: {'lines': '$lines'},
+      query: {'lines': '$lines', 'profile': ?profile},
     );
     return _asMap(data);
   }
@@ -3357,9 +3384,17 @@ class ApiClient {
     return MessagingPairings.fromJson(data);
   }
 
-  Future<Map<String, dynamic>> messagingConfig(String platform) async {
+  Future<Map<String, dynamic>> messagingConfig(
+    String platform, {
+    String? profile,
+  }) async {
     if (directGateway) {
-      final data = _asMap(await get('/api/v1/messaging/platforms'));
+      final data = _asMap(
+        await get(
+          '/api/v1/messaging/platforms',
+          query: profile == null ? null : {'profile': profile},
+        ),
+      );
       for (final raw in data['platforms'] as List? ?? const []) {
         if (raw is! Map) continue;
         final row = raw.cast<String, dynamic>();
@@ -3368,27 +3403,36 @@ class ApiClient {
       }
       throw ApiException(404, runtimeL10n.errorMessagingPlatformNotFound);
     }
-    final data = await get('/api/v1/messaging/${_seg(platform)}/config');
+    final data = await get(
+      '/api/v1/messaging/${_seg(platform)}/config',
+      query: profile == null ? null : {'profile': profile},
+    );
     return _asMap(data);
   }
 
   Future<void> messagingSetEnv(
     String platform,
     String key,
-    String value,
-  ) async {
+    String value, {
+    String? profile,
+  }) async {
     await updateMessagingPlatform(
       platform,
       env: value.trim().isEmpty ? null : {key: value},
       clearEnv: value.trim().isEmpty ? [key] : null,
+      profile: profile,
     );
   }
 
-  Future<List<MessagingPairing>> messagingPending(String platform) async {
+  Future<List<MessagingPairing>> messagingPending(
+    String platform, {
+    String? profile,
+  }) async {
     final data = await get(
       directGateway
           ? '/api/v1/pairing'
           : '/api/v1/messaging/${_seg(platform)}/pending',
+      query: profile == null ? null : {'profile': profile},
     );
     final list =
         (data as Map)['pending'] as List? ?? (data['pairings'] as List?) ?? [];

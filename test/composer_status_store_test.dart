@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hermes_mobile/core/connections/connection_registry.dart';
+import 'package:hermes_mobile/core/gateway.dart';
 import 'package:hermes_mobile/core/stores/composer_status_store.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations_en.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations_zh.dart';
@@ -121,6 +125,80 @@ void main() {
     expect(items.first.state, ComposerStatusState.running);
     expect(items.first.title, 'sleep 10');
   });
+
+  test('live agent terminal events append output and close its view', () async {
+    final events = StreamController<RoutedGatewayEvent>();
+    final store = ComposerStatusStore()..attachRoutedEvents(events.stream);
+    addTearDown(store.dispose);
+    addTearDown(events.close);
+    store.reconcileBackgroundProcesses('s1', const [
+      GatewayProcessEntry(
+        sessionId: 'p1',
+        command: 'long task',
+        status: 'running',
+        outputTail: 'first',
+      ),
+    ]);
+
+    events.add(
+      RoutedGatewayEvent(
+        route: const OwnerRoute(connectionId: ConnectionId('local')),
+        socketGeneration: 1,
+        event: GatewayEvent(
+          type: 'agent.terminal.output',
+          sessionId: 's1',
+          payload: const {'process_id': 'p1', 'chunk': ' second'},
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(_findItem(store, 's1', 'p1').output, 'first second');
+
+    events.add(
+      RoutedGatewayEvent(
+        route: const OwnerRoute(connectionId: ConnectionId('local')),
+        socketGeneration: 1,
+        event: GatewayEvent(
+          type: 'terminal.close',
+          sessionId: 's1',
+          payload: const {'process_id': 'p1'},
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(store.itemsFor('s1'), isEmpty);
+  });
+
+  test(
+    'ownerless terminal close removes the matching process globally',
+    () async {
+      final events = StreamController<RoutedGatewayEvent>();
+      final store = ComposerStatusStore()..attachRoutedEvents(events.stream);
+      addTearDown(store.dispose);
+      addTearDown(events.close);
+      store.reconcileBackgroundProcesses('s1', const [
+        GatewayProcessEntry(
+          sessionId: 'p1',
+          command: 'task',
+          status: 'running',
+        ),
+      ]);
+
+      events.add(
+        RoutedGatewayEvent(
+          route: const OwnerRoute(connectionId: ConnectionId('local')),
+          socketGeneration: 1,
+          event: GatewayEvent(
+            type: 'terminal.close',
+            payload: const {'process_id': 'p1'},
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(store.itemsFor('s1'), isEmpty);
+    },
+  );
 
   test('reconcile preserves order and flips status in place', () {
     final store = ComposerStatusStore();

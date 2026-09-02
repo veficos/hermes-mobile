@@ -19,6 +19,14 @@ class _RedactionApi extends ApiClient {
   _RedactionApi() : super(baseUrl: 'http://contract.invalid', apiKey: 'test');
 
   Map<String, Map<String, dynamic>>? lastReplacedServers;
+  Map<String, Map<String, dynamic>> rawServers = {
+    'filesystem': {
+      'command': 'npx',
+      'args': ['server-filesystem'],
+      'env': {'API_KEY': 'real-secret-123'},
+      'enabled': true,
+    },
+  };
 
   @override
   Future<List<Map<String, dynamic>>> mcpServers({String? profile}) async => [
@@ -38,25 +46,19 @@ class _RedactionApi extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> getConfig({String? profile}) async => {
-    'mcp_servers': {
-      'filesystem': {
-        'command': 'npx',
-        'args': ['server-filesystem'],
-        'env': {'API_KEY': 'real-secret-123'}, // unredacted
-        'enabled': true,
-      },
-    },
+    'mcp_servers': rawServers,
   };
 
   @override
-  Future<Map<String, dynamic>> mcpTest(String name, {String? profile}) async => {
-    'ok': true,
-    'tools': [
-      {'name': 'read_file', 'description': 'Read a file'},
-    ],
-    'prompts': 0,
-    'resources': 0,
-  };
+  Future<Map<String, dynamic>> mcpTest(String name, {String? profile}) async =>
+      {
+        'ok': true,
+        'tools': [
+          {'name': 'read_file', 'description': 'Read a file'},
+        ],
+        'prompts': 0,
+        'resources': 0,
+      };
 
   @override
   Future<void> mcpReplaceServers(
@@ -64,6 +66,10 @@ class _RedactionApi extends ApiClient {
     String? profile,
   }) async {
     lastReplacedServers = servers;
+    rawServers = {
+      for (final entry in servers.entries)
+        entry.key: Map<String, dynamic>.from(entry.value),
+    };
   }
 }
 
@@ -97,44 +103,73 @@ Future<_RedactionApi> _pump(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('editing a server prefills the unredacted secret, not the masked one', (
+  testWidgets(
+    'editing a server prefills the unredacted secret, not the masked one',
+    (tester) async {
+      final api = await _pump(tester);
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('编辑配置'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('real-secret-123'), findsOneWidget);
+      expect(find.textContaining('***'), findsNothing);
+
+      await tester.tap(find.widgetWithText(FilledButton, '保存'));
+      await tester.pumpAndSettle();
+
+      final saved = api.lastReplacedServers?['filesystem'];
+      expect(saved, isNotNull);
+      expect((saved!['env'] as Map)['API_KEY'], 'real-secret-123');
+
+      // Let the success toast's auto-dismiss timer fire before teardown.
+      await tester.pump(const Duration(milliseconds: 2500));
+    },
+  );
+
+  testWidgets(
+    'toggling a tool filter preserves the real secret in the saved config',
+    (tester) async {
+      final api = await _pump(tester);
+
+      await tester.tap(find.byTooltip('测试连接'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('read_file'));
+      await tester.pumpAndSettle();
+
+      final saved = api.lastReplacedServers?['filesystem'];
+      expect(saved, isNotNull);
+      expect((saved!['env'] as Map)['API_KEY'], 'real-secret-123');
+      expect((saved['tools'] as Map)['exclude'], ['read_file']);
+    },
+  );
+
+  testWidgets('full mcp.json editor replaces and renames server keys', (
     tester,
   ) async {
     final api = await _pump(tester);
 
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.tap(find.byTooltip('编辑配置').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('编辑配置'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('real-secret-123'), findsOneWidget);
-    expect(find.textContaining('***'), findsNothing);
-
+    final editor = find.byKey(const ValueKey('mcp-document-editor'));
+    expect(editor, findsOneWidget);
+    await tester.enterText(editor, '''
+      {"mcpServers": {
+        "renamed": {
+          "url": "https://mcp.example.test",
+          "headers": {"X-Key": "secret"},
+          "tools": {"include": ["read"]}
+        }
+      }}
+    ''');
     await tester.tap(find.widgetWithText(FilledButton, '保存'));
     await tester.pumpAndSettle();
 
-    final saved = api.lastReplacedServers?['filesystem'];
-    expect(saved, isNotNull);
-    expect((saved!['env'] as Map)['API_KEY'], 'real-secret-123');
-
-    // Let the success toast's auto-dismiss timer fire before teardown.
-    await tester.pump(const Duration(milliseconds: 2500));
-  });
-
-  testWidgets('toggling a tool filter preserves the real secret in the saved config', (
-    tester,
-  ) async {
-    final api = await _pump(tester);
-
-    await tester.tap(find.byTooltip('测试连接'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('read_file'));
-    await tester.pumpAndSettle();
-
-    final saved = api.lastReplacedServers?['filesystem'];
-    expect(saved, isNotNull);
-    expect((saved!['env'] as Map)['API_KEY'], 'real-secret-123');
-    expect((saved['tools'] as Map)['exclude'], ['read_file']);
+    expect(api.lastReplacedServers?.containsKey('filesystem'), isFalse);
+    final renamed = api.lastReplacedServers?['renamed'];
+    expect(renamed?['url'], 'https://mcp.example.test');
+    expect(renamed?['headers'], {'X-Key': 'secret'});
   });
 }

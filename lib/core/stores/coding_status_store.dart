@@ -43,17 +43,33 @@ class CodingStatusStore extends ChangeNotifier {
   final Map<String, DateTime> _refreshedAt = {};
   int _generation = 0;
   bool _disposed = false;
+  bool _foreground = true;
   Timer? _timer;
   final Duration autoRefreshInterval;
   static const _ttl = Duration(seconds: 8);
 
   void startAutoRefresh() {
-    _timer ??= Timer.periodic(autoRefreshInterval, (_) {
+    if (!_foreground || _timer != null) return;
+    _timer = Timer.periodic(autoRefreshInterval, (_) {
       if (_disposed) return;
       for (final cwd in _byCwd.keys.toList(growable: false)) {
         unawaited(refresh(cwd, force: true));
       }
     });
+  }
+
+  void setForeground(bool value) {
+    if (_disposed || _foreground == value) return;
+    _foreground = value;
+    if (!value) {
+      _timer?.cancel();
+      _timer = null;
+      return;
+    }
+    startAutoRefresh();
+    for (final cwd in _byCwd.keys.toList(growable: false)) {
+      unawaited(refresh(cwd, force: true));
+    }
   }
 
   void bindApi(ApiClient? api) {

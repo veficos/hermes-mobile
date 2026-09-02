@@ -114,8 +114,9 @@ void main() {
       expect(scopeStore.override, 'work');
       expect(find.text('work-server'), findsOneWidget);
 
-      // Now open ConfigCenterScreen, sharing the SAME store — it must load
-      // already scoped to "work", with no extra profile picking required.
+      // Now open ConfigCenterScreen, sharing the SAME store. The center is a
+      // launcher for canonical editors, so it must retain the selected scope
+      // without issuing duplicate MCP/Skills reads of its own.
       await tester.pumpWidget(
         MultiProvider(
           providers: [
@@ -128,9 +129,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('work-server'), findsOneWidget);
+      expect(scopeStore.override, 'work');
+      expect(find.text('配置对象'), findsOneWidget);
+      expect(find.text('打开'), findsOneWidget);
       expect(api.mcpServersProfiles.last, 'work');
-      expect(api.skillsProfiles.last, 'work');
+      expect(api.skillsProfiles, isEmpty);
     },
   );
 }

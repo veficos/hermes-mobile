@@ -10,6 +10,8 @@
 ///   per-turn usage (nothing rendered when no usage data exists).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -766,5 +768,83 @@ void main() {
 
       rig.connection.dispose();
     });
+  });
+
+  group('structured billing status', () {
+    testWidgets('is visible while details are collapsed and can be dismissed', (
+      tester,
+    ) async {
+      final rig = _ChatRig();
+      final events = StreamController<GatewayEvent>();
+      rig.chat.attachEvents(events.stream);
+      addTearDown(events.close);
+      await tester.pumpWidget(rig.app());
+      await tester.pumpAndSettle();
+      await rig.session.openNewSession();
+
+      events.add(
+        GatewayEvent(
+          type: 'message.complete',
+          payload: const {
+            'status': 'error',
+            'billing': {
+              'provider': 'nous',
+              'provider_label': 'Nous',
+              'message': 'Add credits to continue.',
+            },
+          },
+          sessionId: rig.session.runtimeId,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('chat-billing-block')), findsOneWidget);
+      expect(find.textContaining('Nous'), findsOneWidget);
+      expect(find.text('Add credits to continue.'), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('chat-billing-block')),
+          matching: find.byTooltip('关闭'),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('chat-billing-block')), findsNothing);
+
+      rig.connection.dispose();
+    });
+  });
+
+  testWidgets('standalone vibe reaction paints a non-interactive heart burst', (
+    tester,
+  ) async {
+    final rig = _ChatRig();
+    final events = StreamController<GatewayEvent>();
+    rig.chat.attachEvents(events.stream);
+    addTearDown(events.close);
+    await tester.pumpWidget(rig.app());
+    await tester.pumpAndSettle();
+    await rig.session.openNewSession();
+
+    events.add(
+      GatewayEvent(
+        type: 'reaction',
+        payload: const {'kind': 'vibe'},
+        sessionId: rig.session.runtimeId,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(find.text('❤️'), findsWidgets);
+    expect(
+      find.ancestor(
+        of: find.text('❤️').first,
+        matching: find.byType(IgnorePointer),
+      ),
+      findsWidgets,
+    );
+
+    rig.connection.dispose();
   });
 }

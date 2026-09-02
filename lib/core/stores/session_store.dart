@@ -89,7 +89,7 @@ ChatMessage? userTurnForMessage(List<ChatMessage> messages, String messageId) {
     final candidate = messages[index];
     switch (candidate.role) {
       case 'user':
-        return candidate.hasText ? candidate : null;
+        return candidate.promptText.isNotEmpty ? candidate : null;
       case 'assistant':
         // A single turn can contain several persisted assistant rows (for
         // example tool-call/reasoning scaffolding followed by the final
@@ -509,6 +509,15 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
           e.sessionId != null &&
           e.sessionId == _runtimeId) {
         _applySessionInfoEvent(e.payload);
+      } else if (e.type == 'session.info' &&
+          e.sessionId != null &&
+          e.payload.containsKey('running')) {
+        chat.applyRuntimeRunning(
+          e.sessionId!,
+          parseHermesBool(e.payload['running']),
+          profile: eventProfile,
+          connectionId: routed.route.connectionId.value,
+        );
       }
       if (e.type == 'message.start' && e.sessionId == _runtimeId) {
         _turnSettled = false;
@@ -574,6 +583,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
           e.sessionId != null &&
           e.sessionId == _runtimeId) {
         _applySessionInfoEvent(e.payload);
+      } else if (e.type == 'session.info' &&
+          e.sessionId != null &&
+          e.payload.containsKey('running')) {
+        chat.applyRuntimeRunning(
+          e.sessionId!,
+          parseHermesBool(e.payload['running']),
+          profile: e.profile,
+        );
       }
       if (e.type == 'message.start' && e.sessionId == _runtimeId) {
         _turnSettled = false;
@@ -654,6 +671,30 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   }
 
   void _applySessionInfoEvent(Map<String, dynamic> payload) {
+    if (payload.containsKey('running')) {
+      final running = parseHermesBool(payload['running']);
+      final timestamp = payload['timestamp'];
+      final occurredAt = timestamp is num && timestamp > 0
+          ? DateTime.fromMillisecondsSinceEpoch((timestamp * 1000).round())
+          : DateTime.now();
+      final fallback = chat.applySessionRunning(
+        running,
+        occurredAt: occurredAt,
+      );
+      if (fallback.settled) {
+        _turnSettled = true;
+        final sid = _durableId;
+        if (sid != null) unawaited(clearInflightTurnJournal(sid));
+        _setInflightRecoveryNotice(false);
+        _scheduleListRefresh();
+        // A turn with no assistant payload may still have reached durable
+        // history before its terminal gateway frame was lost. Catch up only
+        // on that recovery edge; partial live output is already authoritative.
+        if (!fallback.hadAssistantPayload && sid != null) {
+          unawaited(refreshTranscript());
+        }
+      }
+    }
     _info = (_info ?? SessionInfoView()).mergeJson(
       payload,
       allowRunningTrue: !_turnSettled || chat.busy,
@@ -1697,6 +1738,11 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     );
     // F11: refetch the authoritative transcript after a resume.
     await refreshTranscript();
+    if (gen != _generation) return;
+    chat.applyResumeProjection(
+      result,
+      markBusy: result['running'] == true || resultBusyOf(_info),
+    );
     await chat.restoreSlashStatuses(durableId);
   }
 
@@ -2700,11 +2746,11 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     _ensureWritable();
     final messages = chat.messages;
     final target = messages.lastWhere(
-      (message) => message.role == 'user' && message.fullText.trim().isNotEmpty,
+      (message) => message.role == 'user' && message.promptText.isNotEmpty,
       orElse: () => ChatMessage(id: '', role: 'user', parts: const []),
     );
     if (target.id.isEmpty) return;
-    await _rewindAndSubmit(target, target.fullText.trim());
+    await _rewindAndSubmit(target, target.promptText);
   }
 
   Future<void> reloadFromMessage(ChatMessage message) async {
@@ -2712,7 +2758,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final messages = chat.messages;
     final target = userTurnForMessage(messages, message.id);
     if (target == null) throw StateError(runtimeL10n.sessionUserMessageMissing);
-    await _rewindAndSubmit(target, target.fullText.trim());
+    await _rewindAndSubmit(target, target.promptText);
   }
 
   Future<void> editMessage(ChatMessage message, String text) async {
@@ -2723,13 +2769,16 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         next == message.fullText.trim()) {
       return;
     }
-    await _rewindAndSubmit(message, next);
+    await _rewindAndSubmit(
+      message,
+      _promptWithRetainedAttachments(message, next),
+    );
   }
 
   Future<void> restoreToMessage(ChatMessage message) async {
     _ensureWritable();
-    if (message.role != 'user' || message.fullText.trim().isEmpty) return;
-    await _rewindAndSubmit(message, message.fullText.trim());
+    if (message.role != 'user' || message.promptText.isEmpty) return;
+    await _rewindAndSubmit(message, message.promptText);
   }
 
   /// Re-send [anchor]'s turn with [text] — the "restore this version" action
@@ -2739,8 +2788,16 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     _ensureWritable();
     final next = text.trim();
     if (anchor.role != 'user' || next.isEmpty) return;
-    await _rewindAndSubmit(anchor, next);
+    await _rewindAndSubmit(
+      anchor,
+      _promptWithRetainedAttachments(anchor, next),
+    );
   }
+
+  String _promptWithRetainedAttachments(ChatMessage message, String text) => [
+    ...message.attachmentRefs,
+    if (text.trim().isNotEmpty) text.trim(),
+  ].join('\n').trim();
 
   Future<void> _rewindAndSubmit(ChatMessage target, String text) async {
     final generation = _generation;
@@ -2762,7 +2819,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final wasBusy = chat.busy;
     final snapshot = chat.rewindToUserMessage(
       target.id,
-      replacementText: text == target.fullText.trim() ? null : text,
+      replacementText: text == target.promptText ? null : text,
     );
     // Rewind discards the turns that spawned these processes; they belong to an
     // abandoned timeline. Kill live ones and drop every row.

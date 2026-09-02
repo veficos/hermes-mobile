@@ -1969,6 +1969,7 @@
   "botRoutineCreate": "建立 Cronjob",
   "mcpTitle": "MCP 伺服器",
   "mcpOperationFailed": "操作失敗：{error}",
+  "mcpPersistenceFailed": "伺服器未能持久化 MCP 設定變更。",
   "mcpTestSuccess": "連線成功：{tools} 個工具、{prompts} 個提示、{resources} 個資源",
   "mcpTestConnectionFailed": "連線失敗：{error}",
   "mcpTestFailed": "測試失敗：{error}",

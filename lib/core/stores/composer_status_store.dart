@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../connections/connection_registry.dart';
 import '../../l10n/runtime_l10n.dart';
 
 /// Status of a process or task row shown above the composer.
@@ -182,6 +183,7 @@ class ComposerStatusStore extends ChangeNotifier {
   static const int _failureLingerMs = 12000;
 
   ComposerStatusRpc? _rpc;
+  StreamSubscription<RoutedGatewayEvent>? _eventSub;
 
   final Map<String, List<ComposerStatusItem>> _backgroundBySession = {};
   final Map<String, List<ComposerStatusItem>> _typedBySession = {};
@@ -202,6 +204,65 @@ class ComposerStatusStore extends ChangeNotifier {
 
   void bindRpc(ComposerStatusRpc rpc) {
     _rpc = rpc;
+  }
+
+  /// Consume the same live background-terminal stream as desktop. Polling is
+  /// retained as reconnect/backfill insurance, while these frames make an open
+  /// mobile output sheet update immediately.
+  void attachRoutedEvents(Stream<RoutedGatewayEvent> events) {
+    _eventSub?.cancel();
+    _eventSub = events.listen((routed) {
+      final event = routed.event;
+      final sessionId = event.sessionId;
+      final processId = event.payload['process_id']?.toString() ?? '';
+      if (processId.isEmpty) return;
+      if (event.type == 'agent.terminal.output') {
+        if (sessionId == null || sessionId.isEmpty) return;
+        appendBackgroundOutput(
+          sessionId,
+          processId,
+          event.payload['chunk']?.toString() ?? '',
+        );
+      } else if (event.type == 'terminal.close') {
+        if (sessionId?.isNotEmpty == true) {
+          dismissBackgroundProcess(sessionId!, processId);
+        } else {
+          // A finished/pruned process can lose its owner before the close
+          // frame is emitted. Desktop closes by process id globally too.
+          for (final owner in _backgroundBySession.keys.toList()) {
+            dismissBackgroundProcess(owner, processId);
+          }
+        }
+      }
+    });
+  }
+
+  void appendBackgroundOutput(
+    String sessionId,
+    String processId,
+    String chunk,
+  ) {
+    if (chunk.isEmpty) return;
+    final list = _backgroundBySession[sessionId];
+    if (list == null) {
+      unawaited(refreshBackgroundProcesses(sessionId));
+      return;
+    }
+    final index = list.indexWhere((item) => item.id == processId);
+    if (index < 0) {
+      unawaited(refreshBackgroundProcesses(sessionId));
+      return;
+    }
+    final current = list[index];
+    final output = '${current.output ?? ''}$chunk';
+    // Match process.list's bounded output_tail so a chat left open for hours
+    // cannot grow an unbounded in-memory terminal buffer.
+    final bounded = output.length <= 4000
+        ? output
+        : output.substring(output.length - 4000);
+    list[index] = current.copyWith(output: bounded);
+    _markChanged(sessionId);
+    notifyListeners();
   }
 
   /// All background items for [sessionId], or empty if none.
@@ -562,6 +623,7 @@ class ComposerStatusStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _eventSub?.cancel();
     for (final timers in _autoClearTimers.values) {
       for (final timer in timers.values) {
         timer.cancel();

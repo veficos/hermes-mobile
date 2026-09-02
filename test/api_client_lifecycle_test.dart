@@ -38,6 +38,17 @@ class _SequencedClient extends http.BaseClient {
   }
 }
 
+class _GatedClient extends http.BaseClient {
+  final response = Completer<http.StreamedResponse>();
+  int sends = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    sends++;
+    return response.future;
+  }
+}
+
 class _CapabilityApi extends ApiClient {
   _CapabilityApi() : super(baseUrl: 'http://contract.invalid', apiKey: 'key');
 
@@ -102,6 +113,32 @@ void main() {
     expect(await api.get('/status'), isA<Map>());
     expect(transport.sends, 2);
     expect(delays, [const Duration(milliseconds: 250)]);
+  });
+
+  test('concurrent identical GET requests share one network flight', () async {
+    final transport = _GatedClient();
+    final api = ApiClient(
+      baseUrl: 'http://contract.invalid',
+      apiKey: 'key',
+      client: transport,
+    );
+    addTearDown(api.close);
+
+    final first = api.get('/status', query: const {'profile': 'default'});
+    final second = api.get('/status', query: const {'profile': 'default'});
+    await Future<void>.delayed(Duration.zero);
+    expect(transport.sends, 1);
+
+    transport.response.complete(
+      http.StreamedResponse(
+        Stream.value(const <int>[123, 125]),
+        200,
+        headers: const {'content-type': 'application/json'},
+      ),
+    );
+    expect(await first, isA<Map>());
+    expect(await second, isA<Map>());
+    expect(transport.sends, 1);
   });
 
   test(

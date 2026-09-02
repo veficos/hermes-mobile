@@ -10,6 +10,99 @@ import 'package:hermes_mobile/core/stores/chat_store.dart';
 /// replayed historical message.
 void main() {
   group('fromSessionMessages history metadata', () {
+    test('lifts persisted image directives into attachment metadata', () {
+      final messages = ChatStore().fromSessionMessages(const [
+        {
+          'id': 11,
+          'role': 'user',
+          'content': '@image:/tmp/a.png\n[screenshot]\n请检查图片',
+        },
+        {'id': 12, 'role': 'user', 'content': '@image:/tmp/only.png\n'},
+      ]);
+
+      expect(messages, hasLength(2));
+      expect(messages.first.fullText, '请检查图片');
+      expect(messages.first.attachmentRefs, ['@image:/tmp/a.png']);
+      expect(messages.last.fullText, isEmpty);
+      expect(messages.last.attachmentRefs, ['@image:/tmp/only.png']);
+    });
+
+    test('prefers display_content and restores refs from attached context', () {
+      final messages = ChatStore().fromSessionMessages(const [
+        {
+          'id': 13,
+          'role': 'user',
+          'content': 'model-only expanded content',
+          'display_content':
+              'review this\n--- Attached Context ---\n@file:/tmp/a.dart\n--- Context Warnings ---\nignored',
+        },
+      ]);
+
+      expect(messages.single.fullText, contains('review this'));
+      expect(messages.single.fullText, contains('@file:/tmp/a.dart'));
+      expect(messages.single.fullText, isNot(contains('model-only')));
+      expect(messages.single.fullText, isNot(contains('Context Warnings')));
+    });
+
+    test('projects legacy expanded skill scaffolding to the invocation', () {
+      final messages = ChatStore().fromSessionMessages(const [
+        {
+          'role': 'user',
+          'content':
+              '[IMPORTANT: The user has invoked the "work" skill. The full skill content is loaded below.]\nBODY\nThe user has provided the following instruction alongside the skill invocation: fix it\n\n[Runtime note: x]',
+        },
+      ]);
+
+      expect(messages.single.fullText, '/work fix it');
+    });
+
+    test(
+      'hydrates reasoning_details and string display metadata reactions',
+      () {
+        final messages = ChatStore().fromSessionMessages(const [
+          {
+            'id': 14,
+            'role': 'assistant',
+            'content': 'answer',
+            'reasoning_details': 'thought process',
+            'display_metadata':
+                '{"reactions":[{"emoji":"✨","author":"agent","at":4}]}',
+          },
+        ]);
+
+        expect(messages.single.parts.first.kind, 'reasoning');
+        expect(messages.single.parts.first.text, 'thought process');
+        expect(messages.single.reactions.single.emoji, '✨');
+      },
+    );
+
+    test('dedupes repeated prose and generated image echoes', () {
+      final messages = ChatStore().fromSessionMessages(const [
+        {
+          'role': 'assistant',
+          'content': 'Done ![generated](https://echo.invalid/image.png)',
+          'tool_calls': [
+            {
+              'id': 'image-1',
+              'name': 'image_generate',
+              'result':
+                  '{"success":true,"image":"https://echo.invalid/image.png"}',
+            },
+          ],
+        },
+        {'role': 'assistant', 'content': 'Done'},
+      ]);
+
+      final textParts = messages.single.parts
+          .where((part) => part.kind == 'text')
+          .toList();
+      expect(textParts, hasLength(1));
+      expect(textParts.single.text, 'Done');
+      expect(
+        messages.single.parts.where((part) => part.kind == 'tool'),
+        hasLength(1),
+      );
+    });
     test('parses a float epoch-seconds timestamp (real backend shape)', () {
       final messages = ChatStore().fromSessionMessages([
         {'role': 'assistant', 'content': '你好', 'timestamp': 1787905997.51},

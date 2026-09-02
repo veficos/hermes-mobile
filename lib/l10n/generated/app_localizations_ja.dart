@@ -6210,6 +6210,9 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get mcpPersistenceFailed => 'サーバーが MCP 設定の変更を永続化しませんでした。';
+
+  @override
   String mcpTestSuccess(Object prompts, Object resources, Object tools) {
     return '接続成功：$tools ツール、$prompts プロンプト、$resources リソース';
   }

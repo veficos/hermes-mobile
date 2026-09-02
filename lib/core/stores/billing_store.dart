@@ -26,6 +26,7 @@ class BillingStore extends ChangeNotifier {
   ConnectionStore? _connection;
   StreamSubscription<RoutedGatewayEvent>? _events;
   Timer? _timer;
+  bool _foreground = true;
   static const _ttl = Duration(seconds: 30);
   BillingState? get state => _state;
   BillingGateSnapshot get gate => _gate;
@@ -45,7 +46,24 @@ class BillingStore extends ChangeNotifier {
       _refreshedAt = null;
       unawaited(refresh());
     });
-    _timer = Timer.periodic(_ttl, (_) => unawaited(refresh()));
+    _restartTimer();
+  }
+
+  void setForeground(bool value) {
+    if (_foreground == value) return;
+    _foreground = value;
+    _restartTimer();
+    if (value) {
+      _refreshedAt = null;
+      unawaited(refresh());
+    }
+  }
+
+  void _restartTimer() {
+    _timer?.cancel();
+    _timer = _foreground && _connection != null
+        ? Timer.periodic(_ttl, (_) => unawaited(refresh()))
+        : null;
   }
 
   void bindApi(ApiClient? api) {

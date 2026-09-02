@@ -112,8 +112,8 @@ class _MutationConnection extends ConnectionStore {
 
 class _LoadFailureApi extends _MutationApi {
   @override
-  Future<List<Map<String, dynamic>>> mcpServers({String? profile}) async {
-    throw StateError('mcp load failed');
+  Future<Map<String, dynamic>> knowledgeGraph() async {
+    throw StateError('knowledge load failed');
   }
 }
 
@@ -145,15 +145,16 @@ Future<void> _pumpScreen(
 void main() {
   final zh = AppLocalizationsZh();
 
-  testWidgets('capability mutations call backend APIs', (tester) async {
+  testWidgets('capability center delegates canonical management surfaces', (
+    tester,
+  ) async {
     final api = _MutationApi();
     final connection = _MutationConnection();
     addTearDown(connection.dispose);
     await _pumpScreen(tester, connection, api);
 
-    await tester.tap(find.byType(Switch).first);
-    await tester.pumpAndSettle();
-    expect(api.calls, contains('mcp-toggle:docs:false'));
+    expect(find.byType(Switch), findsNothing);
+    expect(find.text(zh.commonOpen), findsOneWidget);
 
     await tester.tap(find.text(zh.configCenterKnowledgeTab));
     await tester.pumpAndSettle();
@@ -161,34 +162,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.calls, contains('knowledge-delete:node-1'));
 
+    await tester.tap(find.text(zh.featureSkills));
+    await tester.pumpAndSettle();
+    expect(find.text(zh.commonOpen), findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
+
     await tester.tap(find.text(zh.featurePlugins));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(Switch).first);
-    await tester.pumpAndSettle();
-    expect(api.calls, contains('plugin-toggle:reviewer:false'));
-
-    await tester.tap(find.byTooltip(zh.configCenterInstallPlugin));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, 'owner/plugin');
-    await tester.tap(find.text(zh.configCenterInstall).last);
-    await tester.pumpAndSettle();
-    expect(connection.installCalls, ['owner/plugin']);
-  });
-
-  testWidgets('adding MCP server persists through the API', (tester) async {
-    final api = _MutationApi();
-    final connection = _MutationConnection();
-    addTearDown(connection.dispose);
-    await _pumpScreen(tester, connection, api);
-
-    await tester.tap(find.byTooltip(zh.mcpAddServer));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).at(0), 'new-server');
-    await tester.enterText(find.byType(TextField).at(1), 'npx');
-    await tester.tap(find.text(zh.commonSave));
-    await tester.pumpAndSettle();
-
-    expect(api.calls, contains('mcp-create:new-server'));
+    expect(find.text(zh.commonOpen), findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
   });
 
   testWidgets('load failure renders an error instead of an empty state', (
@@ -200,32 +182,7 @@ void main() {
     await _pumpScreen(tester, connection, api);
 
     expect(find.byIcon(Icons.error_outline), findsOneWidget);
-    expect(find.textContaining('mcp load failed'), findsWidgets);
+    expect(find.textContaining('knowledge load failed'), findsWidgets);
     expect(find.text(zh.commonRetry), findsOneWidget);
-  });
-
-  testWidgets('offline skill toggle does not keep an optimistic state', (
-    tester,
-  ) async {
-    final api = _MutationApi();
-    final connection = _MutationConnection();
-    addTearDown(connection.dispose);
-    await _pumpScreen(tester, connection, api);
-
-    await tester.tap(find.text(zh.featureSkills));
-    await tester.pumpAndSettle();
-    final toggle = find.byType(Switch).first;
-    expect(tester.widget<Switch>(toggle).value, isTrue);
-
-    connection.exposeApi(null);
-    await tester.tap(toggle);
-    await tester.pump();
-
-    expect(tester.widget<Switch>(toggle).value, isTrue);
-    expect(
-      api.calls.where((call) => call.startsWith('skill-toggle:')),
-      isEmpty,
-    );
-    expect(find.text(zh.backendDisconnected), findsOneWidget);
   });
 }

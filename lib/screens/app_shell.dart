@@ -22,13 +22,18 @@ import '../core/external_links.dart';
 import '../core/models.dart';
 import '../core/notifications_service.dart';
 import '../core/stores/command_palette_store.dart';
+import '../core/stores/billing_store.dart';
+import '../core/stores/bot_store.dart';
+import '../core/stores/coding_status_store.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/notification_store.dart';
 import '../core/stores/pet_store.dart';
+import '../core/stores/profile_scope_store.dart';
 import '../core/stores/request_store.dart';
 import '../core/stores/session_store.dart';
 import '../core/stores/voice_store.dart';
 import '../core/stores/update_store.dart';
+import '../kanban/store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/command_palette.dart';
@@ -36,6 +41,7 @@ import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_logo.dart';
 import '../widgets/pet_overlay.dart';
 import 'agent_screen.dart';
+import 'about_screen.dart';
 import 'chat_screen.dart';
 import 'connect_screen.dart';
 import 'files_screen.dart';
@@ -162,6 +168,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.inactive) {
       _backgroundedAt ??= DateTime.now();
+      _setNetworkPollingForeground(false);
       _backgroundStreamingIds = {
         for (final row
             in context.read<SessionStore>().sessions ?? const <SessionRow>[])
@@ -176,7 +183,24 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       final backgroundedAt = _backgroundedAt;
       _backgroundedAt = null;
+      _setNetworkPollingForeground(true);
       unawaited(_reconcileAfterResume(backgroundedAt));
+    }
+  }
+
+  void _setNetworkPollingForeground(bool foreground) {
+    _readOptional<BillingStore>()?.setForeground(foreground);
+    _readOptional<CodingStatusStore>()?.setForeground(foreground);
+    _readOptional<ProfileScopeStore>()?.setForeground(foreground);
+    _readOptional<BotStore>()?.setForeground(foreground);
+    _readOptional<KanbanStore>()?.setForeground(foreground);
+  }
+
+  T? _readOptional<T>() {
+    try {
+      return context.read<T>();
+    } on ProviderNotFoundException {
+      return null;
     }
   }
 
@@ -993,11 +1017,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             icon: Icons.info_outline,
             label: l10n.featureAbout,
             selected: false,
-            onTap: () => showAboutDialog(
-              context: context,
-              applicationName: l10n.appTitle,
-              applicationVersion: _updateStore?.currentVersion ?? '1.0.0',
-            ),
+            onTap: () => _pushPage(context, const AboutScreen()),
           ),
           _xlNavItem(
             context,
@@ -1008,9 +1028,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 ? l10n.commonConnected
                 : l10n.commonDisconnected,
             selected: false,
-            onTap: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const ConnectScreen())),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
+            ),
           ),
           const SizedBox(height: 8),
         ],

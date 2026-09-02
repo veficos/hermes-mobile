@@ -4,10 +4,8 @@
 /// so adding an MCP server doesn't require hand-filling every field from a
 /// pasted example. Pure / side-effect free.
 ///
-/// Trimmed from the desktop parser: the Cursor deeplink format
-/// (`cursor://…/mcp/install?config=<base64>`) is desktop-install-flow
-/// specific and dropped here; everything else (JSON, claude-add, shell
-/// command lines, bare URLs) is ported line-for-line.
+/// Supports the same JSON, Cursor install deeplink, claude-add, shell command
+/// line and bare-URL inputs as the desktop parser.
 library;
 
 import 'dart:convert';
@@ -28,8 +26,11 @@ const _dockerValueFlags = {
 
 String _nameFromUrl(String raw) {
   try {
-    final labels = Uri.parse(raw).host.split('.').where((s) => s.isNotEmpty).toList();
-    while (labels.length > 1 && const {'api', 'mcp', 'www'}.contains(labels.first)) {
+    final labels = Uri.parse(
+      raw,
+    ).host.split('.').where((s) => s.isNotEmpty).toList();
+    while (labels.length > 1 &&
+        const {'api', 'mcp', 'www'}.contains(labels.first)) {
       labels.removeAt(0);
     }
     return labels.isNotEmpty ? labels.first : 'server';
@@ -39,7 +40,10 @@ String _nameFromUrl(String raw) {
 }
 
 String _cleanupName(String base) {
-  var stripped = base.replaceFirst(RegExp(r'\.(cjs|js|mjs|py|ts)$', caseSensitive: false), '');
+  var stripped = base.replaceFirst(
+    RegExp(r'\.(cjs|js|mjs|py|ts)$', caseSensitive: false),
+    '',
+  );
   stripped = stripped.replaceFirst(RegExp(r'^(mcp-server-|server-|mcp-)'), '');
   stripped = stripped.replaceFirst(RegExp(r'(-mcp-server|-mcp|-server)$'), '');
   return stripped.isNotEmpty ? stripped : base;
@@ -157,7 +161,9 @@ McpImportEntry? _fromClaudeAdd(List<String> tokens) {
       final pair = ++i < tokens.length ? tokens[i] : '';
       final colon = pair.indexOf(':');
       if (colon > 0) {
-        headers[pair.substring(0, colon).trim()] = pair.substring(colon + 1).trim();
+        headers[pair.substring(0, colon).trim()] = pair
+            .substring(colon + 1)
+            .trim();
       }
       continue;
     }
@@ -197,7 +203,9 @@ String _inferNameFromConfig(Map<String, dynamic> config) {
   final command = config['command'];
   if (command is String) {
     final rawArgs = config['args'];
-    final args = rawArgs is List ? rawArgs.whereType<String>().toList() : <String>[];
+    final args = rawArgs is List
+        ? rawArgs.whereType<String>().toList()
+        : <String>[];
     return _inferCommandName(command, args);
   }
   return 'server';
@@ -205,6 +213,45 @@ String _inferNameFromConfig(Map<String, dynamic> config) {
 
 bool _isServerShape(Map<String, dynamic> value) =>
     value['url'] is String || value['command'] is String;
+
+/// Cursor and Claude commonly write `type`; Hermes consumes `transport`.
+/// Preserve every other field verbatim while normalizing that ecosystem alias,
+/// matching desktop's `normalizeEntry`.
+Map<String, dynamic> _normalizeEntry(Map<String, dynamic> value) {
+  if (value['type'] is String && !value.containsKey('transport')) {
+    return {
+      for (final entry in value.entries)
+        if (entry.key != 'type') entry.key: entry.value,
+      'transport': value['type'],
+    };
+  }
+  return value;
+}
+
+/// `cursor://anysphere.cursor-deeplink/mcp/install?name=X&config=<base64 JSON>`
+List<McpImportEntry>? _fromCursorDeeplink(String text) {
+  final uri = Uri.tryParse(text);
+  if (uri == null ||
+      uri.scheme.toLowerCase() != 'cursor' ||
+      uri.host.toLowerCase() != 'anysphere.cursor-deeplink' ||
+      uri.path != '/mcp/install') {
+    return null;
+  }
+  final name = uri.queryParameters['name'];
+  final encoded = uri.queryParameters['config'];
+  if (name == null || name.isEmpty || encoded == null || encoded.isEmpty) {
+    return null;
+  }
+  try {
+    final decoded = jsonDecode(utf8.decode(base64Decode(encoded)));
+    if (decoded is! Map) return null;
+    final config = decoded.cast<String, dynamic>();
+    if (!_isServerShape(config)) return null;
+    return [McpImportEntry(name: name, config: _normalizeEntry(config))];
+  } catch (_) {
+    return null;
+  }
+}
 
 /// mcp.json snippets: `{"mcpServers": {...}}`, a bare name→config map, or a
 /// single unnamed server object (name inferred from its command/url).
@@ -219,7 +266,8 @@ List<McpImportEntry>? _fromJson(String text) {
   final parsedMap = parsed.cast<String, dynamic>();
 
   if (_isServerShape(parsedMap)) {
-    return [McpImportEntry(name: _inferNameFromConfig(parsedMap), config: parsedMap)];
+    final config = _normalizeEntry(parsedMap);
+    return [McpImportEntry(name: _inferNameFromConfig(config), config: config)];
   }
 
   final wrapper = parsedMap['mcpServers'] ?? parsedMap['mcp_servers'];
@@ -232,7 +280,7 @@ List<McpImportEntry>? _fromJson(String text) {
     if (value is! Map) return null;
     final config = value.cast<String, dynamic>();
     if (!_isServerShape(config)) return null;
-    out.add(McpImportEntry(name: entry.key, config: config));
+    out.add(McpImportEntry(name: entry.key, config: _normalizeEntry(config)));
   }
   return out;
 }
@@ -243,7 +291,10 @@ McpImportEntry? _parseLine(String line) {
   }
   final tokens = _tokenize(line);
   if (tokens == null || tokens.isEmpty) return null;
-  if (tokens.length >= 3 && tokens[0] == 'claude' && tokens[1] == 'mcp' && tokens[2] == 'add') {
+  if (tokens.length >= 3 &&
+      tokens[0] == 'claude' &&
+      tokens[1] == 'mcp' &&
+      tokens[2] == 'add') {
     return _fromClaudeAdd(tokens);
   }
   return _fromCommandLine(tokens);
@@ -254,6 +305,9 @@ McpImportEntry? _parseLine(String line) {
 List<McpImportEntry>? parseMcpImport(String text) {
   final trimmed = text.trim();
   if (trimmed.isEmpty) return null;
+
+  final deeplink = _fromCursorDeeplink(trimmed);
+  if (deeplink != null) return deeplink;
 
   final json = _fromJson(trimmed);
   if (json != null) return json;

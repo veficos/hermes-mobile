@@ -6173,6 +6173,9 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get mcpPersistenceFailed => '服务器未能持久化 MCP 配置变更。';
+
+  @override
   String mcpTestSuccess(Object prompts, Object resources, Object tools) {
     return '连接成功：$tools 个工具、$prompts 个提示、$resources 个资源';
   }
@@ -16947,6 +16950,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String mcpOperationFailed(Object error) {
     return '操作失敗：$error';
   }
+
+  @override
+  String get mcpPersistenceFailed => '伺服器未能持久化 MCP 設定變更。';
 
   @override
   String mcpTestSuccess(Object prompts, Object resources, Object tools) {

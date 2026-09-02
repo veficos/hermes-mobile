@@ -36,6 +36,18 @@ void main() {
       await Future<void>.delayed(Duration.zero);
     }
 
+    test('standalone vibe reaction emits only ephemeral UI signal', () async {
+      expect(chat.vibeBurstRevision, 0);
+
+      await emit('reaction', const {});
+      expect(chat.vibeBurstRevision, 1);
+      expect(chat.messages, isEmpty);
+      expect(chat.streamingMessage, isNull);
+
+      await emit('reaction', const {'kind': 'other'});
+      expect(chat.vibeBurstRevision, 1);
+    });
+
     test('tool progress updates the running tool row', () async {
       await emit('message.start', const {});
       await emit('tool.start', const {'tool_id': 't1', 'name': 'terminal'});
@@ -51,6 +63,68 @@ void main() {
       expect(tool.tool!['running'], isTrue);
       expect(tool.tool!['summary'], '正在安装依赖');
     });
+
+    test(
+      'successful image tool removes an earlier streamed image echo',
+      () async {
+        await emit('message.start', const {});
+        await emit('message.delta', const {
+          'text': 'Here it is. ![cat](/sandbox/cat.png)',
+        });
+        await emit('tool.complete', const {
+          'tool_id': 'image-1',
+          'name': 'image_generate',
+          'result': {
+            'success': true,
+            'host_image': '/host/cat.png',
+            'agent_visible_image': '/sandbox/cat.png',
+          },
+        });
+
+        final message = chat.streamingMessage!;
+        expect(message.fullText, 'Here it is.');
+        expect(
+          message.parts.where((part) => part.kind == 'tool'),
+          hasLength(1),
+        );
+      },
+    );
+
+    test('streamed image echo after a successful tool stays hidden', () async {
+      await emit('message.start', const {});
+      await emit('tool.complete', const {
+        'tool_id': 'image-1',
+        'name': 'image_generate',
+        'result': {'success': true, 'image': '/host/cat.png'},
+      });
+      await emit('message.delta', const {
+        'text': 'Done. ![cat](/host/cat.png)',
+      });
+
+      expect(chat.streamingMessage!.fullText, 'Done.');
+    });
+
+    test(
+      'authoritative final image echo stays in the tool slot only',
+      () async {
+        await emit('message.start', const {});
+        await emit('tool.complete', const {
+          'tool_id': 'image-1',
+          'name': 'image_generate',
+          'result': {'success': true, 'image': 'https://cdn.invalid/cat.png'},
+        });
+        await emit('message.complete', const {
+          'status': 'complete',
+          'text': 'Finished. ![cat](https://cdn.invalid/cat.png)',
+        });
+
+        expect(chat.messages.last.fullText, 'Finished.');
+        expect(
+          chat.messages.last.parts.where((part) => part.kind == 'tool'),
+          hasLength(1),
+        );
+      },
+    );
 
     test(
       'tool.generating works before a tool id and clears on output',
@@ -85,6 +159,143 @@ void main() {
       expect(chat.recoveryJournal.first.summary, '模型服务不可用');
     });
 
+    test('structured gateway error survives and disables retry', () async {
+      await emit('message.start', const {});
+      await emit('error', const {
+        'message': 'invalid credentials',
+        'error_surface': {
+          'layer': 'auth',
+          'code': 'invalid_api_key',
+          'retryable': false,
+          'provider': 'openai',
+          'model': 'gpt-5',
+        },
+      });
+
+      final message = chat.messages.last;
+      expect(message.errorSurface?.layer, 'auth');
+      expect(message.errorSurface?.retryable, isFalse);
+      expect(chat.recoveryJournal.first.retryable, isFalse);
+      expect(chat.recoveryJournal.first.errorSurface?.code, 'invalid_api_key');
+    });
+
+    test(
+      'message.complete preserves whole-turn duration and surface',
+      () async {
+        chat.loadHistory([
+          ChatMessage(
+            id: 'u-before-error',
+            role: 'user',
+            parts: [ChatPart.text('try this')],
+          ),
+        ], hasMore: false);
+        await emit('message.start', const {});
+        await emit('message.complete', const {
+          'status': 'error',
+          'text': 'partial',
+          'duration_s': 2.75,
+          'error_surface': {
+            'layer': 'provider',
+            'code': 'overloaded',
+            'retryable': true,
+          },
+        });
+
+        expect(chat.messages.last.durationS, 2.75);
+        expect(chat.messages.last.errorSurface?.code, 'overloaded');
+        expect(chat.recoveryJournal.first.retryText, isNotNull);
+      },
+    );
+
+    test(
+      'message.complete exposes and clears a structured billing block',
+      () async {
+        await emit('message.start', const {});
+        await emit('message.complete', const {
+          'status': 'error',
+          'error': 'credit exhausted',
+          'billing': {
+            'provider': 'openrouter',
+            'provider_label': 'OpenRouter',
+            'model': 'some-model',
+            'billing_url': 'https://openrouter.ai/settings/credits',
+            'is_nous': false,
+            'message': 'Add credits to continue.\nMore detail',
+          },
+        });
+
+        expect(chat.billingBlock?.provider, 'openrouter');
+        expect(chat.billingBlock?.providerLabel, 'OpenRouter');
+        expect(
+          chat.billingBlock?.billingUrl.toString(),
+          'https://openrouter.ai/settings/credits',
+        );
+        expect(chat.billingBlock?.isNous, isFalse);
+
+        await emit('message.start', const {});
+        expect(chat.billingBlock, isNull);
+      },
+    );
+
+    test('gateway error also preserves structured billing metadata', () async {
+      await emit('error', const {
+        'message': 'payment required',
+        'billing': {
+          'provider': 'nous',
+          'provider_label': 'Nous',
+          'billing_url': null,
+          'is_nous': true,
+          'message': 'Top up your account',
+        },
+      });
+
+      expect(chat.billingBlock?.provider, 'nous');
+      expect(chat.billingBlock?.isNous, isTrue);
+      chat.dismissBillingBlock();
+      expect(chat.billingBlock, isNull);
+    });
+
+    test(
+      'running=false settles partial output without message.complete',
+      () async {
+        await emit('message.start', const {});
+        await emit('message.delta', const {'text': 'partial answer'});
+
+        final result = chat.applySessionRunning(false);
+
+        expect(result.settled, isTrue);
+        expect(result.hadAssistantPayload, isTrue);
+        expect(chat.busy, isFalse);
+        expect(chat.isStreaming, isFalse);
+        expect(chat.messages.last.fullText, 'partial answer');
+        expect(chat.messages.last.pending, isFalse);
+      },
+    );
+
+    test('running=false drops an empty streaming shell', () async {
+      await emit('message.start', const {});
+
+      final result = chat.applySessionRunning(false);
+
+      expect(result.settled, isTrue);
+      expect(result.hadAssistantPayload, isFalse);
+      expect(chat.messages, isEmpty);
+      expect(chat.busy, isFalse);
+    });
+
+    test(
+      'pre-start running=false keeps a newly submitted turn armed',
+      () async {
+        await chat.submit(() async => const {}, text: 'hello');
+
+        final result = chat.applySessionRunning(false);
+
+        expect(result.settled, isFalse);
+        expect(chat.busy, isTrue);
+        expect(chat.messages.single.role, 'user');
+      },
+    );
+
     test(
       'reclaimed is a lifecycle edge and does not leave a running status',
       () async {
@@ -114,6 +325,27 @@ void main() {
       expect(chat.notifications, isEmpty);
     });
 
+    test('review summary becomes a persistent transcript note', () async {
+      await emit('review.summary', const {
+        'id': 'review-1',
+        'text': '💾 Self-improvement review: Saved a reusable skill',
+      });
+
+      expect(chat.statusItems, isEmpty);
+      expect(chat.messages, hasLength(1));
+      expect(
+        chat.messages.single.fullText,
+        'review:Self-improvement review: Saved a reusable skill',
+      );
+      expect(chat.messages.single.role, 'system');
+
+      await emit('review.summary', const {
+        'id': 'review-1',
+        'text': 'duplicate replay',
+      });
+      expect(chat.messages, hasLength(1));
+    });
+
     test('live agent reaction merges into the persisted message row', () async {
       chat.loadHistory([
         ChatMessage(
@@ -131,6 +363,134 @@ void main() {
       });
       expect(chat.messages.single.reactions.single.emoji, '👍');
       expect(chat.messages.single.reactions.single.author, 'agent');
+    });
+
+    test('live reaction binds row id to the newest optimistic role', () async {
+      chat.loadHistory([
+        ChatMessage(
+          id: 'u-live',
+          role: 'user',
+          parts: [ChatPart.text('hello')],
+        ),
+      ], hasMore: false);
+      await emit('message.reaction', const {
+        'row_id': 17,
+        'role': 'user',
+        'reactions': [
+          {'emoji': '❤️', 'author': 'agent', 'at': 2},
+        ],
+      });
+
+      expect(chat.messages.single.rowId, 17);
+      expect(chat.messages.single.reactions.single.emoji, '❤️');
+    });
+
+    test('reaction metadata survives live streaming materialization', () async {
+      await emit('message.start', const {});
+      await emit('message.delta', const {'text': 'answer'});
+      await emit('message.reaction', const {
+        'row_id': 18,
+        'role': 'assistant',
+        'reactions': [
+          {'emoji': '✨', 'author': 'agent', 'at': 3},
+        ],
+      });
+      await emit('message.delta', const {'text': ' continued'});
+      await emit('message.complete', const {'text': 'answer continued'});
+
+      final message = chat.messages.last;
+      expect(message.rowId, 18);
+      expect(message.reactions.single.emoji, '✨');
+    });
+
+    test('optimistic attachment metadata rebuilds retry prompt', () async {
+      await chat.submit(
+        () async => const <String, dynamic>{},
+        text: '@image:/tmp/a.png\n@file:/tmp/a.txt\ncaption',
+      );
+
+      final message = chat.messages.single;
+      expect(message.fullText, 'caption');
+      expect(message.attachmentRefs, ['@image:/tmp/a.png', '@file:/tmp/a.txt']);
+      expect(chat.lastUserText(), contains('@image:/tmp/a.png'));
+      expect(chat.lastUserText(), endsWith('caption'));
+    });
+
+    test('resume projection restores retained failed turn', () {
+      chat.loadHistory([
+        ChatMessage(
+          id: 'stored-user',
+          role: 'user',
+          parts: [ChatPart.text('same prompt')],
+        ),
+      ], hasMore: false);
+      chat.applyResumeProjection(const {
+        'session_id': 'runtime-a',
+        'running': false,
+        'inflight': {
+          'user': 'same prompt',
+          'assistant': 'partial answer',
+          'streaming': false,
+          'error': 'provider disconnected',
+          'recoverable': true,
+          'error_surface': {
+            'layer': 'streaming',
+            'code': 'connection_reset',
+            'retryable': true,
+          },
+        },
+      }, markBusy: false);
+
+      expect(
+        chat.messages.where((message) => message.role == 'user'),
+        hasLength(1),
+      );
+      final assistant = chat.messages.last;
+      expect(assistant.fullText, 'partial answer');
+      expect(assistant.isError, isTrue);
+      expect(assistant.errorSurface?.code, 'connection_reset');
+      expect(chat.recoveryJournal.first.retryText, 'same prompt');
+    });
+
+    test('resume projection lifts queued attachment refs out of prose', () {
+      chat.applyResumeProjection(const {
+        'session_id': 'runtime-a',
+        'queued': {'user': '@file:/tmp/report.txt\nreview this'},
+      }, markBusy: false);
+
+      final queued = chat.messages.single;
+      expect(queued.id, 'user-queued-runtime-a');
+      expect(queued.fullText, 'review this');
+      expect(queued.attachmentRefs, ['@file:/tmp/report.txt']);
+      expect(queued.promptText, '@file:/tmp/report.txt\nreview this');
+    });
+
+    test('resume projection orders steer corrections by output offsets', () {
+      chat.applyResumeProjection(const {
+        'session_id': 'runtime-a',
+        'running': true,
+        'inflight': {
+          'user': 'start',
+          'assistant': 'before after',
+          'streaming': true,
+          'corrections': ['change direction'],
+          'correction_offsets': [7],
+        },
+        'queued': {'user': 'next prompt'},
+      }, markBusy: true);
+
+      expect(chat.messages.map((message) => message.role), [
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+        'user',
+      ]);
+      expect(chat.messages[1].fullText, 'before ');
+      expect(chat.messages[1].interim, isTrue);
+      expect(chat.messages[3].fullText, 'after');
+      expect(chat.messages[3].pending, isTrue);
+      expect(chat.busy, isTrue);
     });
 
     test('provider wait and compaction settle on stream edges', () async {
@@ -165,6 +525,32 @@ void main() {
           chat.statusItems.where((item) => item.kind == 'compacting'),
           isEmpty,
         );
+      },
+    );
+
+    test(
+      'compacted and process updates do not leave fake running rows',
+      () async {
+        await emit('status.update', const {
+          'kind': 'compacting',
+          'text': '正在压缩上下文',
+        });
+        expect(
+          chat.statusItems.where((item) => item.kind == 'compacting'),
+          hasLength(1),
+        );
+
+        await emit('status.update', const {
+          'kind': 'compacted',
+          'text': '压缩完成',
+        });
+        await emit('status.update', const {
+          'kind': 'process',
+          'text': '后台进程状态已变化',
+        });
+
+        expect(chat.statusItems, isEmpty);
+        expect(chat.providerStatus, isNull);
       },
     );
 
@@ -204,6 +590,26 @@ void main() {
       expect(chat.streamingMessage!.parts.single.kind, 'subagent');
     });
 
+    test('subagent progress updates the attributed activity', () async {
+      await emit('message.start', const {});
+      await emit('subagent.start', const {
+        'subagent_id': 'worker-1',
+        'goal': 'Audit the protocol',
+      });
+      await emit('subagent.progress', const {
+        'subagent_id': 'worker-1',
+        'message': 'Compared 12 event families',
+        'progress': 0.75,
+      });
+
+      final activity = chat.streamingMessage!.parts.singleWhere(
+        (part) => part.kind == 'subagent',
+      );
+      expect(activity.subagent!['event'], 'progress');
+      expect(activity.subagent!['message'], 'Compared 12 event families');
+      expect(activity.subagent!['progress'], 0.75);
+    });
+
     test('interactive requests become durable timeline parts', () async {
       await emit('message.start', const {});
       await emit('clarify.request', const {
@@ -238,6 +644,97 @@ void main() {
         );
       },
     );
+
+    test('continuous final settles onto interim without duplication', () async {
+      await emit('message.start', const {});
+      await emit('message.delta', const {'text': 'partial'});
+      await emit('message.interim', const {'text': 'partial'});
+      await emit('message.complete', const {
+        'text': 'partial answer continued',
+      });
+
+      final matching = chat.messages.where(
+        (message) => message.fullText.contains('partial'),
+      );
+      expect(matching, hasLength(1));
+      expect(matching.single.fullText, 'partial answer continued');
+      expect(matching.single.interim, isFalse);
+    });
+
+    test(
+      'already-streamed interim seals and later final stays visible',
+      () async {
+        await emit('message.start', const {});
+        await emit('message.delta', const {'text': 'checking files'});
+        await emit('message.interim', const {
+          'text': 'checking files',
+          'already_streamed': true,
+        });
+        await emit('message.delta', const {'text': 'second pass'});
+        await emit('message.interim', const {
+          'text': 'second pass',
+          'already_streamed': true,
+        });
+        await emit('message.complete', const {'text': 'all done'});
+
+        final assistants = chat.messages
+            .where(
+              (message) =>
+                  message.role == 'assistant' && message.fullText.isNotEmpty,
+            )
+            .toList();
+        expect(assistants.map((message) => message.fullText), [
+          'checking files',
+          'second pass',
+          'all done',
+        ]);
+        expect(assistants.take(2).every((message) => message.interim), isTrue);
+        expect(assistants.last.interim, isFalse);
+      },
+    );
+
+    test('previewed final settles an interim rewrite in place', () async {
+      await emit('message.start', const {});
+      await emit('message.interim', const {'text': 'draft wording'});
+      await emit('message.complete', const {
+        'text': 'rewritten final',
+        'response_previewed': true,
+      });
+
+      final assistants = chat.messages.where(
+        (message) => message.role == 'assistant' && message.fullText.isNotEmpty,
+      );
+      expect(assistants, hasLength(1));
+      expect(assistants.single.fullText, 'rewritten final');
+      expect(assistants.single.interim, isFalse);
+    });
+
+    test('terminal error frame respects partial response semantics', () async {
+      await emit('message.start', const {});
+      await emit('message.delta', const {'text': 'half an answer'});
+      await emit('message.complete', const {
+        'status': 'error',
+        'text': 'half an answer',
+        'error': 'connection reset',
+        'partial': true,
+      });
+      expect(chat.messages.last.fullText, 'half an answer');
+      expect(chat.messages.last.isError, isTrue);
+      expect(
+        chat.recoveryJournal.first.diagnostics,
+        contains('connection reset'),
+      );
+
+      await emit('message.start', const {});
+      await emit('message.delta', const {'text': 'temporary text'});
+      await emit('message.complete', const {
+        'status': 'error',
+        'text': 'temporary text',
+        'error': 'invalid model slug',
+      });
+      expect(chat.messages.last.fullText, 'invalid model slug');
+      expect(chat.messages.last.isError, isTrue);
+    });
 
     test('sudo and secret requests are handled as interactive', () async {
       await emit('message.start', const {});

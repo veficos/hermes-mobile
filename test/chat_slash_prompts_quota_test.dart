@@ -352,7 +352,7 @@ void main() {
           '/research': {'origin': 'local', 'usage': 10},
         },
       };
-      await tester.pumpWidget(rig.app());
+      await tester.pumpWidget(rig.app(locale: const Locale('en')));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField).first, '/');

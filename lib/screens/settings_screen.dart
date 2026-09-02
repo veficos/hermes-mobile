@@ -6,6 +6,7 @@ import '../core/connection_reload_mixin.dart';
 import '../core/stores/terminal_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import 'connect_screen.dart';
 
 /// System, security, terminal, backend, and connection settings.
 class SettingsScreen extends StatefulWidget {
@@ -245,29 +246,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  Future<void> _clearConnection() async {
-    final l10n = context.l10n;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.settingsChangeConnectionQuestion),
-        content: Text(l10n.settingsChangeConnectionWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(l10n.commonContinue),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await context.read<ConnectionStore>().clearConnection();
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -360,7 +338,10 @@ class _SettingsScreenState extends State<SettingsScreen>
               leading: const Icon(Icons.link_off),
               title: Text(l10n.settingsChangeConnection),
               subtitle: Text(l10n.settingsChangeConnectionDesc),
-              onTap: _clearConnection,
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ConnectScreen())),
             ),
             if (_config != null) ...[
               const Divider(height: HermesSpacing.xl),

@@ -6403,6 +6403,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get mcpPersistenceFailed =>
+      'The server did not persist the MCP configuration change.';
+
+  @override
   String mcpTestSuccess(Object prompts, Object resources, Object tools) {
     return 'Connected: $tools tools, $prompts prompts, $resources resources';
   }

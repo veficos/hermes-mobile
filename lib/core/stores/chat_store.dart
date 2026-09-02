@@ -35,6 +35,7 @@ const _unscopedStreamEvents = {
   'message.start',
   'reasoning.available',
   'reasoning.delta',
+  'reaction',
   'secret.request',
   'status.update',
   'sudo.request',
@@ -56,16 +57,20 @@ class ChatRecoveryEntry {
   /// Full, untruncated error text when available — feeds the "copy / send
   /// diagnostics" actions on the recovery banner. Falls back to [summary].
   final String? detail;
+  final ChatErrorSurface? errorSurface;
   final DateTime at;
 
   const ChatRecoveryEntry({
     required this.summary,
     this.retryText,
     this.detail,
+    this.errorSurface,
     required this.at,
   });
 
   String get diagnostics => (detail ?? summary).trim();
+
+  bool get retryable => errorSurface?.retryable != false;
 }
 
 /// Desktop `errorSurface.layer` parity: a coarse classification of a failed
@@ -73,7 +78,19 @@ class ChatRecoveryEntry {
 /// offer a provider-config shortcut where that is the fix.
 enum ChatErrorLayer { auth, billing, provider, network, rateLimit, generic }
 
-ChatErrorLayer classifyChatError(String text) {
+ChatErrorLayer classifyChatError(String text, {ChatErrorSurface? surface}) {
+  switch (surface?.layer) {
+    case 'auth':
+      return ChatErrorLayer.auth;
+    case 'billing':
+      return ChatErrorLayer.billing;
+    case 'provider':
+    case 'endpoint':
+      return ChatErrorLayer.provider;
+    case 'streaming':
+    case 'gateway':
+      return ChatErrorLayer.network;
+  }
   final t = text.toLowerCase();
   if (RegExp(
     r'\b(401|403|unauthor|invalid api key|invalid_api_key|authentication|forbidden|no api key|missing api key)\b',
@@ -126,12 +143,28 @@ class ChatLiveSnapshot {
   final ChatMessage? streaming;
   final bool busy;
   final List<ChatStatusItem> statuses;
+  final ChatBillingBlock? billingBlock;
+  final DateTime? turnArmedAt;
+  final bool turnLive;
 
   const ChatLiveSnapshot({
     required this.messages,
     required this.streaming,
     required this.busy,
     required this.statuses,
+    this.billingBlock,
+    this.turnArmedAt,
+    this.turnLive = false,
+  });
+}
+
+class ChatFallbackSettleResult {
+  final bool settled;
+  final bool hadAssistantPayload;
+
+  const ChatFallbackSettleResult({
+    required this.settled,
+    required this.hadAssistantPayload,
   });
 }
 
@@ -164,12 +197,16 @@ class ChatStore extends ChangeNotifier {
   final List<ChatMessage> _newerTranscriptWindow = [];
   String? _transcriptWindowAnchorId;
   MutableAssistantMessage? _streaming;
+  bool _interimBoundaryPending = false;
   String? Function()? _sessionIdOf; // resolves the current runtime id (F8)
   String? Function()? _profileOf;
   String? Function()? _durableSessionIdOf;
   final Map<String, List<ChatMessage>> _slashRowsBySession = {};
   final Map<String, String> _slashOwnerById = {};
   bool _busy = false;
+  DateTime? _turnArmedAt;
+  bool _turnLive = false;
+  ChatBillingBlock? _billingBlock;
   StreamSubscription? _sub;
   Stopwatch? _streamElapsed;
   int _textFrames = 0;
@@ -207,6 +244,12 @@ class ChatStore extends ChangeNotifier {
   /// Bumps on every streaming content mutation (even between throttled notifies).
   int get streamTick => _streamTick;
 
+  /// Monotonic signal for the lightweight affection burst emitted by the
+  /// gateway's standalone `reaction` event. Unlike `message.reaction`, this
+  /// event is ephemeral and deliberately does not mutate transcript rows.
+  int get vibeBurstRevision => _vibeBurstRevision;
+  int _vibeBurstRevision = 0;
+
   /// The live streaming message, materialized on demand. Text/reasoning
   /// deltas accumulate in a buffer inside [MutableAssistantMessage]; the UI
   /// reads this once per throttled notify instead of rewriting the
@@ -230,6 +273,9 @@ class ChatStore extends ChangeNotifier {
     statuses: List.unmodifiable(
       _statusItems.values.where((item) => item.state == 'running'),
     ),
+    billingBlock: _billingBlock,
+    turnArmedAt: _turnArmedAt,
+    turnLive: _turnLive,
   );
 
   void activateRuntime(
@@ -264,8 +310,58 @@ class ChatStore extends ChangeNotifier {
       for (final status in snapshot.statuses) {
         _statusItems[status.id] = status;
       }
+      _billingBlock = snapshot.billingBlock;
+      _turnArmedAt = snapshot.turnArmedAt;
+      _turnLive = snapshot.turnLive;
     }
     notifyListeners();
+  }
+
+  /// Apply a session lifecycle heartbeat to either the active transcript or
+  /// its background assembler. This mirrors message event routing so an idle
+  /// heartbeat can release a background session without foregrounding it.
+  ChatFallbackSettleResult applyRuntimeRunning(
+    String runtimeId,
+    bool running, {
+    String? profile,
+    String? connectionId,
+    DateTime? occurredAt,
+  }) {
+    final key = _runtimeCacheKey(
+      runtimeId,
+      profile: profile,
+      connectionId: connectionId,
+    );
+    if (key == null || key == _activeRuntimeCacheKey) {
+      return applySessionRunning(running, occurredAt: occurredAt);
+    }
+    final background = _backgroundAssemblers[key];
+    if (background != null) {
+      return background.applySessionRunning(running, occurredAt: occurredAt);
+    }
+    final snapshot = _liveCache[key];
+    if (snapshot == null || (!snapshot.busy && snapshot.streaming == null)) {
+      return const ChatFallbackSettleResult(
+        settled: false,
+        hadAssistantPayload: false,
+      );
+    }
+    final assembler = ChatStore()
+      .._messages.addAll(snapshot.messages)
+      .._busy = snapshot.busy
+      .._streaming = snapshot.streaming == null
+          ? null
+          : MutableAssistantMessage.fromChatMessage(snapshot.streaming!)
+      .._billingBlock = snapshot.billingBlock
+      .._turnArmedAt = snapshot.turnArmedAt
+      .._turnLive = snapshot.turnLive;
+    final result = assembler.applySessionRunning(
+      running,
+      occurredAt: occurredAt,
+    );
+    _liveCache[key] = assembler.captureLiveSnapshot();
+    assembler.dispose();
+    return result;
   }
 
   String? _runtimeCacheKey(
@@ -306,7 +402,10 @@ class ChatStore extends ChangeNotifier {
       ..addAll(messages);
     _recoveredStreamId = streamId;
     _streaming = null;
+    _interimBoundaryPending = false;
     _busy = markBusy;
+    _turnLive = markBusy;
+    _turnArmedAt = markBusy ? DateTime.now() : null;
     if (_diagnosticLogging) {
       _logStream(
         'event=inflight.recovery applied=true stream_id=$streamId '
@@ -315,6 +414,189 @@ class ChatStore extends ChangeNotifier {
     }
     _flushStreamNotify();
   }
+
+  /// Append the gateway-owned live tail returned by `session.resume`. Stored
+  /// history does not contain a running turn yet, so REST hydration alone can
+  /// otherwise make the prompt, partial answer, queued prompt, or retained
+  /// failure disappear until another event arrives.
+  void applyResumeProjection(
+    Map<String, dynamic> resume, {
+    required bool markBusy,
+  }) {
+    final runtimeId = resume['session_id']?.toString() ?? 'session';
+    final inflight = resume['inflight'] is Map
+        ? (resume['inflight'] as Map).cast<String, dynamic>()
+        : null;
+    final queued = resume['queued'] is Map
+        ? (resume['queued'] as Map).cast<String, dynamic>()
+        : null;
+    if (inflight == null && queued == null) return;
+
+    _messages.removeWhere(
+      (message) =>
+          message.id.startsWith('user-inflight-$runtimeId') ||
+          message.id.startsWith('inflight-assistant-') ||
+          message.id == 'assistant-stream-$runtimeId' ||
+          message.id == 'user-queued-$runtimeId',
+    );
+
+    final user = inflight?['user']?.toString().trim() ?? '';
+    final assistant = inflight?['assistant']?.toString() ?? '';
+    final error = inflight?['error']?.toString().trim() ?? '';
+    final surface = ChatErrorSurface.tryParse(inflight?['error_surface']);
+    final streaming = inflight?['streaming'] == true;
+    final corrections = inflight?['corrections'] is List
+        ? (inflight!['corrections'] as List)
+              .map((value) => value.toString().trim())
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false)
+        : const <String>[];
+    final offsets = inflight?['correction_offsets'] is List
+        ? (inflight!['correction_offsets'] as List)
+              .map((value) => value is num ? value.toInt() : null)
+              .toList(growable: false)
+        : const <int?>[];
+    final queuedUser = queued?['user']?.toString().trim() ?? '';
+
+    bool alreadyHasUser(String text) {
+      final normalized = _projectionComparableText(text);
+      for (final message in _messages.reversed) {
+        if (message.role == 'assistant' && !message.pending) break;
+        if (message.role == 'user' &&
+            _projectionComparableText(message.promptText) == normalized) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    if (user.isNotEmpty && !alreadyHasUser(user)) {
+      final extracted = _extractOptimisticAttachmentRefs(user);
+      _messages.add(
+        ChatMessage(
+          id: 'user-inflight-$runtimeId',
+          role: 'user',
+          parts: extracted.$1.isEmpty
+              ? const []
+              : [ChatPart.text(extracted.$1)],
+          attachmentRefs: extracted.$2,
+        ),
+      );
+    }
+
+    final usableOffsets =
+        error.isEmpty &&
+        assistant.isNotEmpty &&
+        corrections.isNotEmpty &&
+        offsets.length == corrections.length &&
+        offsets.every((value) => value != null && value >= 0);
+    var cursor = 0;
+    if (usableOffsets) {
+      for (var i = 0; i < corrections.length; i++) {
+        final boundary = offsets[i]!.clamp(cursor, assistant.length);
+        final segment = assistant.substring(cursor, boundary);
+        if (segment.trim().isNotEmpty) {
+          _messages.add(
+            ChatMessage(
+              id: 'inflight-assistant-segment-$i-$runtimeId',
+              role: 'assistant',
+              parts: [ChatPart.text(segment)],
+              interim: true,
+            ),
+          );
+        }
+        if (!alreadyHasUser(corrections[i])) {
+          final extracted = _extractOptimisticAttachmentRefs(corrections[i]);
+          _messages.add(
+            ChatMessage(
+              id: 'user-inflight-correction-$i-$runtimeId',
+              role: 'user',
+              parts: extracted.$1.isEmpty
+                  ? const []
+                  : [ChatPart.text(extracted.$1)],
+              attachmentRefs: extracted.$2,
+            ),
+          );
+        }
+        cursor = boundary;
+      }
+    }
+
+    final projectedText = usableOffsets
+        ? assistant.substring(cursor)
+        : assistant;
+    final wantsAssistant =
+        projectedText.isNotEmpty ||
+        streaming ||
+        error.isNotEmpty ||
+        (user.isNotEmpty && queuedUser.isNotEmpty);
+    if (wantsAssistant) {
+      final row = ChatMessage(
+        id: 'assistant-stream-$runtimeId',
+        role: 'assistant',
+        parts: projectedText.isEmpty
+            ? const []
+            : [ChatPart.text(projectedText)],
+        pending: streaming,
+        isError: error.isNotEmpty,
+        errorSurface: surface,
+      );
+      _messages.add(row);
+      if (streaming) {
+        _streaming = MutableAssistantMessage.fromChatMessage(row);
+      }
+    }
+
+    if (!usableOffsets) {
+      for (var i = 0; i < corrections.length; i++) {
+        if (alreadyHasUser(corrections[i])) continue;
+        final extracted = _extractOptimisticAttachmentRefs(corrections[i]);
+        _messages.add(
+          ChatMessage(
+            id: 'user-inflight-correction-$i-$runtimeId',
+            role: 'user',
+            parts: extracted.$1.isEmpty
+                ? const []
+                : [ChatPart.text(extracted.$1)],
+            attachmentRefs: extracted.$2,
+          ),
+        );
+      }
+    }
+    if (queuedUser.isNotEmpty && !alreadyHasUser(queuedUser)) {
+      final extracted = _extractOptimisticAttachmentRefs(queuedUser);
+      _messages.add(
+        ChatMessage(
+          id: 'user-queued-$runtimeId',
+          role: 'user',
+          parts: extracted.$1.isEmpty
+              ? const []
+              : [ChatPart.text(extracted.$1)],
+          attachmentRefs: extracted.$2,
+        ),
+      );
+    }
+    _busy = markBusy || streaming;
+    _turnLive = _busy;
+    _turnArmedAt = _busy ? DateTime.now() : null;
+    if (error.isNotEmpty) {
+      _recordRecovery(
+        error,
+        retryText: surface?.retryable == false ? null : user,
+        detail: _errorDiagnostics(error, surface),
+        errorSurface: surface,
+      );
+    }
+    _flushStreamNotify();
+  }
+
+  static String _projectionComparableText(String text) => text
+      .replaceAll(
+        RegExp(r'^@(image|file|folder|url):[^\n]*\n?', multiLine: true),
+        '',
+      )
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   List<ChatRecoveryEntry> get recoveryJournal =>
       List<ChatRecoveryEntry>.unmodifiable(_recoveryJournal);
@@ -342,6 +624,9 @@ class ChatStore extends ChangeNotifier {
       pending: current.pending,
       interim: current.interim,
       isError: current.isError,
+      errorSurface: current.errorSurface,
+      durationS: current.durationS,
+      attachmentRefs: current.attachmentRefs,
       rowId: rowId ?? current.rowId,
       historyOrdinal: current.historyOrdinal,
       timestamp: current.timestamp,
@@ -355,13 +640,19 @@ class ChatStore extends ChangeNotifier {
     return snapshot;
   }
 
-  void _recordRecovery(String summary, {String? retryText, String? detail}) {
+  void _recordRecovery(
+    String summary, {
+    String? retryText,
+    String? detail,
+    ChatErrorSurface? errorSurface,
+  }) {
     _recoveryJournal.insert(
       0,
       ChatRecoveryEntry(
         summary: summary,
         retryText: retryText,
         detail: detail,
+        errorSurface: errorSurface,
         at: DateTime.now(),
       ),
     );
@@ -601,6 +892,98 @@ class ChatStore extends ChangeNotifier {
 
   bool get busy => _busy;
   bool get isStreaming => _streaming != null;
+  ChatBillingBlock? get billingBlock => _billingBlock;
+
+  void _replaceBillingBlock(ChatBillingBlock? value) {
+    if (identical(_billingBlock, value)) return;
+    _billingBlock = value;
+    _bumpComposerSurface();
+  }
+
+  void dismissBillingBlock() {
+    if (_billingBlock == null) return;
+    _replaceBillingBlock(null);
+    notifyListeners();
+  }
+
+  /// Reconcile the finally-edge emitted when a turn ends without a terminal
+  /// message frame. A just-submitted turn gets the same 15s pre-start grace as
+  /// desktop; once backend liveness was observed, running=false is immediate.
+  ChatFallbackSettleResult applySessionRunning(
+    bool running, {
+    DateTime? occurredAt,
+  }) {
+    if (running) {
+      if (_busy) _turnLive = true;
+      return const ChatFallbackSettleResult(
+        settled: false,
+        hadAssistantPayload: false,
+      );
+    }
+    final armedAt = _turnArmedAt;
+    if (_busy &&
+        !_turnLive &&
+        armedAt != null &&
+        DateTime.now().difference(armedAt) < const Duration(seconds: 15)) {
+      return const ChatFallbackSettleResult(
+        settled: false,
+        hadAssistantPayload: false,
+      );
+    }
+    if (!_busy && _streaming == null && _recoveredStreamId == null) {
+      return const ChatFallbackSettleResult(
+        settled: false,
+        hadAssistantPayload: false,
+      );
+    }
+
+    final live = _streaming;
+    final hadAssistantPayload =
+        live?.parts.isNotEmpty == true ||
+        _messages.any(
+          (message) =>
+              message.role == 'assistant' &&
+              message.pending &&
+              (message.parts.isNotEmpty || message.hasText),
+        );
+    if (live != null && live.parts.isEmpty) {
+      _messages.removeWhere((message) => message.id == live.id);
+    } else if (live != null) {
+      live.finalize(
+        null,
+        'complete',
+        null,
+        timestamp: occurredAt ?? DateTime.now(),
+      );
+      _replaceStreaming(live, false, live.rowId);
+    }
+    _streaming = null;
+    _recoveredStreamId = null;
+    _messages.removeWhere(
+      (message) =>
+          message.pending &&
+          message.parts.isEmpty &&
+          message.fullText.trim().isEmpty &&
+          message.attachmentRefs.isEmpty,
+    );
+    for (var index = 0; index < _messages.length; index++) {
+      final message = _messages[index];
+      if (message.pending) {
+        _messages[index] = message.copyWith(pending: false);
+      }
+    }
+    _busy = false;
+    _turnArmedAt = null;
+    _turnLive = false;
+    _statusItems.remove('provider-wait');
+    _providerStatus = null;
+    _flushStreamNotify();
+    return ChatFallbackSettleResult(
+      settled: true,
+      hadAssistantPayload: hadAssistantPayload,
+    );
+  }
+
   List<ChatStatusItem> get statusItems =>
       List.unmodifiable(_statusItems.values);
   List<ChatStatusItem> get notifications =>
@@ -915,6 +1298,9 @@ class ChatStore extends ChangeNotifier {
     _transcriptWindowAnchorId = null;
     _streaming = null;
     _busy = false;
+    _turnArmedAt = null;
+    _turnLive = false;
+    _billingBlock = null;
     hasMoreHistory = false;
     loadingHistory = false;
     loadingTranscript = false;
@@ -935,6 +1321,8 @@ class ChatStore extends ChangeNotifier {
     _versionPreviewIndex = null;
     _streaming = null;
     _busy = false;
+    _turnArmedAt = null;
+    _turnLive = false;
     hasMoreHistory = false;
     loadingHistory = false;
     loadingTranscript = false;
@@ -1094,23 +1482,24 @@ class ChatStore extends ChangeNotifier {
     _versionPreviewAnchor = null;
     _versionPreviewIndex = null;
     final source = _messages[index];
+    final replacement = replacementText == null
+        ? null
+        : _extractOptimisticAttachmentRefs(replacementText);
     _messages
       ..removeRange(index + 1, _messages.length)
       ..[index] = replacementText == null
           ? source
-          : ChatMessage(
-              id: source.id,
-              role: source.role,
-              parts: [ChatPart.text(replacementText)],
-              rowId: source.rowId,
-              historyOrdinal: source.historyOrdinal,
-              timestamp: source.timestamp,
-              source: source.source,
-              model: source.model,
-              provider: source.provider,
+          : source.copyWith(
+              parts: replacement!.$1.isEmpty
+                  ? const []
+                  : [ChatPart.text(replacement.$1)],
+              attachmentRefs: replacement.$2,
             );
     _streaming = null;
     _busy = true;
+    _turnArmedAt = DateTime.now();
+    _turnLive = false;
+    _replaceBillingBlock(null);
     notifyListeners();
     return before;
   }
@@ -1121,6 +1510,8 @@ class ChatStore extends ChangeNotifier {
       ..addAll(snapshot);
     _streaming = null;
     _busy = false;
+    _turnArmedAt = null;
+    _turnLive = false;
     notifyListeners();
   }
 
@@ -1173,7 +1564,17 @@ class ChatStore extends ChangeNotifier {
       if (value is! Map) continue;
       final m = Map<String, dynamic>.from(value);
       if (m['display_kind']?.toString() == 'hidden') continue;
-      final role = m['role']?.toString() ?? 'user';
+      final storedRole = m['role']?.toString() ?? 'user';
+      final displayKind = m['display_kind']?.toString();
+      final role =
+          const {
+            'model_switch',
+            'auto_continue',
+            'personality_switch',
+            'async_delegation_complete',
+          }.contains(displayKind)
+          ? 'system'
+          : storedRole;
       final parts = <ChatPart>[];
       if (role == 'tool') {
         final id = _historyToolId(m);
@@ -1184,7 +1585,10 @@ class ChatStore extends ChangeNotifier {
         );
         msgIndex++;
       } else {
-        final reasoning = m['reasoning_content'] ?? m['reasoning'];
+        final reasoning =
+            m['reasoning'] ??
+            m['reasoning_content'] ??
+            (m['reasoning_details'] is String ? m['reasoning_details'] : null);
         if (reasoning is String && reasoning.isNotEmpty) {
           parts.add(ChatPart.reasoning(reasoning));
         }
@@ -1205,13 +1609,12 @@ class ChatStore extends ChangeNotifier {
           msgIndex++;
         }
 
-        if (role == 'assistant') {
-          for (final call in _historyToolCalls(m, includeContent: false)) {
+        if (storedRole == 'assistant') {
+          for (final call in _historyToolCalls(m)) {
             addTool(call);
           }
         }
 
-        final displayKind = m['display_kind']?.toString();
         final content = switch (displayKind) {
           'model_switch' => runtimeL10n.chatModelChanged,
           'auto_continue' => runtimeL10n.chatTurnContinued,
@@ -1219,24 +1622,32 @@ class ChatStore extends ChangeNotifier {
           'async_delegation_complete' => _delegationCompleteText(
             m['display_metadata'],
           ),
-          _ => m['content'],
+          _ => _historyDisplayContent(
+            storedRole,
+            m['display_content'] ??
+                m['content'] ??
+                m['text'] ??
+                m['context'] ??
+                m['name'],
+          ),
         };
-        if (content is List) {
-          for (final block in content) {
-            if (block is Map && block['type']?.toString() == 'tool_use') {
-              addTool(Map<String, dynamic>.from(block));
-            } else if (block is! Map ||
-                block['type']?.toString() != 'tool_result') {
-              final text = _stringOf(block);
-              if (text.isNotEmpty) parts.add(ChatPart.text(text));
-            }
-          }
-        } else {
-          final text = _stringOf(content);
-          if (text.isNotEmpty) parts.add(ChatPart.text(text));
-        }
+        final text = _stringOf(content);
+        if (text.isNotEmpty) parts.add(ChatPart.text(text));
       }
-      if (parts.isNotEmpty) {
+      final attachmentRefs = <String>[];
+      if (role == 'user') {
+        for (var partIndex = 0; partIndex < parts.length; partIndex++) {
+          final part = parts[partIndex];
+          if (part.kind != 'text') continue;
+          final extracted = _extractHistoryImageRefs(part.text);
+          attachmentRefs.addAll(extracted.$2);
+          parts[partIndex] = ChatPart.text(extracted.$1);
+        }
+        parts.removeWhere(
+          (part) => part.kind == 'text' && part.text.trim().isEmpty,
+        );
+      }
+      if (parts.isNotEmpty || attachmentRefs.isNotEmpty) {
         final ts = m['timestamp'];
         final meta = m['metadata'] is Map
             ? (m['metadata'] as Map<String, dynamic>)
@@ -1265,8 +1676,8 @@ class ChatStore extends ChangeNotifier {
             : (role == 'assistant' && tokenCount is num && tokenCount > 0)
             ? {'total_tokens': tokenCount}
             : null;
-        final displayMetadata = m['display_metadata'];
-        final reactionRaw = displayMetadata is Map
+        final displayMetadata = _historyMetadata(m['display_metadata']);
+        final reactionRaw = displayMetadata != null
             ? displayMetadata['reactions']
             : meta?['reactions'];
         final reactions = reactionRaw is List
@@ -1276,33 +1687,196 @@ class ChatStore extends ChangeNotifier {
                   .where((reaction) => reaction.emoji.isNotEmpty)
                   .toList(growable: false)
             : const <MessageReaction>[];
-        out.add(
-          ChatMessage(
-            id: 'h-${m['id'] ?? m['row_id'] ?? m['history_ordinal'] ?? i++}',
-            role: role,
-            parts: parts,
-            rowId: (m['row_id'] ?? m['id']) is num
-                ? ((m['row_id'] ?? m['id']) as num).toInt()
-                : null,
-            historyOrdinal: m['history_ordinal'] is num
-                ? (m['history_ordinal'] as num).toInt()
-                : null,
-            // The backend reports epoch seconds as a float
-            // (e.g. `1787905997.51`), not an int — an `is int` check always
-            // failed here, silently dropping every historical timestamp.
-            timestamp: ts is num && ts > 0
-                ? DateTime.fromMillisecondsSinceEpoch((ts * 1000).round())
-                : null,
-            source: source,
-            model: model,
-            provider: provider,
-            usage: usage,
-            reactions: reactions,
-          ),
+        final built = ChatMessage(
+          id: 'h-${m['id'] ?? m['row_id'] ?? m['history_ordinal'] ?? i++}',
+          role: role,
+          parts: parts,
+          rowId: (m['row_id'] ?? m['id']) is num
+              ? ((m['row_id'] ?? m['id']) as num).toInt()
+              : null,
+          historyOrdinal: m['history_ordinal'] is num
+              ? (m['history_ordinal'] as num).toInt()
+              : null,
+          // The backend reports epoch seconds as a float
+          // (e.g. `1787905997.51`), not an int — an `is int` check always
+          // failed here, silently dropping every historical timestamp.
+          timestamp: ts is num && ts > 0
+              ? DateTime.fromMillisecondsSinceEpoch((ts * 1000).round())
+              : null,
+          source: source,
+          model: model,
+          provider: provider,
+          usage: usage,
+          reactions: reactions,
+          attachmentRefs: List.unmodifiable(attachmentRefs),
         );
+        final previous = out.lastOrNull;
+        final currentHasTool = built.parts.any((part) => part.kind == 'tool');
+        final previousHasTool =
+            previous?.parts.any((part) => part.kind == 'tool') == true;
+        if (built.role == 'assistant' &&
+            previous?.role == 'assistant' &&
+            (currentHasTool || previousHasTool)) {
+          final previousStamp = previous!.timestamp;
+          final builtStamp = built.timestamp;
+          out[out.length - 1] = ChatMessage(
+            id: previous.id,
+            role: previous.role,
+            parts: _dedupeHistoryAssistantParts([
+              ...previous.parts,
+              ...built.parts,
+            ]),
+            pending: previous.pending || built.pending,
+            interim: previous.interim && built.interim,
+            isError: previous.isError || built.isError,
+            errorSurface: built.errorSurface ?? previous.errorSurface,
+            durationS: built.durationS ?? previous.durationS,
+            attachmentRefs: [
+              ...previous.attachmentRefs,
+              for (final ref in built.attachmentRefs)
+                if (!previous.attachmentRefs.contains(ref)) ref,
+            ],
+            rowId: previous.rowId,
+            historyOrdinal: previous.historyOrdinal,
+            timestamp: previousStamp == null
+                ? builtStamp
+                : builtStamp == null || previousStamp.isBefore(builtStamp)
+                ? previousStamp
+                : builtStamp,
+            source: previous.source ?? built.source,
+            model: previous.model ?? built.model,
+            provider: previous.provider ?? built.provider,
+            usage: built.usage ?? previous.usage,
+            reactions: previous.reactions,
+          );
+        } else {
+          out.add(built);
+        }
       }
     }
-    return out;
+    return [
+      for (final message in out)
+        if (message.role == 'assistant')
+          message.copyWith(parts: _dedupeHistoryAssistantParts(message.parts))
+        else
+          message,
+    ];
+  }
+
+  static Map<String, dynamic>? _historyMetadata(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    if (value is! String || value.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(value);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _historyDisplayContent(String role, dynamic value) {
+    var text = _historyDisplayText(value);
+    if (role != 'user') return text;
+    final invocation = _historySkillInvocation(text);
+    if (invocation != null) return invocation;
+    text = text.replaceAll(
+      RegExp(r'(?:^|\n)--- Context Warnings ---[\s\S]*$'),
+      '',
+    );
+    final marker = RegExp(
+      r'(?:^|\n)--- Attached Context ---\s*\n',
+    ).firstMatch(text);
+    if (marker == null) return text.trim();
+    final visible = text.substring(0, marker.start).trim();
+    final attached = text.substring(marker.end);
+    final refs = RegExp(
+      r'''@(file|folder|url|image|tool|terminal):(?:"[^"\n]+"|'[^'\n]+'|`[^`\n]+`|\S+)''',
+    ).allMatches(attached).map((match) => match.group(0)!).toSet();
+    final missing = refs.where((ref) => !visible.contains(ref)).join('\n');
+    return [missing, visible].where((part) => part.isNotEmpty).join('\n\n');
+  }
+
+  static String _historyDisplayText(dynamic value) {
+    if (value is List) return value.map(_historyDisplayText).join();
+    if (value is Map) {
+      final type = value['type']?.toString();
+      if (type == 'tool_use' || type == 'tool_result') return '';
+    }
+    return _historyContentText(value);
+  }
+
+  static String? _historySkillInvocation(String text) {
+    const prefix = '[IMPORTANT: The user has invoked the ';
+    if (!text.startsWith(prefix)) return null;
+    final name = RegExp(
+      r'^\[IMPORTANT: The user has invoked the "([^"]*)"',
+    ).firstMatch(text)?.group(1)?.trim();
+    if (name == null || name.isEmpty) return null;
+    final label = name.startsWith('/') ? name : '/$name';
+    const bundleMarker = ' skill bundle,';
+    const bundleInstruction = '\nUser instruction: ';
+    const bundleEnd = '\n\n[Loaded as part of the ';
+    const singleMarker = 'The full skill content is loaded below.]';
+    const singleInstruction =
+        'The user has provided the following instruction alongside the skill invocation: ';
+    const singleEnd = '\n\n[Runtime note:';
+    final marker = text.contains(bundleMarker)
+        ? bundleInstruction
+        : text.contains(singleMarker)
+        ? singleInstruction
+        : null;
+    if (marker == null) return label;
+    final start = marker == singleInstruction
+        ? text.lastIndexOf(marker)
+        : text.indexOf(marker);
+    if (start < 0) return label;
+    final tail = text.substring(start + marker.length);
+    final endMarker = marker == bundleInstruction ? bundleEnd : singleEnd;
+    final end = tail.indexOf(endMarker);
+    final instruction = (end < 0 ? tail : tail.substring(0, end))
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+    return instruction.isEmpty ? label : '$label $instruction';
+  }
+
+  static List<ChatPart> _dedupeHistoryAssistantParts(List<ChatPart> parts) {
+    final transformed = dedupeGeneratedImageEchoesInParts(parts);
+    final lastTextAt = <String, int>{};
+    for (var index = 0; index < transformed.length; index++) {
+      final part = transformed[index];
+      if (part.kind != 'text') continue;
+      final key = part.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (key.isNotEmpty) lastTextAt[key] = index;
+    }
+    return [
+      for (var index = 0; index < transformed.length; index++)
+        if (transformed[index].kind != 'text' ||
+            transformed[index].text.trim().isEmpty ||
+            lastTextAt[transformed[index].text
+                    .replaceAll(RegExp(r'\s+'), ' ')
+                    .trim()] ==
+                index)
+          transformed[index],
+    ];
+  }
+
+  static (String, List<String>) _extractHistoryImageRefs(String text) {
+    final refs = <String>[];
+    var cleaned = text.replaceAllMapped(
+      RegExp(r'^@image:[^\n]*\n?', multiLine: true),
+      (match) {
+        final ref = match.group(0)!.trim();
+        if (ref.isNotEmpty && !refs.contains(ref)) refs.add(ref);
+        return '';
+      },
+    );
+    if (refs.isNotEmpty) {
+      cleaned = cleaned.replaceAll(
+        RegExp(r'^\[screenshot\]\n?', multiLine: true),
+        '',
+      );
+    }
+    return (cleaned.trim(), refs);
   }
 
   static String _delegationCompleteText(dynamic metadata) {
@@ -1346,11 +1920,11 @@ class ChatStore extends ChangeNotifier {
   static String _historyToolId(Map<dynamic, dynamic> data) {
     for (final key in [
       'tool_id',
-      'id',
-      'tid',
       'tool_call_id',
       'tool_use_id',
       'call_id',
+      'tid',
+      'id',
     ]) {
       final value = data[key]?.toString().trim() ?? '';
       if (value.isNotEmpty) return value;
@@ -1508,16 +2082,23 @@ class ChatStore extends ChangeNotifier {
     _versionPreviewAnchor = null;
     _versionPreviewIndex = null;
     // F1: mark busy BEFORE the submit so the interrupt button shows.
+    final optimistic = _extractOptimisticAttachmentRefs(text);
     _messages.add(
       ChatMessage(
         id: 'user-${DateTime.now().millisecondsSinceEpoch}',
         role: 'user',
-        parts: [ChatPart.text(text)],
+        parts: optimistic.$1.isEmpty
+            ? const <ChatPart>[]
+            : [ChatPart.text(optimistic.$1)],
+        attachmentRefs: optimistic.$2,
         pending: true,
         timestamp: DateTime.now(),
       ),
     );
     _busy = true;
+    _turnArmedAt = DateTime.now();
+    _turnLive = false;
+    _replaceBillingBlock(null);
     notifyListeners();
     try {
       await sendPrompt();
@@ -1540,6 +2121,28 @@ class ChatStore extends ChangeNotifier {
     }
   }
 
+  static (String, List<String>) _extractOptimisticAttachmentRefs(String text) {
+    final refs = <String>[];
+    final cleaned = text.replaceAllMapped(
+      RegExp(
+        r'''(?:^|\s)@(image|file|folder|url):(`[^`]+`|'[^']+'|"[^"]+"|[^\s]+)''',
+        multiLine: true,
+      ),
+      (match) {
+        final ref = '@${match.group(1)}:${match.group(2)}';
+        if (!refs.contains(ref)) refs.add(ref);
+        return match.group(0)!.startsWith('\n') ? '\n' : ' ';
+      },
+    );
+    return (
+      cleaned
+          .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+          .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+          .trim(),
+      List.unmodifiable(refs),
+    );
+  }
+
   /// Submit a durable user turn that participates in model context without
   /// adding an optimistic transcript bubble. Local HTML previews use this for
   /// `window.hermes.send(...)`; persisted history also filters the matching
@@ -1550,11 +2153,16 @@ class ChatStore extends ChangeNotifier {
     _versionPreviewAnchor = null;
     _versionPreviewIndex = null;
     _busy = true;
+    _turnArmedAt = DateTime.now();
+    _turnLive = false;
+    _replaceBillingBlock(null);
     notifyListeners();
     try {
       await sendPrompt();
     } catch (error) {
       _busy = false;
+      _turnArmedAt = null;
+      _turnLive = false;
       final detail = error.toString();
       _recordRecovery(
         detail.length > 120 ? '${detail.substring(0, 120)}…' : detail,
@@ -1568,6 +2176,8 @@ class ChatStore extends ChangeNotifier {
 
   void markIdle() {
     _busy = false;
+    _turnArmedAt = null;
+    _turnLive = false;
     notifyListeners();
   }
 
@@ -1582,6 +2192,8 @@ class ChatStore extends ChangeNotifier {
       }
     }
     _busy = false;
+    _turnArmedAt = null;
+    _turnLive = false;
     _recordRecovery(
       error.length > 120 ? '${error.substring(0, 120)}…' : error,
       retryText: retryText,
@@ -1634,6 +2246,11 @@ class ChatStore extends ChangeNotifier {
         _completeStreaming(e.payload);
       case 'message.reaction':
         _messageReaction(e.payload);
+      case 'reaction':
+        if ((e.payload['kind']?.toString() ?? 'vibe') == 'vibe') {
+          _vibeBurstRevision++;
+          notifyListeners();
+        }
       case 'tool.start':
         _toolStart(e.payload);
       case 'tool.generating':
@@ -1655,6 +2272,8 @@ class ChatStore extends ChangeNotifier {
         _subagentActivity(e.payload, event: 'thinking');
       case 'subagent.tool':
         _subagentActivity(e.payload, event: 'tool');
+      case 'subagent.progress':
+        _subagentActivity(e.payload, event: 'progress');
       case 'subagent.complete':
         _subagentActivity(e.payload, event: 'complete');
       case 'moa.reference':
@@ -1716,8 +2335,25 @@ class ChatStore extends ChangeNotifier {
         .map(MessageReaction.fromJson)
         .where((reaction) => reaction.emoji.isNotEmpty)
         .toList(growable: false);
-    final index = _messages.indexWhere((message) => message.rowId == rowId);
-    if (index >= 0) replaceMessageReactions(_messages[index].id, reactions);
+    var index = _messages.indexWhere((message) => message.rowId == rowId);
+    if (index < 0) {
+      final role = payload['role'] == 'assistant' ? 'assistant' : 'user';
+      for (var i = _messages.length - 1; i >= 0; i--) {
+        if (_messages[i].role == role && _messages[i].rowId == null) {
+          index = i;
+          break;
+        }
+      }
+    }
+    if (index >= 0) {
+      final messageId = _messages[index].id;
+      final live = _streaming;
+      if (live != null && live.id == messageId) {
+        live.rowId = rowId;
+        live.reactions = List.unmodifiable(reactions);
+      }
+      replaceMessageReactions(messageId, reactions, rowId: rowId);
+    }
   }
 
   void _providerWait(Map<String, dynamic> payload) {
@@ -1866,6 +2502,20 @@ class ChatStore extends ChangeNotifier {
     _providerStatus =
         (payload['message'] ?? payload['status'] ?? payload['text'])
             ?.toString();
+    if (kind == 'compacted') {
+      _statusItems.removeWhere((_, item) => item.kind == 'compacting');
+      _providerStatus = null;
+      _bumpComposerSurface();
+      notifyListeners();
+      return;
+    }
+    if (kind == 'process') {
+      // Process notices are invalidation signals, not transcript statuses.
+      // A registry refresh supplies the real command/output/state rows.
+      unawaited(_composerStatus?.refreshBackgroundProcesses(_statusSessionId));
+      _providerStatus = null;
+      return;
+    }
     if (kind == 'goal') {
       final goalStatus =
           (payload['goal_status'] ?? payload['status'] ?? 'active').toString();
@@ -1889,13 +2539,35 @@ class ChatStore extends ChangeNotifier {
     _upsertStatus(id, kind, _providerStatus ?? kind, payload);
   }
 
-  void _reviewSummary(Map<String, dynamic> payload) => _upsertStatus(
-    (payload['id'] ?? 'review').toString(),
-    'review',
-    (payload['summary'] ?? payload['message'] ?? runtimeL10n.chatCodeReview)
-        .toString(),
-    payload,
-  );
+  void _reviewSummary(Map<String, dynamic> payload) {
+    // Desktop treats self-improvement reviews as transcript content, not a
+    // transient/running status. The backend normally uses `text`; retain the
+    // older aliases so mixed-version gateways do not silently lose the row.
+    final raw =
+        (payload['text'] ?? payload['summary'] ?? payload['message'] ?? '')
+            .toString()
+            .trim();
+    if (raw.isEmpty) return;
+    final text = raw.replaceFirst(RegExp(r'^[\s💾]+'), '').trim();
+    if (text.isEmpty) return;
+    final id = (payload['id']?.toString().trim().isNotEmpty == true)
+        ? 'review-summary-${payload['id']}'
+        : 'review-summary-${DateTime.now().microsecondsSinceEpoch}';
+    if (_messages.any((message) => message.id == id)) return;
+    _messages.add(
+      ChatMessage(
+        id: id,
+        role: 'system',
+        parts: [ChatPart.text('review:$text')],
+        timestamp: DateTime.now(),
+      ),
+    );
+    if (_streaming == null) {
+      notifyListeners();
+    } else {
+      _syncStreaming();
+    }
+  }
 
   void _sessionReclaimed(Map<String, dynamic> payload) {
     // `session.reclaimed` is a runtime lifecycle edge, not an ongoing job.
@@ -1974,10 +2646,15 @@ class ChatStore extends ChangeNotifier {
                 runtimeL10n.chatHermesRunFailed)
             .toString();
     final streaming = _streaming;
+    final surface = ChatErrorSurface.tryParse(payload['error_surface']);
+    _replaceBillingBlock(ChatBillingBlock.tryParse(payload['billing']));
     _streaming = null;
     _busy = false;
+    _turnArmedAt = null;
+    _turnLive = false;
     if (streaming != null) {
       if (message.isNotEmpty) streaming.appendDelta(message);
+      streaming.errorSurface = surface;
       streaming.finalize(message, 'error', null, timestamp: DateTime.now());
       _replaceStreaming(streaming, true, null);
     } else {
@@ -1987,11 +2664,17 @@ class ChatStore extends ChangeNotifier {
           role: 'assistant',
           parts: [ChatPart.text(message)],
           isError: true,
+          errorSurface: surface,
           timestamp: DateTime.now(),
         ),
       );
     }
-    _recordRecovery(message, detail: message);
+    _recordRecovery(
+      message,
+      retryText: surface?.retryable == false ? null : lastUserText(),
+      detail: _errorDiagnostics(message, surface),
+      errorSurface: surface,
+    );
     _flushStreamNotify();
   }
 
@@ -2067,8 +2750,12 @@ class ChatStore extends ChangeNotifier {
     // Background sessions do not pass through this store's local submit()
     // path, so the gateway edge itself must establish their live-turn state.
     _busy = true;
+    _turnArmedAt ??= DateTime.now();
+    _turnLive = true;
+    _replaceBillingBlock(null);
     _statusItems.remove('provider-wait');
     _providerStatus = null;
+    _interimBoundaryPending = false;
     final compacting = _statusItems.entries
         .where((entry) => entry.value.kind == 'compacting')
         .map((entry) => entry.key)
@@ -2161,22 +2848,17 @@ class ChatStore extends ChangeNotifier {
   }
 
   void _addInterim(Map<String, dynamic> payload) {
-    // F7: already-streamed interim text would duplicate the delta stream.
-    if (payload['already_streamed'] == true) {
-      if (_diagnosticLogging) {
-        _logStream(
-          'event=interim.skipped reason=already_streamed '
-          'length=${(payload['text'] ?? '').toString().length}',
-        );
-      }
-      return;
-    }
     final text = (payload['text'] ?? '').toString();
     if (text.isEmpty) {
       if (_diagnosticLogging) {
         _logStream('event=interim.skipped reason=empty length=0');
       }
       return;
+    }
+    final live = _streaming;
+    if (live != null) {
+      _messages.removeWhere((message) => message.id == live.id);
+      _streaming = null;
     }
     _messages.add(
       ChatMessage(
@@ -2186,6 +2868,7 @@ class ChatStore extends ChangeNotifier {
         interim: true,
       ),
     );
+    _interimBoundaryPending = true;
     if (_diagnosticLogging) {
       _logStream(
         'event=interim.accepted length=${text.length} '
@@ -2333,20 +3016,59 @@ class ChatStore extends ChangeNotifier {
                 usage?['billing_provider'])
             ?.toString();
     final source = (payload['source'] ?? payload['channel'])?.toString();
-    final streaming = _streaming;
+    final surface = ChatErrorSurface.tryParse(payload['error_surface']);
+    final durationS = (payload['duration_s'] as num?)?.toDouble();
+    _replaceBillingBlock(ChatBillingBlock.tryParse(payload['billing']));
+    final isError = status == 'error';
+    final partial = payload['partial'] == true;
+    final finalText = _extractDeltaText(payload['text']);
+    final failureText = _extractDeltaText(payload['error']).trim().isNotEmpty
+        ? _extractDeltaText(payload['error']).trim()
+        : finalText;
+    final visibleText = isError && !partial ? failureText : finalText;
+    var streaming = _streaming;
+    final liveHasContent =
+        streaming?.parts.any(
+          (part) => part.kind != 'text' || part.text.trim().isNotEmpty,
+        ) ??
+        false;
+    ChatMessage? settlingInterim;
+    if (!liveHasContent && finalText.isNotEmpty) {
+      for (var i = _messages.length - 1; i >= 0; i--) {
+        final candidate = _messages[i];
+        if (!candidate.interim || candidate.role != 'assistant') continue;
+        final interimText = candidate.fullText.trim();
+        final continuous =
+            interimText.isNotEmpty &&
+            (finalText == interimText ||
+                finalText.startsWith(interimText) ||
+                interimText.startsWith(finalText));
+        if (continuous ||
+            (_interimBoundaryPending &&
+                payload['response_previewed'] == true)) {
+          settlingInterim = candidate;
+          streaming = MutableAssistantMessage.fromChatMessage(candidate);
+        }
+        break;
+      }
+    }
     _streaming = null;
+    _interimBoundaryPending = false;
     _busy = false;
+    _turnArmedAt = null;
+    _turnLive = false;
     _statusItems.remove('provider-wait');
     _providerStatus = null;
     if (streaming == null) {
       // Error-only turn: synthesize a message with the partial/error text.
-      final text = _extractDeltaText(payload['text']);
       final m = MutableAssistantMessage(
         'assistant-${DateTime.now().millisecondsSinceEpoch}',
       );
-      if (text.isNotEmpty) m.appendDelta(text);
+      if (visibleText.isNotEmpty) m.appendDelta(visibleText);
+      m.errorSurface = surface;
+      m.durationS = durationS;
       m.finalize(
-        text.isEmpty ? null : text,
+        visibleText.isEmpty ? null : visibleText,
         status,
         usage,
         model: model,
@@ -2355,15 +3077,13 @@ class ChatStore extends ChangeNotifier {
         timestamp: stamp,
       );
       _messages.add(
-        m.toChatMessage(
-          isError: status == 'error',
-          rowId: payload['row_id'] as int?,
-        ),
+        m.toChatMessage(isError: isError, rowId: payload['row_id'] as int?),
       );
     } else {
-      final text = _extractDeltaText(payload['text']);
+      streaming.errorSurface = surface;
+      streaming.durationS = durationS;
       streaming.finalize(
-        text.isEmpty ? null : text,
+        visibleText.isEmpty ? null : visibleText,
         status,
         usage,
         model: model,
@@ -2371,11 +3091,34 @@ class ChatStore extends ChangeNotifier {
         source: source,
         timestamp: stamp,
       );
-      _replaceStreaming(
-        streaming,
-        status == 'error',
-        payload['row_id'] as int?,
-      );
+      _replaceStreaming(streaming, isError, payload['row_id'] as int?);
+      if (settlingInterim != null) {
+        final index = _messages.indexWhere(
+          (message) => message.id == settlingInterim!.id,
+        );
+        if (index >= 0) {
+          final settled = _messages[index];
+          _messages[index] = ChatMessage(
+            id: settled.id,
+            role: settled.role,
+            parts: settled.parts,
+            pending: false,
+            interim: false,
+            isError: settled.isError,
+            errorSurface: settled.errorSurface,
+            durationS: settled.durationS,
+            attachmentRefs: settled.attachmentRefs,
+            rowId: settled.rowId,
+            historyOrdinal: settled.historyOrdinal,
+            timestamp: settled.timestamp,
+            source: settled.source,
+            model: settled.model,
+            provider: settled.provider,
+            usage: settled.usage,
+            reactions: settled.reactions,
+          );
+        }
+      }
     }
     if (_diagnosticLogging) {
       _logStream(
@@ -2390,13 +3133,27 @@ class ChatStore extends ChangeNotifier {
       _streamElapsed?.stop();
       _streamElapsed = null;
     }
-    if (status == 'error') {
+    if (isError) {
       _recordRecovery(
         runtimeL10n.chatAssistantReplyFailed,
-        retryText: lastUserText(),
+        retryText: surface?.retryable == false ? null : lastUserText(),
+        detail: _errorDiagnostics(failureText, surface),
+        errorSurface: surface,
       );
     }
     _flushStreamNotify();
+  }
+
+  static String _errorDiagnostics(String error, ChatErrorSurface? surface) {
+    if (surface == null) return error;
+    return [
+      'layer: ${surface.layer}',
+      'code: ${surface.code}',
+      'retryable: ${surface.retryable}',
+      if (surface.provider != null) 'provider: ${surface.provider}',
+      if (surface.model != null) 'model: ${surface.model}',
+      if (error.trim().isNotEmpty) 'error: ${error.trim()}',
+    ].join('\n');
   }
 
   void _replaceStreaming(MutableAssistantMessage m, bool isError, int? rowId) {
@@ -2456,7 +3213,7 @@ class ChatStore extends ChangeNotifier {
   String? lastUserText() {
     for (final m in _messages.reversed) {
       if (m.role == 'user' && !m.interim) {
-        final t = m.fullText;
+        final t = m.promptText;
         if (t.isNotEmpty) return t;
       }
     }

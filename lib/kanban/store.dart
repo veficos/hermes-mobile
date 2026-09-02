@@ -29,6 +29,7 @@ class KanbanStore extends ChangeNotifier {
   String assigneeFilter = '';
   String tenantFilter = '';
   bool includeArchived = false;
+  bool _foreground = true;
   KanbanStore([KanbanApi? api]) : _api = api;
   KanbanApi get api => requireApi();
   bool get ready => _api != null;
@@ -59,7 +60,7 @@ class KanbanStore extends ChangeNotifier {
     _details.clear();
     selectedIds.clear();
     error = null;
-    if (api != null) {
+    if (api != null && _foreground) {
       unawaited(start());
       unawaited(_connectEvents(api));
     }
@@ -130,10 +131,34 @@ class KanbanStore extends ChangeNotifier {
   }
 
   Future<void> start() async {
-    if (_api == null) return;
+    if (_api == null || !_foreground) return;
     await load();
     _poll?.cancel();
-    _poll = Timer.periodic(const Duration(seconds: 8), (_) => load());
+    _poll = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (_foreground) unawaited(load());
+    });
+  }
+
+  void setForeground(bool value) {
+    if (_foreground == value) return;
+    _foreground = value;
+    if (!value) {
+      _poll?.cancel();
+      _poll = null;
+      _reconnect?.cancel();
+      _reconnect = null;
+      _eventGeneration++;
+      _events?.cancel();
+      _events = null;
+      _socket?.sink.close();
+      _socket = null;
+      return;
+    }
+    final api = _api;
+    if (api != null) {
+      unawaited(start());
+      unawaited(_connectEvents(api));
+    }
   }
 
   void connectEvents(Uri uri) {
@@ -176,7 +201,7 @@ class KanbanStore extends ChangeNotifier {
 
   void _scheduleReconnect() {
     final api = _api;
-    if (api == null || _reconnect?.isActive == true) {
+    if (!_foreground || api == null || _reconnect?.isActive == true) {
       return;
     }
     _reconnect = Timer(

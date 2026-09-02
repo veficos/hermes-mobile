@@ -1669,6 +1669,9 @@ class TestCanonicalMcpBridge:
             assert client.get(
                 "/api/v1/mcp/oauth/flows/flow-1", headers=AUTH
             ).status_code == 200
+            assert client.delete(
+                "/api/v1/mcp/oauth/flows/flow-1", headers=AUTH
+            ).status_code == 200
             assert client.post(
                 "/api/v1/mcp/catalog/install",
                 headers=AUTH,
@@ -1695,6 +1698,7 @@ class TestCanonicalMcpBridge:
             "x-forwarded-prefix": "/api/v1",
         }
         assert ("GET", "/api/mcp/oauth/flows/flow-1", {}, None) in backend.calls
+        assert ("DELETE", "/api/mcp/oauth/flows/flow-1", {}, None) in backend.calls
         assert (
             "POST",
             "/api/mcp/catalog/install",
@@ -1739,6 +1743,11 @@ class TestCanonicalMcpBridge:
             assert client.get(
                 "/api/v1/mcp/catalog", headers=AUTH, params={"profile": "work"}
             ).status_code == 200
+            assert client.delete(
+                "/api/v1/mcp/oauth/flows/flow-1",
+                headers=AUTH,
+                params={"profile": "work"},
+            ).status_code == 200
             assert client.post(
                 "/api/v1/mcp/servers",
                 headers=AUTH,
@@ -1761,6 +1770,12 @@ class TestCanonicalMcpBridge:
             {"enabled": True},
         ) in backend.calls
         assert ("GET", "/api/mcp/catalog", {"profile": "work"}, None) in backend.calls
+        assert (
+            "DELETE",
+            "/api/mcp/oauth/flows/flow-1",
+            {"profile": "work"},
+            None,
+        ) in backend.calls
         assert (
             "POST",
             "/api/mcp/servers",
@@ -2470,6 +2485,54 @@ class TestCanonicalMessagingBridge:
             {"platform": "telegram", "user_id": "u1", "profile": "work"},
         ) in backend.calls
         assert ("POST", "/api/gateway/restart", {}, None) in backend.calls
+
+    def test_legacy_messaging_routes_preserve_profile(self):
+        backend = self._Backend()
+        app = FastAPI()
+        app.include_router(
+            build_domain_router(Settings(api_key="test-key-42"), backend)
+        )
+        with TestClient(app) as client:
+            config = client.get(
+                "/api/v1/messaging/telegram/config?profile=work", headers=AUTH
+            )
+            pending = client.get(
+                "/api/v1/messaging/telegram/pending?profile=work", headers=AUTH
+            )
+            saved = client.post(
+                "/api/v1/messaging/telegram/env?profile=work",
+                headers=AUTH,
+                json={"key": "TELEGRAM_BOT_TOKEN", "value": "secret"},
+            )
+            approved = client.post(
+                "/api/v1/messaging/telegram/pair/request-1/approve?profile=work",
+                headers=AUTH,
+            )
+
+        assert all(
+            response.status_code == 200
+            for response in (config, pending, saved, approved)
+        )
+        assert (
+            "GET", "/api/messaging/platforms", {"profile": "work"}, None
+        ) in backend.calls
+        assert ("GET", "/api/pairing", {"profile": "work"}, None) in backend.calls
+        assert (
+            "PUT",
+            "/api/messaging/platforms/telegram",
+            {"profile": "work"},
+            {"env": {"TELEGRAM_BOT_TOKEN": "secret"}},
+        ) in backend.calls
+        assert (
+            "POST",
+            "/api/pairing/approve",
+            {},
+            {
+                "platform": "telegram",
+                "request_id": "request-1",
+                "profile": "work",
+            },
+        ) in backend.calls
 
 
 class TestCanonicalWebhookBridge:

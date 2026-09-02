@@ -108,6 +108,30 @@ void main() {
     expect(messages.single.historyOrdinal, 17);
   });
 
+  test('rewind preserves attachment-only user prompts', () {
+    final chat = ChatStore();
+    chat.loadHistory([
+      ChatMessage(
+        id: 'attachment-user',
+        role: 'user',
+        parts: const [],
+        attachmentRefs: const ['@image:/tmp/a.png'],
+      ),
+      _message('answer', 'assistant', 'looks good'),
+    ], hasMore: false);
+
+    final target = userTurnForMessage(chat.messages, 'answer');
+    expect(target?.id, 'attachment-user');
+    expect(target?.promptText, '@image:/tmp/a.png');
+
+    chat.rewindToUserMessage(
+      'attachment-user',
+      replacementText: '@image:/tmp/a.png\nnew caption',
+    );
+    expect(chat.messages.single.attachmentRefs, ['@image:/tmp/a.png']);
+    expect(chat.messages.single.fullText, 'new caption');
+  });
+
   test('first-turn rewind confirms an intentional empty truncation', () async {
     final calls = <(String, Map<String, dynamic>)>[];
     await runChatRewind(

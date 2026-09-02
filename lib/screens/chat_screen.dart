@@ -848,7 +848,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildRecoveryBanner(ChatStore chat) {
     if (chat.recoveryJournal.isEmpty) return const SizedBox.shrink();
     final entry = chat.recoveryJournal.first;
-    final layer = classifyChatError(entry.diagnostics);
+    final layer = classifyChatError(
+      entry.diagnostics,
+      surface: entry.errorSurface,
+    );
     final info = _errorLayerInfo(layer);
     return MaterialBanner(
       content: Column(
@@ -865,7 +868,9 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       leading: Icon(info.icon),
       actions: [
-        if (entry.retryText != null && entry.retryText!.trim().isNotEmpty)
+        if (entry.retryable &&
+            entry.retryText != null &&
+            entry.retryText!.trim().isNotEmpty)
           TextButton(
             onPressed: () => _retryFromRecovery(entry),
             child: Text(context.l10n.chatFillRetry),
@@ -3879,10 +3884,14 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
         final billingBlocked =
+            chat.billingBlock != null ||
             billing?.gate.blocked == true ||
             chat.recoveryJournal.any(
               (entry) =>
-                  classifyChatError(entry.diagnostics) ==
+                  classifyChatError(
+                    entry.diagnostics,
+                    surface: entry.errorSurface,
+                  ) ==
                   ChatErrorLayer.billing,
             );
         final info = session.info;
@@ -3966,6 +3975,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           )
                         : null,
                   ),
+                  if (chat.billingBlock != null)
+                    _buildStructuredBillingRow(chat),
                   if (_statusDetailsExpanded && hasDetails) ...[
                     Divider(height: 1, color: palette.border),
                     ConstrainedBox(
@@ -3976,22 +3987,26 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (billingBlocked)
-                              ListTile(
-                                tileColor: Theme.of(
+                            if (billingBlocked && chat.billingBlock == null)
+                              Material(
+                                color: Theme.of(
                                   context,
                                 ).colorScheme.errorContainer,
-                                leading: const Icon(
-                                  Icons.account_balance_wallet_outlined,
-                                ),
-                                title: Text(context.l10n.chatInsufficientQuota),
-                                trailing: TextButton(
-                                  onPressed: () => Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => const BillingScreen(),
-                                    ),
+                                child: ListTile(
+                                  leading: const Icon(
+                                    Icons.account_balance_wallet_outlined,
                                   ),
-                                  child: Text(context.l10n.chatViewBilling),
+                                  title: Text(
+                                    context.l10n.chatInsufficientQuota,
+                                  ),
+                                  trailing: TextButton(
+                                    onPressed: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => const BillingScreen(),
+                                      ),
+                                    ),
+                                    child: Text(context.l10n.chatViewBilling),
+                                  ),
                                 ),
                               ),
                             if (hasCoding)
@@ -4174,6 +4189,56 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildStructuredBillingRow(ChatStore chat) {
+    final block = chat.billingBlock!;
+    final firstLine = block.message.split('\n').first.trim();
+    return Material(
+      key: const ValueKey('chat-billing-block'),
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: ListTile(
+        dense: true,
+        leading: const Icon(Icons.account_balance_wallet_outlined, size: 19),
+        title: Text(
+          '${context.l10n.chatInsufficientQuota} · ${block.providerLabel}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: firstLine.isEmpty
+            ? null
+            : Text(firstLine, maxLines: 2, overflow: TextOverflow.ellipsis),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: () {
+                if (!block.isNous && block.billingUrl != null) {
+                  launchExternalOrNotify(context, block.billingUrl!);
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const BillingScreen(),
+                  ),
+                );
+              },
+              child: Text(
+                block.isNous
+                    ? context.l10n.chatViewBilling
+                    : context.l10n.billingPurchaseCredits,
+              ),
+            ),
+            IconButton(
+              tooltip: context.l10n.commonClose,
+              visualDensity: VisualDensity.compact,
+              onPressed: chat.dismissBillingBlock,
+              icon: const Icon(Icons.close, size: 17),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -6762,7 +6827,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             if (!session.readOnly &&
                 message.role == 'assistant' &&
-                message.isError)
+                message.isError &&
+                message.errorSurface?.retryable != false)
               ListTile(
                 leading: const Icon(Icons.replay),
                 title: Text(context.l10n.commonRetry),
@@ -7190,6 +7256,15 @@ class _ChatScreenState extends State<ChatScreen> {
                         profile: session.activeProfile,
                       ),
                 onPromptSelected: _insertStarterPrompt,
+              ),
+              Positioned.fill(
+                child: Selector<ChatStore, int>(
+                  selector: (_, store) => store.vibeBurstRevision,
+                  builder: (context, revision, _) => _VibeHeartBurst(
+                    revision: revision,
+                    animationsDisabled: MediaQuery.disableAnimationsOf(context),
+                  ),
+                ),
               ),
               if (chat.messages.where((m) => m.role == 'user').length > 1)
                 Positioned(
@@ -8237,6 +8312,111 @@ class _ChatScreenState extends State<ChatScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Ephemeral desktop-parity feedback for the standalone gateway `reaction`
+/// event ("ily", "<3", "good bot"). Persistent per-message reactions
+/// continue to render inside [MessageBubble]; this overlay intentionally owns
+/// no transcript state and never intercepts gestures.
+class _VibeHeartBurst extends StatefulWidget {
+  const _VibeHeartBurst({
+    required this.revision,
+    required this.animationsDisabled,
+  });
+
+  final int revision;
+  final bool animationsDisabled;
+
+  @override
+  State<_VibeHeartBurst> createState() => _VibeHeartBurstState();
+}
+
+class _VibeHeartBurstState extends State<_VibeHeartBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1050),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _VibeHeartBurst oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.revision != oldWidget.revision && widget.revision > 0) {
+      if (widget.animationsDisabled) {
+        _controller.value = 0;
+      } else {
+        _controller.forward(from: 0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.animationsDisabled) return const SizedBox.expand();
+    const hearts = <(double, double, double)>[
+      (0.28, 0.00, 24),
+      (0.40, 0.14, 31),
+      (0.52, 0.04, 27),
+      (0.63, 0.18, 34),
+      (0.73, 0.08, 25),
+    ];
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final t = Curves.easeOutCubic.transform(_controller.value);
+          if (_controller.value == 0 || _controller.isDismissed) {
+            return const SizedBox.expand();
+          }
+          final opacity =
+              (1 -
+                      Curves.easeIn.transform(
+                        ((_controller.value - 0.55) / 0.45).clamp(0.0, 1.0),
+                      ))
+                  .clamp(0.0, 1.0);
+          return LayoutBuilder(
+            builder: (context, constraints) => Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (final (x, delay, size) in hearts)
+                  if (_controller.value > delay)
+                    Positioned(
+                      left: constraints.maxWidth * x - size / 2,
+                      bottom:
+                          24 +
+                          (constraints.maxHeight *
+                              0.42 *
+                              ((t - delay).clamp(0.0, 1.0))),
+                      child: Opacity(
+                        opacity: opacity,
+                        child: Transform.rotate(
+                          angle: (x - 0.5) * 0.55,
+                          child: Transform.scale(
+                            scale: 0.55 + 0.45 * t,
+                            child: Text('❤️', style: TextStyle(fontSize: size)),
+                          ),
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

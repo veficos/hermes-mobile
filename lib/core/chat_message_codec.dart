@@ -11,6 +11,11 @@ Map<String, dynamic> chatMessageToJson(ChatMessage message) {
     'pending': message.pending,
     'interim': message.interim,
     'isError': message.isError,
+    if (message.errorSurface != null)
+      'errorSurface': message.errorSurface!.toJson(),
+    if (message.durationS != null) 'durationS': message.durationS,
+    if (message.attachmentRefs.isNotEmpty)
+      'attachmentRefs': message.attachmentRefs,
     if (message.rowId != null) 'rowId': message.rowId,
     if (message.historyOrdinal != null)
       'historyOrdinal': message.historyOrdinal,
@@ -20,6 +25,16 @@ Map<String, dynamic> chatMessageToJson(ChatMessage message) {
     if (message.model != null) 'model': message.model,
     if (message.provider != null) 'provider': message.provider,
     if (message.usage != null) 'usage': message.usage,
+    if (message.reactions.isNotEmpty)
+      'reactions': message.reactions
+          .map(
+            (reaction) => {
+              'emoji': reaction.emoji,
+              'author': reaction.author,
+              'at': reaction.at,
+            },
+          )
+          .toList(growable: false),
   };
 }
 
@@ -35,6 +50,8 @@ ChatMessage chatMessageFromJson(Map<String, dynamic> json) {
     }
   }
   final ts = json['timestamp'];
+  final duration = json['durationS'] ?? json['duration_s'];
+  final attachmentRefs = json['attachmentRefs'] ?? json['attachment_refs'];
   return ChatMessage(
     id: json['id']?.toString() ?? '',
     role: json['role']?.toString() ?? 'user',
@@ -42,6 +59,16 @@ ChatMessage chatMessageFromJson(Map<String, dynamic> json) {
     pending: json['pending'] == true,
     interim: json['interim'] == true,
     isError: json['isError'] == true || json['is_error'] == true,
+    errorSurface: ChatErrorSurface.tryParse(
+      json['errorSurface'] ?? json['error_surface'],
+    ),
+    durationS: duration is num ? duration.toDouble() : null,
+    attachmentRefs: attachmentRefs is List
+        ? attachmentRefs
+              .map((value) => value.toString())
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false)
+        : const [],
     rowId: (json['rowId'] ?? json['row_id']) as int?,
     historyOrdinal: (json['historyOrdinal'] ?? json['history_ordinal']) as int?,
     timestamp: ts is num
@@ -53,6 +80,13 @@ ChatMessage chatMessageFromJson(Map<String, dynamic> json) {
     usage: json['usage'] is Map
         ? (json['usage'] as Map).cast<String, dynamic>()
         : null,
+    reactions: json['reactions'] is List
+        ? (json['reactions'] as List)
+              .whereType<Map>()
+              .map(MessageReaction.fromJson)
+              .where((reaction) => reaction.emoji.isNotEmpty)
+              .toList(growable: false)
+        : const [],
   );
 }
 

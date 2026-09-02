@@ -427,6 +427,17 @@ class BotStore extends ChangeNotifier {
     );
   }
 
+  void setForeground(bool value) {
+    if (_disposed) return;
+    if (!value) {
+      _rosterTimer?.cancel();
+      _rosterTimer = null;
+      return;
+    }
+    startRosterRefresh();
+    unawaited(refresh());
+  }
+
   String _runtimeSignature() => connection.registry.runtimes
       .map((runtime) => '${runtime.id.value}:${identityHashCode(runtime.api)}')
       .toList()

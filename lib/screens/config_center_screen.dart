@@ -13,7 +13,6 @@ import 'package:provider/provider.dart';
 
 import '../core/api_client.dart';
 import '../core/connection_reload_mixin.dart';
-import '../core/models.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../l10n/l10n.dart';
@@ -21,43 +20,13 @@ import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/profile_scope_selector.dart';
+import 'mcp_screen.dart';
+import 'plugins_screen.dart';
+import 'skills_screen.dart';
 
 // ============================================================================
 // Data models
 // ============================================================================
-
-class McpServer {
-  final String id;
-  final String name;
-  final String url;
-  final String transport; // stdio | sse | streamable
-  final Map<String, dynamic> config;
-  final bool enabled;
-
-  const McpServer({
-    required this.id,
-    required this.name,
-    required this.url,
-    this.transport = 'stdio',
-    this.config = const {},
-    this.enabled = true,
-  });
-
-  McpServer copyWith({
-    String? name,
-    String? url,
-    String? transport,
-    Map<String, dynamic>? config,
-    bool? enabled,
-  }) => McpServer(
-    id: id,
-    name: name ?? this.name,
-    url: url ?? this.url,
-    transport: transport ?? this.transport,
-    config: config ?? this.config,
-    enabled: enabled ?? this.enabled,
-  );
-}
 
 class KnowledgeSource {
   final String id;
@@ -83,42 +52,6 @@ class KnowledgeSource {
   };
 }
 
-class SkillEntry {
-  final String id;
-  final String name;
-  final String description;
-  final int toolCount;
-  final bool enabled;
-  final Map<String, dynamic>? config;
-
-  const SkillEntry({
-    required this.id,
-    required this.name,
-    required this.description,
-    this.toolCount = 0,
-    this.enabled = true,
-    this.config,
-  });
-}
-
-class PluginEntry {
-  final String id;
-  final String name;
-  final String version;
-  final String description;
-  final bool enabled;
-  final bool installed;
-
-  const PluginEntry({
-    required this.id,
-    required this.name,
-    this.version = '0.0.0',
-    this.description = '',
-    this.enabled = true,
-    this.installed = false,
-  });
-}
-
 // ============================================================================
 // Screen
 // ============================================================================
@@ -138,10 +71,7 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
         ConnectionReloadMixin<ConfigCenterScreen> {
   late final TabController _tabController;
 
-  final List<McpServer> _mcpServers = [];
   final List<KnowledgeSource> _knowledgeSources = [];
-  final List<SkillEntry> _skills = [];
-  final List<PluginEntry> _plugins = [];
   bool _loading = true;
   bool _mutating = false;
   String? _error;
@@ -199,19 +129,7 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
     });
     final profile = _profile;
     try {
-      final results = await Future.wait([
-        api.mcpServers(profile: profile),
-        api.skills(profile: profile),
-        api.toolsets(profile: profile),
-        api.plugins(profile: profile),
-        api.knowledgeGraph(),
-      ]);
-
-      final mcpServers = results[0] as List<Map<String, dynamic>>;
-      final skills = results[1] as List<SkillInfo>;
-      final toolsets = results[2] as List<ToolsetInfo>;
-      final plugins = results[3] as List<Map<String, dynamic>>;
-      final knowledgeGraph = results[4] as Map<String, dynamic>;
+      final knowledgeGraph = await api.knowledgeGraph();
 
       if (!mounted ||
           generation != _loadGeneration ||
@@ -221,59 +139,9 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
       }
 
       setState(() {
-        _mcpServers
-          ..clear()
-          ..addAll(
-            mcpServers.map(
-              (m) => McpServer(
-                id: (m['id'] ?? m['name'] ?? '').toString(),
-                name: (m['name'] ?? '').toString(),
-                url: (m['url'] ?? m['path'] ?? '').toString(),
-                transport: (m['transport'] ?? 'stdio').toString(),
-                config:
-                    (m['config'] as Map?)?.cast<String, dynamic>() ?? const {},
-                enabled: m['enabled'] == true,
-              ),
-            ),
-          );
-
         _knowledgeSources
           ..clear()
           ..addAll(_parseKnowledgeGraph(knowledgeGraph));
-
-        _skills
-          ..clear()
-          ..addAll(
-            skills.asMap().entries.map((e) {
-              final s = e.value;
-              final toolCount = toolsets
-                  .where((t) => t.name == s.name || t.name == s.category)
-                  .fold<int>(0, (sum, t) => sum + t.toolCount);
-              return SkillEntry(
-                id: s.name,
-                name: s.name,
-                description: s.description ?? '',
-                toolCount: toolCount,
-                enabled: s.enabled,
-              );
-            }),
-          );
-
-        _plugins
-          ..clear()
-          ..addAll(
-            plugins.map(
-              (p) => PluginEntry(
-                id: (p['id'] ?? p['name'] ?? '').toString(),
-                name: (p['name'] ?? '').toString(),
-                version: (p['version'] ?? '0.0.0').toString(),
-                description: (p['description'] ?? '').toString(),
-                enabled: p['enabled'] == true,
-                installed: p['installed'] == true,
-              ),
-            ),
-          );
-
         _loading = false;
         _hasLoadedData = true;
       });
@@ -397,8 +265,58 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
     );
   }
 
+  Widget _managementLauncher({
+    required IconData icon,
+    required String title,
+    required String description,
+    required Widget page,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(HermesSpacing.xl),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(HermesSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 48, color: HermesPalette.of(context).accent),
+                  const SizedBox(height: HermesSpacing.md),
+                  Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: HermesSpacing.sm),
+                  Text(
+                    description,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: HermesSpacing.lg),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute(builder: (_) => page)),
+                    icon: const Icon(Icons.open_in_new),
+                    label: Text(context.l10n.commonOpen),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ------------------------------------------------------------------ MCP
   Widget _buildMcpTab() {
+    return _managementLauncher(
+      icon: Icons.hub_outlined,
+      title: context.l10n.featureMcp,
+      description: context.l10n.featureMcpDesc,
+      page: const McpScreen(),
+    );
+    /* Legacy inline editor retained temporarily for migration safety.
     return Column(
       children: [
         Padding(
@@ -435,9 +353,10 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
                 ),
         ),
       ],
-    );
+    ); */
   }
 
+  /* Legacy MCP editor implementation. The canonical editor is McpScreen.
   Widget _mcpTile(BuildContext context, McpServer s) {
     final color = s.enabled ? HermesSemantic.green : HermesSemantic.gray;
     return Card(
@@ -663,6 +582,8 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
     if (transport == 'stdio') 'command': endpoint else 'url': endpoint,
   };
 
+  */
+
   Future<void> _runMutation(
     Future<void> Function(ApiClient api) action, {
     ApiClient? expectedApi,
@@ -804,6 +725,13 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
 
   // ------------------------------------------------------------------ Skills
   Widget _buildSkillsTab() {
+    return _managementLauncher(
+      icon: Icons.auto_awesome_outlined,
+      title: context.l10n.featureSkills,
+      description: context.l10n.featureSkillsDesc,
+      page: const SkillsScreen(),
+    );
+    /* Legacy inline editor retained temporarily for migration safety.
     if (_skills.isEmpty) {
       return HermesEmptyState(
         icon: Icons.auto_awesome_outlined,
@@ -814,9 +742,10 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
     return ListView.builder(
       itemCount: _skills.length,
       itemBuilder: (ctx, i) => _skillTile(context, _skills[i]),
-    );
+    ); */
   }
 
+  /* Legacy Skills editor implementation. The canonical editor is SkillsScreen.
   Widget _skillTile(BuildContext context, SkillEntry s) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -921,8 +850,17 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
     }
   }
 
+  */
+
   // ------------------------------------------------------------------ Plugins
   Widget _buildPluginsTab() {
+    return _managementLauncher(
+      icon: Icons.extension_outlined,
+      title: context.l10n.featurePlugins,
+      description: context.l10n.featurePluginsDesc,
+      page: const PluginsScreen(),
+    );
+    /* Legacy inline editor retained temporarily for migration safety.
     return Column(
       children: [
         Padding(
@@ -959,9 +897,10 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
                 ),
         ),
       ],
-    );
+    ); */
   }
 
+  /* Legacy Plugins editor implementation. The canonical editor is PluginsScreen.
   Widget _pluginTile(BuildContext context, PluginEntry p) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1070,4 +1009,5 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
       await connection.installPlugin(url, profile: profile);
     }, expectedApi: api);
   }
+  */
 }

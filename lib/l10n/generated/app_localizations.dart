@@ -11009,6 +11009,12 @@ abstract class AppLocalizations {
   /// **'Operation failed: {error}'**
   String mcpOperationFailed(Object error);
 
+  /// No description provided for @mcpPersistenceFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not persist the MCP configuration change.'**
+  String get mcpPersistenceFailed;
+
   /// No description provided for @mcpTestSuccess.
   ///
   /// In en, this message translates to:

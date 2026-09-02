@@ -237,7 +237,7 @@ void main() {
   );
 
   group('ChatStore interim (F7)', () {
-    test('already_streamed interim is dropped', () async {
+    test('already_streamed interim seals the visible segment', () async {
       final events = StreamController<GatewayEvent>();
       final chat = ChatStore()..attachEvents(events.stream);
       events.add(
@@ -247,12 +247,14 @@ void main() {
         ),
       );
       await pumpEventQueue();
-      expect(chat.messages.length, 0);
+      expect(chat.messages, hasLength(1));
+      expect(chat.messages.single.fullText, 'dup');
+      expect(chat.messages.single.interim, isTrue);
       events.add(
         GatewayEvent(type: 'message.interim', payload: {'text': 'new'}),
       );
       await pumpEventQueue();
-      expect(chat.messages.length, 1);
+      expect(chat.messages.length, 2);
       events.close();
     });
   });

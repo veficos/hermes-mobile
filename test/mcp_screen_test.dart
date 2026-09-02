@@ -12,6 +12,8 @@ import 'package:provider/provider.dart';
 class _McpContractApi extends ApiClient {
   _McpContractApi() : super(baseUrl: 'http://contract.invalid', apiKey: 'test');
 
+  int testCalls = 0;
+
   @override
   Future<List<Map<String, dynamic>>> mcpServers({String? profile}) async => [
     {
@@ -27,14 +29,17 @@ class _McpContractApi extends ApiClient {
   ];
 
   @override
-  Future<Map<String, dynamic>> mcpTest(String name, {String? profile}) async => {
-    'ok': true,
-    'tools': [
-      {'name': 'read_file', 'description': 'Read a file'},
-    ],
-    'prompts': 0,
-    'resources': 0,
-  };
+  Future<Map<String, dynamic>> mcpTest(String name, {String? profile}) async {
+    testCalls++;
+    return {
+      'ok': true,
+      'tools': [
+        {'name': 'read_file', 'description': 'Read a file'},
+      ],
+      'prompts': 0,
+      'resources': 0,
+    };
+  }
 
   @override
   Future<List<Map<String, dynamic>>> mcpCatalog({String? profile}) async => [
@@ -56,7 +61,8 @@ void main() {
   testWidgets(
     'MCP screen renders canonical server state and credential install form',
     (tester) async {
-      final connection = ConnectionStore()..api = _McpContractApi();
+      final api = _McpContractApi();
+      final connection = ConnectionStore()..api = api;
       final sessions = SessionStore(
         connection: connection,
         chat: ChatStore(),
@@ -80,11 +86,17 @@ void main() {
       expect(find.text('filesystem'), findsOneWidget);
       expect(find.text('github'), findsOneWidget);
 
-      // Testing the connection discovers its tools and renders them as
-      // toggleable filter chips (mirrors desktop's per-tool include/exclude
-      // gating, ported in lib/core/mcp_tool_filter.dart).
+      // Enabled servers are probed automatically on load, so connection
+      // health and discovered tools represent runtime truth rather than the
+      // configured `enabled` flag alone.
+      expect(api.testCalls, 1);
+      expect(find.textContaining('stdio · 1 个工具'), findsOneWidget);
+      expect(find.text('read_file'), findsOneWidget);
+
+      // The explicit test action remains available as a forced re-probe.
       await tester.tap(find.byTooltip('测试连接'));
       await tester.pumpAndSettle();
+      expect(api.testCalls, 2);
       expect(find.textContaining('stdio · 1 个工具'), findsOneWidget);
       expect(find.text('read_file'), findsOneWidget);
 

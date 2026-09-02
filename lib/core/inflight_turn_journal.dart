@@ -340,6 +340,11 @@ ChatMessage _overlayProjectionRow(
     pending: projection.pending,
     interim: journalRow.interim,
     isError: journalRow.isError || projection.isError,
+    errorSurface: journalRow.errorSurface ?? projection.errorSurface,
+    durationS: journalRow.durationS ?? projection.durationS,
+    attachmentRefs: journalRow.attachmentRefs.isNotEmpty
+        ? journalRow.attachmentRefs
+        : projection.attachmentRefs,
     rowId: journalRow.rowId,
     historyOrdinal: journalRow.historyOrdinal,
     timestamp: journalRow.timestamp,
@@ -347,6 +352,9 @@ ChatMessage _overlayProjectionRow(
     model: journalRow.model,
     provider: journalRow.provider,
     usage: journalRow.usage,
+    reactions: journalRow.reactions.isNotEmpty
+        ? journalRow.reactions
+        : projection.reactions,
   );
   if (projection.fullText.length <= journalRow.fullText.length) {
     return merged;
@@ -381,6 +389,9 @@ ChatMessage _overlayProjectionRow(
     pending: merged.pending,
     interim: merged.interim,
     isError: merged.isError,
+    errorSurface: merged.errorSurface,
+    durationS: merged.durationS,
+    attachmentRefs: merged.attachmentRefs,
     rowId: merged.rowId,
     historyOrdinal: merged.historyOrdinal,
     timestamp: merged.timestamp,
@@ -388,6 +399,7 @@ ChatMessage _overlayProjectionRow(
     model: merged.model,
     provider: merged.provider,
     usage: merged.usage,
+    reactions: merged.reactions,
   );
 }
 
@@ -401,7 +413,7 @@ bool _assistantHasContent(ChatMessage message) {
 }
 
 bool _userTextMatches(ChatMessage a, ChatMessage b) {
-  return a.fullText.trim() == b.fullText.trim() && a.fullText.trim().isNotEmpty;
+  return a.promptText == b.promptText && a.promptText.isNotEmpty;
 }
 
 bool _tailAlreadyCommitted(
@@ -485,6 +497,9 @@ List<ChatMessage> _boundMessages(List<ChatMessage> tail) {
         pending: message.pending,
         interim: message.interim,
         isError: message.isError,
+        errorSurface: message.errorSurface,
+        durationS: message.durationS,
+        attachmentRefs: message.attachmentRefs,
         rowId: message.rowId,
         historyOrdinal: message.historyOrdinal,
         timestamp: message.timestamp,
@@ -492,6 +507,7 @@ List<ChatMessage> _boundMessages(List<ChatMessage> tail) {
         model: message.model,
         provider: message.provider,
         usage: message.usage,
+        reactions: message.reactions,
       ),
     );
   }

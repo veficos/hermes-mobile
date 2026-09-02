@@ -29,6 +29,7 @@ class ProfileScopeStore extends ChangeNotifier {
   int _updateGeneration = 0;
   Timer? _refreshTimer;
   bool _autoRefreshEnabled = false;
+  bool _foreground = true;
   FutureOr<void> Function(ProfilesPayload payload, ApiClient api)?
   _backendSnapshotSink;
 
@@ -66,12 +67,19 @@ class ProfileScopeStore extends ChangeNotifier {
 
   void _restartRefreshTimer() {
     _refreshTimer?.cancel();
-    _refreshTimer = !_autoRefreshEnabled || _api == null
+    _refreshTimer = !_autoRefreshEnabled || _api == null || !_foreground
         ? null
         : Timer.periodic(
             const Duration(seconds: 30),
             (_) => unawaited(refresh()),
           );
+  }
+
+  void setForeground(bool value) {
+    if (_foreground == value) return;
+    _foreground = value;
+    _restartRefreshTimer();
+    if (value && _api != null) unawaited(refresh());
   }
 
   void setOverride(String? profile) {

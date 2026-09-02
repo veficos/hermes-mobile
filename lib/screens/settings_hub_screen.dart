@@ -13,6 +13,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
+import 'about_screen.dart';
 import 'billing_screen.dart';
 import 'config_center_screen.dart';
 import 'schema_config_screen.dart';
@@ -148,8 +149,8 @@ class _SettingsHubScreenState extends State<SettingsHubScreen> {
             icon: Icons.info_outline,
             title: l10n.aboutTitle,
             subtitle: l10n.featureAboutDesc,
-            compactPage: const _AboutPage(),
-            widePage: const _AboutEmbeddedPage(),
+            compactPage: const AboutScreen(),
+            widePage: const AboutScreen(embedded: true),
           ),
         ],
       ),
@@ -672,74 +673,6 @@ class _ThemePreviewCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AboutEmbeddedPage extends StatelessWidget {
-  const _AboutEmbeddedPage();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680),
-        child: _AboutContent(),
-      ),
-    );
-  }
-}
-
-class _AboutContent extends StatelessWidget {
-  const _AboutContent();
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return ListView(
-      padding: const EdgeInsets.all(HermesSpacing.lg),
-      children: [
-        Icon(
-          Icons.psychology_alt_outlined,
-          size: 56,
-          color: HermesPalette.of(context).accent,
-        ),
-        const SizedBox(height: HermesSpacing.md),
-        Text(
-          'Hermes Mobile',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: HermesSpacing.xl),
-        ListTile(
-          leading: const Icon(Icons.info_outline),
-          title: Text(l10n.aboutProductInfo),
-          subtitle: Text(l10n.aboutProductDescription),
-        ),
-        const Divider(height: 1, indent: 56),
-        ListTile(
-          leading: const Icon(Icons.description_outlined),
-          title: Text(l10n.aboutLicenses),
-          subtitle: Text(l10n.aboutLicensesDescription),
-          trailing: const Icon(Icons.chevron_right, size: 20),
-          onTap: () => showLicensePage(
-            context: context,
-            applicationName: 'Hermes Mobile',
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AboutPage extends StatelessWidget {
-  const _AboutPage();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.aboutTitle)),
-      body: const _AboutEmbeddedPage(),
     );
   }
 }

@@ -38,4 +38,44 @@ void main() {
       '2 background agent tasks completed',
     ]);
   });
+
+  test('display rows use system role even when persisted role differs', () {
+    final messages = ChatStore().fromSessionMessages(const [
+      {
+        'id': 5,
+        'role': 'assistant',
+        'display_kind': 'personality_switch',
+        'content': 'raw',
+      },
+    ]);
+
+    expect(messages.single.role, 'system');
+    expect(messages.single.fullText, 'Personality changed');
+  });
+
+  test('adjacent assistant rows involving tools merge into one turn', () {
+    final messages = ChatStore().fromSessionMessages(const [
+      {
+        'id': 6,
+        'role': 'assistant',
+        'content': 'checking',
+        'tool_calls': [
+          {
+            'id': 't1',
+            'name': 'terminal',
+            'args': {'command': 'pwd'},
+          },
+        ],
+      },
+      {'id': 7, 'role': 'tool', 'tool_call_id': 't1', 'content': '/tmp'},
+      {'id': 8, 'role': 'assistant', 'content': 'done'},
+    ]);
+
+    expect(messages, hasLength(1));
+    expect(messages.single.fullText, 'checkingdone');
+    expect(
+      messages.single.parts.where((part) => part.kind == 'tool'),
+      hasLength(1),
+    );
+  });
 }

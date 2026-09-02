@@ -1969,6 +1969,7 @@
   "botRoutineCreate": "إنشاء Cronjob",
   "mcpTitle": "خوادم MCP",
   "mcpOperationFailed": "فشلت العملية: {error}",
+  "mcpPersistenceFailed": "لم يحفظ الخادم تغيير إعداد MCP بشكل دائم.",
   "mcpTestSuccess": "تم الاتصال: {tools} أدوات، {prompts} موجّهات، {resources} موارد",
   "mcpTestConnectionFailed": "فشل الاتصال: {error}",
   "mcpTestFailed": "فشل الاختبار: {error}",

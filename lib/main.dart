@@ -73,7 +73,15 @@ class HermesMobileApp extends StatelessWidget {
           update: (ctx, connection, store) =>
               store ?? NotificationStore(connection: connection),
         ),
-        ChangeNotifierProvider(create: (_) => ComposerStatusStore()),
+        ChangeNotifierProxyProvider<ConnectionStore, ComposerStatusStore>(
+          create: (ctx) =>
+              ComposerStatusStore()
+                ..attachRoutedEvents(ctx.read<ConnectionStore>().routedEvents),
+          update: (_, connection, store) =>
+              store ??
+              (ComposerStatusStore()
+                ..attachRoutedEvents(connection.routedEvents)),
+        ),
         ChangeNotifierProvider(create: (_) => PaneWorkspaceStore()..load()),
         ChangeNotifierProxyProvider<ConnectionStore, BillingStore>(
           create: (ctx) => BillingStore()

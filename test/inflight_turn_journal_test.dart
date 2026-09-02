@@ -101,4 +101,30 @@ void main() {
     final snapshot = await readInflightSnapshot(sid);
     expect(snapshot, isNull);
   });
+
+  test('chat codec preserves desktop parity metadata', () {
+    final source = ChatMessage(
+      id: 'meta',
+      role: 'assistant',
+      parts: [ChatPart.text('failed')],
+      isError: true,
+      rowId: 9,
+      durationS: 3.25,
+      attachmentRefs: const ['@image:/tmp/a.png'],
+      errorSurface: const ChatErrorSurface(
+        layer: 'provider',
+        code: 'overloaded',
+        retryable: true,
+        provider: 'openai',
+        model: 'gpt-5',
+      ),
+      reactions: const [MessageReaction(emoji: '👍', author: 'agent', at: 1)],
+    );
+
+    final decoded = chatMessageFromJson(chatMessageToJson(source));
+    expect(decoded.durationS, 3.25);
+    expect(decoded.attachmentRefs, source.attachmentRefs);
+    expect(decoded.errorSurface?.code, 'overloaded');
+    expect(decoded.reactions.single.author, 'agent');
+  });
 }

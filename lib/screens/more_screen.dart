@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/diagnostics.dart';
-import '../core/external_links.dart';
 import '../core/stores/command_palette_store.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/pane_workspace_store.dart';
 import '../core/stores/plugin_contribution_store.dart';
 import '../core/stores/session_store.dart';
-import '../core/stores/update_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
@@ -17,20 +14,16 @@ import '../widgets/pet_overlay.dart';
 import '../widgets/plugin_contribution_surface.dart';
 import 'agent_screen.dart';
 import 'artifacts_screen.dart';
-import 'billing_screen.dart';
+import 'about_screen.dart';
 import 'command_center_screen.dart';
-import 'connect_screen.dart';
-import 'credentials_screen.dart';
 import 'cron_screen.dart';
 import 'files_screen.dart';
 import 'git_screen.dart';
 import 'insights_screen.dart';
 import 'mcp_screen.dart';
 import 'memory_screen.dart';
-import 'messaging_screen.dart';
 import 'notification_screen.dart';
 import 'plugins_screen.dart';
-import 'profiles_screen.dart';
 import 'project_screen.dart';
 import 'settings_hub_screen.dart';
 import 'pane_workspace_screen.dart';
@@ -39,7 +32,6 @@ import 'starmap_screen.dart';
 import 'subagents_screen.dart';
 import 'terminal_screen.dart';
 import 'tools_screen.dart';
-import 'webhooks_screen.dart';
 
 /// Low-frequency feature directory. Its grouping, compact identity card and
 /// semantic icon colors mirror `docs/mobile-ui-prototype.html`.
@@ -338,42 +330,6 @@ class _MoreScreenState extends State<MoreScreen> {
           context.l10n.featureToolsDesc,
           () => _push(const ToolsScreen()),
         ),
-        _MenuEntry(
-          Icons.person_outline,
-          context.l10n.featureProfiles,
-          context.l10n.featureProfilesDesc,
-          () => _push(const ProfilesScreen()),
-        ),
-      ],
-    ),
-    (
-      context.l10n.groupIntegrations,
-      tones[3],
-      [
-        _MenuEntry(
-          Icons.chat_outlined,
-          context.l10n.featureMessaging,
-          context.l10n.featureMessagingDesc,
-          () => _push(const MessagingScreen()),
-        ),
-        _MenuEntry(
-          Icons.webhook_outlined,
-          context.l10n.featureWebhooks,
-          context.l10n.featureWebhooksDesc,
-          () => _push(const WebhooksScreen()),
-        ),
-        _MenuEntry(
-          Icons.vpn_key_outlined,
-          context.l10n.featureCredentials,
-          context.l10n.featureCredentialsDesc,
-          () => _push(const CredentialsScreen()),
-        ),
-        _MenuEntry(
-          Icons.account_balance_wallet_outlined,
-          context.l10n.featureBilling,
-          context.l10n.featureBillingDesc,
-          () => _push(const BillingScreen()),
-        ),
       ],
     ),
     (
@@ -393,14 +349,6 @@ class _MoreScreenState extends State<MoreScreen> {
           () => _push(const SettingsHubScreen()),
         ),
         _MenuEntry(
-          Icons.cloud_outlined,
-          context.l10n.featureConnection,
-          connection.isConfigured
-              ? '${connection.isConnected ? context.l10n.commonConnected : context.l10n.commonDisconnected} · ${connection.settings.serverUrl}'
-              : context.l10n.featureConnectionDesc,
-          () => _push(const ConnectScreen()),
-        ),
-        _MenuEntry(
           Icons.monitor_heart_outlined,
           context.l10n.featureCommandCenter,
           context.l10n.featureCommandCenterDesc,
@@ -416,7 +364,7 @@ class _MoreScreenState extends State<MoreScreen> {
           Icons.info_outline,
           context.l10n.featureAbout,
           context.l10n.featureAboutDesc,
-          () => _push(const _AboutScreen()),
+          () => _push(const AboutScreen()),
         ),
       ],
     ),
@@ -470,195 +418,6 @@ class _PluginPaneLaunchers extends StatelessWidget {
                 }
               },
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AboutScreen extends StatelessWidget {
-  const _AboutScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    final updates = Provider.of<UpdateStore?>(context);
-    final l10n = context.l10n;
-    final version = updates?.currentVersion ?? '1.0.0';
-    final build = updates?.currentBuild ?? '1';
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.aboutTitle)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 32),
-        children: [
-          HermesMobileCard(
-            child: Column(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: HermesPalette.of(context).accent,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    'H',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Hermes Mobile',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  l10n.updateVersionBuild(version, build),
-                  style: TextStyle(
-                    color: HermesPalette.of(context).text3,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          HermesMobileSectionLabel(title: l10n.updateSectionTitle),
-          HermesMobileGroup(
-            children: [
-              if (updates?.requiresUpdate == true)
-                ListTile(
-                  leading: const Icon(
-                    Icons.warning_amber_outlined,
-                    color: HermesSemantic.red,
-                  ),
-                  title: Text(l10n.updateUnsupportedTitle),
-                  subtitle: Text(
-                    l10n.updateMinimumVersion(
-                      updates!.manifest!.minimumSupportedVersion,
-                    ),
-                  ),
-                )
-              else if (updates?.updateAvailable == true)
-                ListTile(
-                  leading: const Icon(
-                    Icons.system_update_outlined,
-                    color: HermesSemantic.green,
-                  ),
-                  title: Text(
-                    l10n.updateAvailableTitle(updates!.manifest!.latestVersion),
-                  ),
-                  subtitle: Text(
-                    updates.manifest?.message ?? l10n.updateNewVersionPublished,
-                  ),
-                )
-              else
-                ListTile(
-                  leading: const Icon(Icons.verified_outlined),
-                  title: Text(l10n.updateAppVersion),
-                  subtitle: Text(l10n.updateVersionBuild(version, build)),
-                ),
-              ListTile(
-                leading: updates?.checking == true
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh),
-                title: Text(l10n.updateCheck),
-                subtitle: updates?.error == null
-                    ? Text(l10n.updateCheckDescription)
-                    : Text(l10n.updateCheckUnavailable(updates!.error!)),
-                enabled: updates != null && !updates.checking,
-                onTap: updates == null || updates.checking
-                    ? null
-                    : () async {
-                        final ok = await updates.check(force: true);
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              ok
-                                  ? updates.updateAvailable
-                                        ? l10n.updateFound(
-                                            updates.manifest!.latestVersion,
-                                          )
-                                        : l10n.updateCurrent
-                                  : l10n.updateCheckFailed,
-                            ),
-                          ),
-                        );
-                      },
-              ),
-              if (updates?.updateAvailable == true ||
-                  updates?.requiresUpdate == true)
-                ListTile(
-                  leading: const Icon(Icons.open_in_new),
-                  title: Text(l10n.updateGoToUpdate),
-                  trailing: const Icon(Icons.chevron_right, size: 20),
-                  onTap: () =>
-                      launchExternalOrNotify(context, updates!.updateUri),
-                ),
-              ListTile(
-                leading: const Icon(Icons.article_outlined),
-                title: Text(l10n.updateReleaseNotes),
-                trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: () => launchExternalOrNotify(
-                  context,
-                  updates?.releaseNotesUri ??
-                      Uri.parse(
-                        'https://github.com/NousResearch/hermes-agent/releases',
-                      ),
-                ),
-              ),
-            ],
-          ),
-          HermesMobileSectionLabel(title: l10n.helpAndFeedbackTitle),
-          HermesMobileGroup(
-            children: [
-              HermesMobileRow(
-                icon: Icons.bug_report_outlined,
-                title: l10n.sendDiagnosticsTitle,
-                subtitle: l10n.sendDiagnosticsSubtitle,
-                onTap: () => showSendDiagnosticsDialog(context),
-              ),
-              HermesMobileRow(
-                icon: Icons.forum_outlined,
-                title: l10n.reportIssueTitle,
-                onTap: () => launchExternalOrNotify(
-                  context,
-                  Uri.parse(
-                    'https://github.com/NousResearch/hermes-agent/issues',
-                  ),
-                ),
-              ),
-              HermesMobileRow(
-                icon: Icons.chat_bubble_outline,
-                title: l10n.discordCommunityTitle,
-                onTap: () => launchExternalOrNotify(
-                  context,
-                  Uri.parse('https://discord.gg/NousResearch'),
-                ),
-              ),
-            ],
-          ),
-          HermesMobileSectionLabel(title: l10n.legalTitle),
-          HermesMobileGroup(
-            children: [
-              HermesMobileRow(
-                icon: Icons.code,
-                title: l10n.aboutLicenses,
-                onTap: () => showLicensePage(
-                  context: context,
-                  applicationName: 'Hermes Mobile',
-                  applicationVersion: version,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );

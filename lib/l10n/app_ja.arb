@@ -1969,6 +1969,7 @@
   "botRoutineCreate": "Cronjob を作成",
   "mcpTitle": "MCP サーバー",
   "mcpOperationFailed": "操作に失敗しました：{error}",
+  "mcpPersistenceFailed": "サーバーが MCP 設定の変更を永続化しませんでした。",
   "mcpTestSuccess": "接続成功：{tools} ツール、{prompts} プロンプト、{resources} リソース",
   "mcpTestConnectionFailed": "接続失敗：{error}",
   "mcpTestFailed": "テストに失敗しました：{error}",

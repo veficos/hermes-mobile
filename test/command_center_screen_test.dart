@@ -14,7 +14,8 @@ import 'package:provider/provider.dart';
 /// (doctor / security audit / backup / debug share). This covers the ported
 /// 3-tab structure end to end against a fake ApiClient contract double.
 class _CommandCenterApi extends ApiClient {
-  _CommandCenterApi() : super(baseUrl: 'http://contract.invalid', apiKey: 'test');
+  _CommandCenterApi()
+    : super(baseUrl: 'http://contract.invalid', apiKey: 'test');
 
   int? lastUsageDays;
   final List<String> opsCalls = [];
@@ -38,7 +39,9 @@ class _CommandCenterApi extends ApiClient {
   }) async => 'hello from the log tail';
 
   @override
-  Future<Map<String, dynamic>> restartBackend() async => {'status': 'restarted'};
+  Future<Map<String, dynamic>> restartBackend() async => {
+    'status': 'restarted',
+  };
 
   @override
   Future<AnalyticsUsage> analyticsUsageTyped({int days = 30}) async {
@@ -49,9 +52,15 @@ class _CommandCenterApi extends ApiClient {
         AnalyticsDailyEntry(day: '08-28', inputTokens: 200, outputTokens: 80),
       ],
       byModel: const [
-        AnalyticsModelEntry(model: 'nous-hermes-4', inputTokens: 250, outputTokens: 100),
+        AnalyticsModelEntry(
+          model: 'nous-hermes-4',
+          inputTokens: 250,
+          outputTokens: 100,
+        ),
       ],
-      topSkills: const [AnalyticsSkillEntry(skill: 'web-search', totalCount: 7)],
+      topSkills: const [
+        AnalyticsSkillEntry(skill: 'web-search', totalCount: 7),
+      ],
       totals: const AnalyticsTotals(
         totalSessions: 12,
         totalApiCalls: 340,
@@ -92,10 +101,19 @@ class _CommandCenterApi extends ApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> actionStatus(String name, {int lines = 200}) async {
+  Future<Map<String, dynamic>> actionStatus(
+    String name, {
+    int lines = 200,
+    String? profile,
+  }) async {
     final seq = actionStatusSequence[name];
     if (seq == null || seq.isEmpty) {
-      return {'name': name, 'running': false, 'exit_code': 0, 'lines': <String>[]};
+      return {
+        'name': name,
+        'running': false,
+        'exit_code': 0,
+        'lines': <String>[],
+      };
     }
     final i = (_actionStatusCallCount[name] ?? 0).clamp(0, seq.length - 1);
     _actionStatusCallCount[name] = i + 1;
@@ -196,7 +214,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 2500));
   });
 
-  testWidgets('维护 tab debug share shows the returned share URL', (tester) async {
+  testWidgets('维护 tab debug share shows the returned share URL', (
+    tester,
+  ) async {
     final api = await _pump(tester);
     await tester.tap(find.widgetWithText(Tab, '维护'));
     await tester.pumpAndSettle();

@@ -314,6 +314,7 @@ void main() {
       await client.computerUseStatus(profile: 'work');
       await client.grantComputerUsePermissions(profile: 'work');
       await client.mcpTest('github');
+      await client.mcpCancelAuthFlow('flow-1', profile: 'work');
 
       expect(requests[0].url.path, '/api/model/set');
       expect(jsonDecode(requests[0].body), {
@@ -330,6 +331,9 @@ void main() {
       expect(requests[4].url.queryParameters['profile'], 'work');
       expect(requests[5].method, 'POST');
       expect(requests[5].url.path, '/api/mcp/servers/github/test');
+      expect(requests[6].method, 'DELETE');
+      expect(requests[6].url.path, '/api/mcp/oauth/flows/flow-1');
+      expect(requests[6].url.queryParameters['profile'], 'work');
     },
   );
 
@@ -496,10 +500,20 @@ void main() {
     addTearDown(client.close);
 
     final platforms = await client.messagingPlatforms();
-    final config = await client.messagingConfig('telegram');
-    await client.messagingSetEnv('telegram', 'TELEGRAM_BOT_TOKEN', 'secret');
-    await client.messagingSetEnv('telegram', 'TELEGRAM_PROXY', '');
-    final pending = await client.messagingPending('telegram');
+    final config = await client.messagingConfig('telegram', profile: 'work');
+    await client.messagingSetEnv(
+      'telegram',
+      'TELEGRAM_BOT_TOKEN',
+      'secret',
+      profile: 'work',
+    );
+    await client.messagingSetEnv(
+      'telegram',
+      'TELEGRAM_PROXY',
+      '',
+      profile: 'work',
+    );
+    final pending = await client.messagingPending('telegram', profile: 'work');
     await client.messagingApprovePairing('telegram', 'request-1');
 
     expect(platforms.single.name, 'telegram');
@@ -507,6 +521,9 @@ void main() {
     expect(pending.single.id, 'request-1');
     expect(requests[2].method, 'PUT');
     expect(requests[2].url.path, '/api/messaging/platforms/telegram');
+    for (final request in requests.skip(1).take(4)) {
+      expect(request.url.queryParameters['profile'], 'work');
+    }
     expect(jsonDecode(requests[2].body), {
       'env': {'TELEGRAM_BOT_TOKEN': 'secret'},
     });

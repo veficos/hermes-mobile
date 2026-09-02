@@ -361,8 +361,16 @@ class _MessageBubbleBody {
           : null;
       // C1: pull `@image:` / `@url:` / `@file:` refs out of the body into
       // chips / thumbnails below the bubble.
-      final refs = extractMessageReferences(message.fullText);
-      final bodyText = refs.isEmpty
+      final inlineRefs = extractMessageReferences(message.fullText);
+      final metadataRefs = extractMessageReferences(
+        message.attachmentRefs.join('\n'),
+      );
+      final seenRefs = <String>{};
+      final refs = [
+        for (final ref in [...inlineRefs, ...metadataRefs])
+          if (seenRefs.add('${ref.kind.name}:${ref.value}')) ref,
+      ];
+      final bodyText = inlineRefs.isEmpty
           ? message.fullText
           : stripMessageReferences(message.fullText);
       return Column(
@@ -2970,21 +2978,23 @@ class _UsageMeta {
 
   static String? format(ChatMessage message) {
     final usage = message.usage;
-    if (usage == null || usage.isEmpty) return null;
+    if ((usage == null || usage.isEmpty) && message.durationS == null) {
+      return null;
+    }
 
     final segments = <String>[];
 
-    final input = _numOf(usage, const [
+    final input = _numOf(usage ?? const {}, const [
       'input_tokens',
       'prompt_tokens',
       'tokens_in',
     ]);
-    final output = _numOf(usage, const [
+    final output = _numOf(usage ?? const {}, const [
       'output_tokens',
       'completion_tokens',
       'tokens_out',
     ]);
-    final total = _numOf(usage, const ['total_tokens', 'tokens']);
+    final total = _numOf(usage ?? const {}, const ['total_tokens', 'tokens']);
     if (input != null && output != null) {
       segments.add('${_count(input)}/${_count(output)} tok');
     } else if (total != null) {
@@ -2995,7 +3005,7 @@ class _UsageMeta {
       segments.add('${_count(output)} tok out');
     }
 
-    final tps = _numOf(usage, const [
+    final tps = _numOf(usage ?? const {}, const [
       'tps',
       'tokens_per_second',
       'output_tokens_per_second',
@@ -3004,14 +3014,16 @@ class _UsageMeta {
       segments.add('${tps >= 10 ? tps.round() : tps.toStringAsFixed(1)} tok/s');
     }
 
-    final durationMs = _numOf(usage, const [
+    final durationMs = _numOf(usage ?? const {}, const [
       'duration_ms',
       'elapsed_ms',
       'latency_ms',
     ]);
-    final durationS = durationMs != null
-        ? durationMs / 1000
-        : _numOf(usage, const ['duration_s', 'elapsed_s']);
+    final durationS =
+        message.durationS ??
+        (durationMs != null
+            ? durationMs / 1000
+            : _numOf(usage ?? const {}, const ['duration_s', 'elapsed_s']));
     if (durationS != null && durationS > 0) {
       segments.add(_duration(durationS));
     }
@@ -3027,6 +3039,9 @@ class _UsageMeta {
   /// when the gateway did not report one. Used to render a "start → end"
   /// timestamp range (desktop `TimelineTimestamp` parity).
   static Duration? turnDuration(ChatMessage message) {
+    if (message.durationS != null && message.durationS! > 0) {
+      return Duration(milliseconds: (message.durationS! * 1000).round());
+    }
     final usage = message.usage;
     if (usage == null || usage.isEmpty) return null;
     final ms = _numOf(usage, const ['duration_ms', 'elapsed_ms', 'latency_ms']);

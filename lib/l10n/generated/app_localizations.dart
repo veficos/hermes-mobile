@@ -223,6 +223,18 @@ abstract class AppLocalizations {
   /// **'{name} is paused. Mention this member or send resume to continue.'**
   String botMemberPaused(String name);
 
+  /// No description provided for @botGroupRoundCapReached.
+  ///
+  /// In en, this message translates to:
+  /// **'This round of discussion reached its limit. Send a new message to continue.'**
+  String get botGroupRoundCapReached;
+
+  /// No description provided for @botGroupMessageCapReached.
+  ///
+  /// In en, this message translates to:
+  /// **'This conversation reached its message limit. Send a new message to continue.'**
+  String get botGroupMessageCapReached;
+
   /// No description provided for @botRoutineFieldsRequired.
   ///
   /// In en, this message translates to:
@@ -4270,13 +4282,13 @@ abstract class AppLocalizations {
   /// No description provided for @featureAgent.
   ///
   /// In en, this message translates to:
-  /// **'Agent'**
+  /// **'Bots'**
   String get featureAgent;
 
   /// No description provided for @featureAgentDesc.
   ///
   /// In en, this message translates to:
-  /// **'Runtime and backend status'**
+  /// **'Bots, group chats and runtime status'**
   String get featureAgentDesc;
 
   /// No description provided for @featureArtifacts.
@@ -10427,6 +10439,30 @@ abstract class AppLocalizations {
   /// **'Manage or create Bots'**
   String get agentManageBots;
 
+  /// No description provided for @agentBotRoutinesMenuItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Bot routines'**
+  String get agentBotRoutinesMenuItem;
+
+  /// No description provided for @agentBotsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No bots yet'**
+  String get agentBotsEmptyTitle;
+
+  /// No description provided for @agentBotsEmptyDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A bot is a standalone chat identity tied to a profile. Create a profile from the top-right icon to get started.'**
+  String get agentBotsEmptyDescription;
+
+  /// No description provided for @agentMentionAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone'**
+  String get agentMentionAll;
+
   /// No description provided for @agentRefreshRoster.
   ///
   /// In en, this message translates to:
@@ -10598,13 +10634,13 @@ abstract class AppLocalizations {
   /// No description provided for @botRoutineUpdateFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not update Cronjob: {error}'**
+  /// **'Could not update routine: {error}'**
   String botRoutineUpdateFailed(Object error);
 
   /// No description provided for @botRoutineDeleteQuestion.
   ///
   /// In en, this message translates to:
-  /// **'Delete Cronjob?'**
+  /// **'Delete routine?'**
   String get botRoutineDeleteQuestion;
 
   /// No description provided for @botRoutineDeletePrompt.
@@ -10694,7 +10730,7 @@ abstract class AppLocalizations {
   /// No description provided for @botRoutineTitle.
   ///
   /// In en, this message translates to:
-  /// **'{name} · Cronjobs'**
+  /// **'{name} · Routines'**
   String botRoutineTitle(Object name);
 
   /// No description provided for @commonBytes.
@@ -10706,13 +10742,13 @@ abstract class AppLocalizations {
   /// No description provided for @botRoutineLoading.
   ///
   /// In en, this message translates to:
-  /// **'Loading Bot Cronjobs...'**
+  /// **'Loading routines...'**
   String get botRoutineLoading;
 
   /// No description provided for @botRoutineEmptyTitle.
   ///
   /// In en, this message translates to:
-  /// **'No Cronjobs yet'**
+  /// **'No routines yet'**
   String get botRoutineEmptyTitle;
 
   /// No description provided for @botRoutineEmptyDescription.
@@ -10724,7 +10760,7 @@ abstract class AppLocalizations {
   /// No description provided for @botRoutineNew.
   ///
   /// In en, this message translates to:
-  /// **'New Cronjob'**
+  /// **'New routine'**
   String get botRoutineNew;
 
   /// No description provided for @botRoutineNext.
@@ -10742,7 +10778,7 @@ abstract class AppLocalizations {
   /// No description provided for @botRoutineDelete.
   ///
   /// In en, this message translates to:
-  /// **'Delete Cronjob'**
+  /// **'Delete routine'**
   String get botRoutineDelete;
 
   /// No description provided for @botRoutineScheduleOnce.
@@ -10796,7 +10832,7 @@ abstract class AppLocalizations {
   /// No description provided for @botRoutineCreateTitle.
   ///
   /// In en, this message translates to:
-  /// **'New Cronjob · {name}'**
+  /// **'New routine · {name}'**
   String botRoutineCreateTitle(Object name);
 
   /// No description provided for @botRoutineInstructionLabel.
@@ -10994,7 +11030,7 @@ abstract class AppLocalizations {
   /// No description provided for @botRoutineCreate.
   ///
   /// In en, this message translates to:
-  /// **'Create Cronjob'**
+  /// **'Create routine'**
   String get botRoutineCreate;
 
   /// No description provided for @mcpTitle.

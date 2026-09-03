@@ -175,7 +175,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('还没有 Cronjob'), findsOneWidget);
+    expect(find.text('还没有任务'), findsOneWidget);
   });
 
   testWidgets('file editor and bot routines support Arabic RTL at 320px/2x', (

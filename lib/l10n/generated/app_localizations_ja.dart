@@ -80,6 +80,14 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get botGroupRoundCapReached =>
+      'This round of discussion reached its limit. Send a new message to continue.';
+
+  @override
+  String get botGroupMessageCapReached =>
+      'This conversation reached its message limit. Send a new message to continue.';
+
+  @override
   String get botRoutineFieldsRequired => 'タスク名、指示、スケジュールは必須です';
 
   @override
@@ -5882,6 +5890,19 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get agentManageBots => 'Bot の管理または作成';
+
+  @override
+  String get agentBotRoutinesMenuItem => 'Bot routines';
+
+  @override
+  String get agentBotsEmptyTitle => 'No bots yet';
+
+  @override
+  String get agentBotsEmptyDescription =>
+      'A bot is a standalone chat identity tied to a profile. Create a profile from the top-right icon to get started.';
+
+  @override
+  String get agentMentionAll => 'Everyone';
 
   @override
   String get agentRefreshRoster => 'Bot 名簿を更新';

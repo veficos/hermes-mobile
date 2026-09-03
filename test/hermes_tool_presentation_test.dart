@@ -108,7 +108,7 @@ void main() {
     expect(find.textContaining('/home/user'), findsOneWidget);
   });
 
-  testWidgets('running tool card starts expanded', (tester) async {
+  testWidgets('running tool card also starts collapsed', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -122,6 +122,14 @@ void main() {
         ),
       ),
     );
+
+    // Collapsed even while running: body hidden, one-line summary visible.
+    // The header shows an ellipsis suffix ("terminal…") while running.
+    expect(find.text('命令'), findsNothing);
+    expect(find.text('pwd'), findsOneWidget);
+
+    await tester.tap(find.text('terminal…'));
+    await tester.pump();
 
     expect(find.text('命令'), findsOneWidget);
     expect(find.text('pwd'), findsOneWidget);

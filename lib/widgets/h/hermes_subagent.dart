@@ -21,7 +21,7 @@ class HermesSubagentCard extends StatefulWidget {
 }
 
 class _HermesSubagentCardState extends State<HermesSubagentCard> {
-  bool _expanded = true;
+  bool _expanded = false;
   Map<String, dynamic> _effectiveData = const {};
 
   /// Desktop parity (`mergeDelegateRows`): live state wins wherever it

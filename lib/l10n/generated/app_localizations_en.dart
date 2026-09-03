@@ -81,6 +81,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get botGroupRoundCapReached =>
+      'This round of discussion reached its limit. Send a new message to continue.';
+
+  @override
+  String get botGroupMessageCapReached =>
+      'This conversation reached its message limit. Send a new message to continue.';
+
+  @override
   String get botRoutineFieldsRequired =>
       'Task name, instruction, and schedule are required';
 
@@ -2451,10 +2459,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get featureAboutDesc => 'Version information';
 
   @override
-  String get featureAgent => 'Agent';
+  String get featureAgent => 'Bots';
 
   @override
-  String get featureAgentDesc => 'Runtime and backend status';
+  String get featureAgentDesc => 'Bots, group chats and runtime status';
 
   @override
   String get featureArtifacts => 'Artifacts';
@@ -6072,6 +6080,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentManageBots => 'Manage or create Bots';
 
   @override
+  String get agentBotRoutinesMenuItem => 'Bot routines';
+
+  @override
+  String get agentBotsEmptyTitle => 'No bots yet';
+
+  @override
+  String get agentBotsEmptyDescription =>
+      'A bot is a standalone chat identity tied to a profile. Create a profile from the top-right icon to get started.';
+
+  @override
+  String get agentMentionAll => 'Everyone';
+
+  @override
   String get agentRefreshRoster => 'Refresh Bot roster';
 
   @override
@@ -6168,11 +6189,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String botRoutineUpdateFailed(Object error) {
-    return 'Could not update Cronjob: $error';
+    return 'Could not update routine: $error';
   }
 
   @override
-  String get botRoutineDeleteQuestion => 'Delete Cronjob?';
+  String get botRoutineDeleteQuestion => 'Delete routine?';
 
   @override
   String botRoutineDeletePrompt(Object title) {
@@ -6221,7 +6242,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String botRoutineTitle(Object name) {
-    return '$name · Cronjobs';
+    return '$name · Routines';
   }
 
   @override
@@ -6230,10 +6251,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get botRoutineLoading => 'Loading Bot Cronjobs...';
+  String get botRoutineLoading => 'Loading routines...';
 
   @override
-  String get botRoutineEmptyTitle => 'No Cronjobs yet';
+  String get botRoutineEmptyTitle => 'No routines yet';
 
   @override
   String botRoutineEmptyDescription(Object name) {
@@ -6241,7 +6262,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get botRoutineNew => 'New Cronjob';
+  String get botRoutineNew => 'New routine';
 
   @override
   String botRoutineNext(Object time) {
@@ -6252,7 +6273,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get botRoutineLegacyPaused => 'Legacy task, paused safely';
 
   @override
-  String get botRoutineDelete => 'Delete Cronjob';
+  String get botRoutineDelete => 'Delete routine';
 
   @override
   String botRoutineScheduleOnce(Object duration) {
@@ -6285,7 +6306,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String botRoutineCreateTitle(Object name) {
-    return 'New Cronjob · $name';
+    return 'New routine · $name';
   }
 
   @override
@@ -6392,7 +6413,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get botRoutineCreating => 'Creating...';
 
   @override
-  String get botRoutineCreate => 'Create Cronjob';
+  String get botRoutineCreate => 'Create routine';
 
   @override
   String get mcpTitle => 'MCP servers';

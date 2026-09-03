@@ -222,8 +222,17 @@ void main() {
       ),
     );
 
+    // Subagent cards now default collapsed like every other tool card; tap
+    // the header to reveal the task/progress/summary body.
     expect(find.text('子代理 · 资料研究员'), findsOneWidget);
     expect(find.text('已完成'), findsOneWidget);
+    expect(find.text('任务'), findsNothing);
+    expect(find.text('任务进度'), findsNothing);
+    expect(find.text('执行摘要'), findsNothing);
+
+    await tester.tap(find.text('子代理 · 资料研究员'));
+    await tester.pump();
+
     expect(find.text('任务'), findsOneWidget);
     expect(find.text('任务进度'), findsOneWidget);
     expect(find.text('执行摘要'), findsOneWidget);

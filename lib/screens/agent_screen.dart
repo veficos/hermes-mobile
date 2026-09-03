@@ -5,18 +5,15 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/clarify_choice.dart';
 import '../core/connection_reload_mixin.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/bot_store.dart';
-import '../core/stores/request_store.dart';
 import '../core/stores/session_store.dart';
+import 'bot_group_chat_screen.dart';
 import 'bot_routines_screen.dart';
 import 'profiles_screen.dart';
 import '../theme/hermes_tokens.dart';
@@ -191,566 +188,6 @@ class _AgentScreenState extends State<AgentScreen>
             kind: HermesToastKind.error,
           );
         }
-      }
-    }
-  }
-
-  Future<void> _sendGroup(BotStore store, BotGroup group) async {
-    final controller = TextEditingController();
-    final attachments = <BotGroupAttachment>[];
-    String? replyThreadId;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(group.name),
-          content: SizedBox(
-            width: 520,
-            height: MediaQuery.sizeOf(ctx).height * 0.58,
-            child: Column(
-              children: [
-                Expanded(
-                  child: Consumer<BotStore>(
-                    builder: (_, room, child) {
-                      final messages = room.messagesFor(group.id);
-                      final speaker = room.groupSpeaker(group.id);
-                      final pending = room.pendingRequestsFor(group.id);
-                      final held = group.memberKeys
-                          .where((key) => room.isMemberHeld(group.id, key))
-                          .map(
-                            (key) => room.bots
-                                .where((bot) => bot.key == key)
-                                .firstOrNull
-                                ?.displayName,
-                          )
-                          .whereType<String>()
-                          .toList();
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (speaker != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Row(
-                                children: [
-                                  const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      context.l10n.agentBotThinking(speaker),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (held.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children: [
-                                  for (final name in held)
-                                    Chip(
-                                      avatar: const Icon(
-                                        Icons.pause_circle_outline,
-                                        size: 16,
-                                      ),
-                                      label: Text(
-                                        context.l10n.agentBotPaused(name),
-                                      ),
-                                      visualDensity: VisualDensity.compact,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          for (final request in pending)
-                            _groupRequestCard(room, request),
-                          Expanded(
-                            child: messages.isEmpty
-                                ? Center(
-                                    child: Text(
-                                      context.l10n.agentStartGroupChat,
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    itemCount: messages.length,
-                                    itemBuilder: (_, index) {
-                                      final message = messages[index];
-                                      final selected =
-                                          replyThreadId == message.threadId;
-                                      return ListTile(
-                                        dense: true,
-                                        selected: selected,
-                                        title: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                message.author == 'You'
-                                                    ? context.l10n.botAuthorYou
-                                                    : message.author == 'System'
-                                                    ? context
-                                                          .l10n
-                                                          .botAuthorSystem
-                                                    : message.author == 'Bot'
-                                                    ? context
-                                                          .l10n
-                                                          .botAuthorFallback
-                                                    : message.author,
-                                              ),
-                                            ),
-                                            Text(
-                                              '#${message.threadId.length > 8 ? message.threadId.substring(message.threadId.length - 8) : message.threadId}',
-                                              style: Theme.of(
-                                                ctx,
-                                              ).textTheme.labelSmall,
-                                            ),
-                                          ],
-                                        ),
-                                        subtitle: Text(message.text),
-                                        onTap: () => setDialogState(
-                                          () =>
-                                              replyThreadId = message.threadId,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                if (replyThreadId != null)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: InputChip(
-                      avatar: const Icon(Icons.reply, size: 16),
-                      label: Text(
-                        context.l10n.agentReplyTo(
-                          replyThreadId!.length > 8
-                              ? replyThreadId!.substring(
-                                  replyThreadId!.length - 8,
-                                )
-                              : replyThreadId!,
-                        ),
-                      ),
-                      onDeleted: () =>
-                          setDialogState(() => replyThreadId = null),
-                    ),
-                  ),
-                TextField(
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.agentSendToRoom,
-                    hintText: context.l10n.agentMentionHint,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    IconButton(
-                      tooltip: context.l10n.chatAttachFiles,
-                      onPressed: () async {
-                        final l10n = context.l10n;
-                        try {
-                          final picked = await fs.openFiles();
-                          for (final file in picked) {
-                            final length = await file.length();
-                            if (length > 20 * 1024 * 1024) {
-                              throw StateError(
-                                l10n.agentAttachmentTooLarge(file.name),
-                              );
-                            }
-                            final bytes = await file.readAsBytes();
-                            final ext = file.name.split('.').last.toLowerCase();
-                            final image = const {
-                              'png',
-                              'jpg',
-                              'jpeg',
-                              'gif',
-                              'webp',
-                              'bmp',
-                            }.contains(ext);
-                            final mime = image
-                                ? 'image/${ext == 'jpg' ? 'jpeg' : ext}'
-                                : 'application/octet-stream';
-                            attachments.add(
-                              BotGroupAttachment(
-                                name: file.name,
-                                dataUrl:
-                                    'data:$mime;base64,${base64Encode(bytes)}',
-                                image: image,
-                              ),
-                            );
-                          }
-                          if (ctx.mounted) setDialogState(() {});
-                        } catch (e) {
-                          if (ctx.mounted) {
-                            showHermesToast(
-                              ctx,
-                              message: ctx.l10n.agentAttachFailed('$e'),
-                              kind: HermesToastKind.error,
-                            );
-                          }
-                        }
-                      },
-                      icon: const Icon(Icons.attach_file),
-                    ),
-                    Expanded(
-                      child: attachments.isEmpty
-                          ? const SizedBox.shrink()
-                          : Wrap(
-                              spacing: 6,
-                              children: [
-                                for (
-                                  var index = 0;
-                                  index < attachments.length;
-                                  index++
-                                )
-                                  InputChip(
-                                    label: Text(attachments[index].name),
-                                    onDeleted: () => setDialogState(
-                                      () => attachments.removeAt(index),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(ctx.l10n.commonClose),
-            ),
-            Consumer<BotStore>(
-              builder: (_, room, child) => Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (room.isGroupBusy(group.id))
-                    OutlinedButton.icon(
-                      onPressed: () => room.stopGroup(group),
-                      icon: const Icon(Icons.stop, size: 18),
-                      label: Text(context.l10n.commonStop),
-                    ),
-                  if (room.isGroupBusy(group.id)) const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: () async {
-                      final text = controller.text.trim();
-                      if (text.isEmpty && attachments.isEmpty) return;
-                      controller.clear();
-                      try {
-                        await room.sendGroupPrompt(
-                          group,
-                          text,
-                          attachments: List.of(attachments),
-                          threadId: replyThreadId,
-                        );
-                        attachments.clear();
-                        replyThreadId = null;
-                      } catch (e) {
-                        if (ctx.mounted) {
-                          showHermesToast(
-                            ctx,
-                            message: ctx.l10n.agentGroupSendFailed('$e'),
-                            kind: HermesToastKind.error,
-                          );
-                        }
-                      }
-                      if (ctx.mounted) setDialogState(() {});
-                    },
-                    icon: const Icon(Icons.send, size: 18),
-                    label: Text(
-                      room.isGroupBusy(group.id)
-                          ? context.l10n.agentAppendMessage
-                          : context.l10n.commonSend,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
-  }
-
-  Widget _groupRequestCard(BotStore store, BotGroupPendingRequest pending) {
-    final request = pending.request;
-    final approval = request.kind == RequestKind.approval;
-    final title = approval
-        ? context.l10n.agentAwaitingApproval
-        : context.l10n.agentNeedsInformation;
-    final detail = request.questions.isNotEmpty
-        ? request.questions.map((question) => question.question).join('\n')
-        : request.question ?? request.command ?? '';
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              approval ? Icons.shield_outlined : Icons.help_outline,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.l10n.agentRequestSummary(title, pending.memberName),
-                  ),
-                  if (detail.isNotEmpty)
-                    Text(
-                      detail,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: () => _answerGroupRequest(store, pending),
-              child: Text(context.l10n.agentRespond),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _answerGroupRequest(
-    BotStore store,
-    BotGroupPendingRequest pending,
-  ) async {
-    final request = pending.request;
-    final controllers = <String, TextEditingController>{};
-    final selected = <String, Set<String>>{};
-    for (final question in request.questions) {
-      controllers[question.id] = TextEditingController();
-      selected[question.id] = <String>{};
-    }
-    final single = TextEditingController();
-    selected[''] = <String>{};
-    final answer = await showDialog<_GroupRequestAnswer>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) {
-          final approval = request.kind == RequestKind.approval;
-          final approvalChoices = request.choices.isEmpty
-              ? const ['once', 'always', 'deny']
-              : request.choices;
-
-          bool hasAnswer(String key, TextEditingController controller) =>
-              selected[key]!.isNotEmpty || controller.text.trim().isNotEmpty;
-          final canSubmit = request.questions.isNotEmpty
-              ? request.questions.every(
-                  (question) =>
-                      hasAnswer(question.id, controllers[question.id]!),
-                )
-              : hasAnswer('', single);
-
-          Widget choicesFor(
-            String key,
-            List<String> choices,
-            bool multiSelect,
-          ) => Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final choice in orderChoices(choices))
-                FilterChip(
-                  label: Text(bareChoice(choice)),
-                  selected: selected[key]!.contains(choice),
-                  onSelected: (on) => setDialogState(() {
-                    if (!multiSelect) selected[key]!.clear();
-                    if (on) {
-                      selected[key]!.add(choice);
-                    } else {
-                      selected[key]!.remove(choice);
-                    }
-                  }),
-                ),
-            ],
-          );
-
-          return AlertDialog(
-            title: Text(context.l10n.agentMemberRequest(pending.memberName)),
-            content: SizedBox(
-              width: 480,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (approval) ...[
-                      Text(
-                        request.command ??
-                            request.question ??
-                            context.l10n.agentAllowOperationQuestion,
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final choice in approvalChoices)
-                            choice == 'deny'
-                                ? OutlinedButton.icon(
-                                    onPressed: () => Navigator.pop(
-                                      dialogContext,
-                                      _GroupRequestAnswer(choice: choice),
-                                    ),
-                                    icon: const Icon(Icons.close),
-                                    label: Text(context.l10n.agentDeny),
-                                  )
-                                : FilledButton(
-                                    onPressed: () => Navigator.pop(
-                                      dialogContext,
-                                      _GroupRequestAnswer(choice: choice),
-                                    ),
-                                    child: Text(
-                                      choice == 'always'
-                                          ? context.l10n.agentAlwaysAllow
-                                          : context.l10n.agentAllow,
-                                    ),
-                                  ),
-                        ],
-                      ),
-                    ] else if (request.questions.isNotEmpty) ...[
-                      for (
-                        var index = 0;
-                        index < request.questions.length;
-                        index++
-                      ) ...[
-                        Text(
-                          '${index + 1}. ${request.questions[index].question}',
-                        ),
-                        if (request.questions[index].choices.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          choicesFor(
-                            request.questions[index].id,
-                            request.questions[index].choices,
-                            request.questions[index].multiSelect,
-                          ),
-                        ],
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: controllers[request.questions[index].id],
-                          decoration: InputDecoration(
-                            hintText: context.l10n.agentCustomAnswer,
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (_) => setDialogState(() {}),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                    ] else ...[
-                      Text(request.question ?? context.l10n.agentEnterAnswer),
-                      if (request.choices.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        choicesFor('', request.choices, request.multiSelect),
-                      ],
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: single,
-                        decoration: InputDecoration(
-                          hintText: context.l10n.agentCustomAnswer,
-                          border: OutlineInputBorder(),
-                        ),
-                        onChanged: (_) => setDialogState(() {}),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: Text(dialogContext.l10n.commonCancel),
-              ),
-              if (!approval)
-                FilledButton(
-                  onPressed: canSubmit
-                      ? () {
-                          if (request.questions.isNotEmpty) {
-                            Navigator.pop(
-                              dialogContext,
-                              _GroupRequestAnswer(
-                                answers: {
-                                  for (final question in request.questions)
-                                    question.id:
-                                        selected[question.id]!.isNotEmpty
-                                        ? encodeClarifyAnswer(
-                                            selected[question.id]!,
-                                            multiSelect: question.multiSelect,
-                                          )
-                                        : controllers[question.id]!.text.trim(),
-                                },
-                              ),
-                            );
-                          } else {
-                            Navigator.pop(
-                              dialogContext,
-                              _GroupRequestAnswer(
-                                answer: selected['']!.isNotEmpty
-                                    ? encodeClarifyAnswer(
-                                        selected['']!,
-                                        multiSelect: request.multiSelect,
-                                      )
-                                    : single.text.trim(),
-                              ),
-                            );
-                          }
-                        }
-                      : null,
-                  child: Text(context.l10n.commonSubmit),
-                ),
-            ],
-          );
-        },
-      ),
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      for (final controller in controllers.values) {
-        controller.dispose();
-      }
-      single.dispose();
-    });
-    if (answer == null || !mounted) return;
-    try {
-      await store.respondToGroupRequest(
-        pending,
-        choice: answer.choice,
-        answer: answer.answer,
-        answers: answer.answers,
-      );
-    } catch (error) {
-      if (mounted) {
-        showHermesToast(
-          context,
-          message: context.l10n.agentRespondFailed('$error'),
-          kind: HermesToastKind.error,
-        );
       }
     }
   }
@@ -934,10 +371,25 @@ class _AgentScreenState extends State<AgentScreen>
                 if (bots.loading && bots.bots.isEmpty)
                   const LinearProgressIndicator(),
                 if (bots.error != null)
-                  Text(
-                    bots.error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: HermesSpacing.sm),
+                    child: HermesNoticeBar(
+                      message: bots.error!,
+                      color: HermesSemantic.red,
+                      icon: Icons.error_outline,
+                      onTap: bots.refresh,
+                    ),
+                  ),
+                if (!bots.loading &&
+                    bots.error == null &&
+                    bots.bots.isEmpty &&
+                    bots.groups.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: HermesSpacing.md),
+                    child: HermesEmptyState(
+                      icon: Icons.smart_toy_outlined,
+                      title: context.l10n.agentBotsEmptyTitle,
+                      description: context.l10n.agentBotsEmptyDescription,
                     ),
                   ),
                 for (final group in bots.groups)
@@ -955,7 +407,14 @@ class _AgentScreenState extends State<AgentScreen>
                             : '',
                       ),
                     ),
-                    onTap: () => _sendGroup(bots, group),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => BotGroupChatScreen(
+                          group: group,
+                          onEdit: () => _editGroup(bots, group),
+                        ),
+                      ),
+                    ),
                     trailing: PopupMenuButton<String>(
                       onSelected: (value) async {
                         if (value == 'edit') _editGroup(bots, group);
@@ -1017,7 +476,7 @@ class _AgentScreenState extends State<AgentScreen>
                     leading: HermesAvatar(
                       label: bot.displayName,
                       size: 36,
-                      color: _botAvatarColor(bot.metadata),
+                      color: botAvatarColor(bot.metadata),
                     ),
                     title: Text(bot.displayName),
                     subtitle: Text(
@@ -1085,8 +544,8 @@ class _AgentScreenState extends State<AgentScreen>
                           value: 'routines',
                           child: ListTile(
                             contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.schedule_outlined),
-                            title: Text(context.l10n.featureCron),
+                            leading: const Icon(Icons.smart_toy_outlined),
+                            title: Text(context.l10n.agentBotRoutinesMenuItem),
                           ),
                         ),
                         PopupMenuItem(
@@ -1303,26 +762,3 @@ class _AgentScreenState extends State<AgentScreen>
   }
 }
 
-/// A bot's `ui_meta['hermes-bots']` carries the same `color` field desktop's
-/// avatar editor writes (see `hermes-bots/plugin.js` `botAppearance`) — use
-/// it instead of always falling back to a generic initials color.
-Color? _botAvatarColor(Map<String, dynamic> metadata) {
-  final hex = metadata['color']?.toString().trim();
-  if (hex == null || hex.isEmpty) return null;
-  final cleaned = hex.startsWith('#') ? hex.substring(1) : hex;
-  final normalized = cleaned.length == 6 ? 'FF$cleaned' : cleaned;
-  final parsed = int.tryParse(normalized, radix: 16);
-  return parsed == null ? null : Color(parsed);
-}
-
-class _GroupRequestAnswer {
-  final String? choice;
-  final String? answer;
-  final Map<String, String> answers;
-
-  const _GroupRequestAnswer({
-    this.choice,
-    this.answer,
-    this.answers = const {},
-  });
-}

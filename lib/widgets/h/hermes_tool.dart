@@ -55,8 +55,8 @@ class HermesToolCard extends StatefulWidget {
 
   /// Forces the initial expand state (used when this card is the sole focus
   /// of a detail sheet, e.g. tapped out of a [ToolGroupCard] row). Leave
-  /// null for the default transcript behavior: streaming tools start
-  /// expanded, settled ones start collapsed.
+  /// null for the default transcript behavior: every tool card starts
+  /// collapsed, regardless of run state.
   final bool? initiallyExpanded;
 
   const HermesToolCard({super.key, required this.data, this.initiallyExpanded});
@@ -76,18 +76,10 @@ class _HermesToolCardState extends State<HermesToolCard> {
   @override
   void initState() {
     super.initState();
-    // Streaming tools start expanded so live output stays visible; completed
-    // cards start collapsed to keep the transcript compact.
-    _expanded = widget.initiallyExpanded ?? (widget.data['running'] == true);
-  }
-
-  @override
-  void didUpdateWidget(covariant HermesToolCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Auto-expand when a tool call starts streaming.
-    if (widget.data['running'] == true && oldWidget.data['running'] != true) {
-      _expanded = true;
-    }
+    // Every tool card starts collapsed to keep the transcript compact —
+    // including while running; the header's spinner/status still shows
+    // progress without forcing the body open.
+    _expanded = widget.initiallyExpanded ?? false;
   }
 
   HermesToolStatus get _status {

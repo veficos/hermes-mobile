@@ -1298,7 +1298,7 @@ class _TerminalToolCard extends StatelessWidget {
             )
           : null,
       failed: run.failed,
-      initiallyExpanded: run.running,
+      initiallyExpanded: false,
       children: [
         if (run.command.isNotEmpty) ...[
           Text(
@@ -1620,7 +1620,7 @@ class _WebToolCard extends StatelessWidget {
               icon: const Icon(Icons.open_in_new),
             )
           : null,
-      initiallyExpanded: true,
+      initiallyExpanded: false,
       children: [
         Text(
           _toolResultText(data),

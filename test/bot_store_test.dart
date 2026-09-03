@@ -7,6 +7,7 @@ import 'package:hermes_mobile/core/gateway.dart';
 import 'package:hermes_mobile/core/settings_store.dart';
 import 'package:hermes_mobile/core/stores/bot_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
+import 'package:hermes_mobile/l10n/runtime_l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeConnection extends ConnectionStore {
@@ -367,7 +368,7 @@ void main() {
       ]);
       final replies = harness.store
           .messagesFor(harness.group.id)
-          .where((message) => message.author != 'You')
+          .where((message) => message.author != 'You' && message.author != 'System')
           .toList();
       expect(replies, hasLength(4));
       expect(replies.map((message) => message.author), [
@@ -376,6 +377,12 @@ void main() {
         'Researcher',
         'Writer',
       ]);
+      // Every round kept producing new replies (thanks to the interleaved
+      // watermark ordering), so the loop only stops because it exhausted its
+      // round budget. That case must be visible to the user, not silent.
+      final last = harness.store.messagesFor(harness.group.id).last;
+      expect(last.author, 'System');
+      expect(last.text, RuntimeL10n.current.botGroupRoundCapReached);
     },
   );
 

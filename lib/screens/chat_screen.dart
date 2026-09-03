@@ -1719,6 +1719,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_scrollCoordinator.allowPagination &&
         position.pixels < 160 &&
         !_loadingOlderViewport &&
+        context.read<SessionStore>().chat.hasMoreHistory &&
         mounted) {
       _loadingOlderViewport = true;
       if (_diagnosticLogging) {
@@ -1788,6 +1789,25 @@ class _ChatScreenState extends State<ChatScreen> {
       // the prepend and the pixel math stays correct.
       await session.loadOlderMessages(deferTrim: true);
       if (!mounted) return;
+      if (session.chat.loadedCount == beforeCount) {
+        // Nothing was actually prepended — either history was already
+        // exhausted or the fetch came back empty. Jumping to a
+        // "restored" position when `maxScrollExtent` never changed is a
+        // no-op for the math but not for `ScrollController.jumpTo`,
+        // which force-ends whatever scroll/drag activity is in progress.
+        // Doing that on every single near-top scroll frame (which is
+        // exactly what happens once a user reaches the true start of a
+        // long conversation, since nothing here previously stopped this
+        // trigger from refiring) fights the user's own downward drag and
+        // reads as "stuck at the top, can't scroll down."
+        if (_diagnosticLogging) {
+          _logScroll(
+            'event=history.noop before_count=$beforeCount '
+            'duration_ms=${elapsed.elapsedMilliseconds}',
+          );
+        }
+        return;
+      }
       final restored = Completer<void>();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         try {

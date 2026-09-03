@@ -217,6 +217,12 @@ class _MoreScreenState extends State<MoreScreen> {
       tones[0],
       [
         _MenuEntry(
+          Icons.smart_toy_outlined,
+          context.l10n.featureAgent,
+          context.l10n.featureAgentDesc,
+          () => _push(const AgentScreen()),
+        ),
+        _MenuEntry(
           Icons.view_quilt_outlined,
           context.l10n.workspaceTitle,
           context.l10n.workspaceDescription,
@@ -270,12 +276,6 @@ class _MoreScreenState extends State<MoreScreen> {
       context.l10n.groupIntelligence,
       tones[1],
       [
-        _MenuEntry(
-          Icons.auto_awesome_outlined,
-          context.l10n.featureAgent,
-          context.l10n.featureAgentDesc,
-          () => _push(const AgentScreen()),
-        ),
         _MenuEntry(
           Icons.account_tree_outlined,
           context.l10n.featureSubagents,

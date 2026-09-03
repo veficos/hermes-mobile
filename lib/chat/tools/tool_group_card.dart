@@ -97,7 +97,7 @@ class ToolGroupCard extends StatelessWidget {
       groupKey: ValueKey(
         'timeline-tool-group-${tools.map((t) => t['tool_id'] ?? t['id'] ?? t['name']).join('-')}',
       ),
-      initiallyExpanded: running || failed > 0 || interactions.isNotEmpty,
+      initiallyExpanded: false,
       running: running,
       title: toolRunSummary(tools, live: running),
       chipColor: chipColor,
@@ -289,12 +289,6 @@ class _ExpandableToolGroup extends StatefulWidget {
 
 class _ExpandableToolGroupState extends State<_ExpandableToolGroup> {
   late bool _expanded = widget.initiallyExpanded;
-
-  @override
-  void didUpdateWidget(covariant _ExpandableToolGroup oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.running && !oldWidget.running) _expanded = true;
-  }
 
   @override
   Widget build(BuildContext context) {

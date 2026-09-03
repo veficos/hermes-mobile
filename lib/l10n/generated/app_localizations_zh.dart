@@ -79,6 +79,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get botGroupRoundCapReached => '本轮讨论已达上限，发送新消息即可继续对话。';
+
+  @override
+  String get botGroupMessageCapReached => '本次对话消息数已达上限，发送新消息即可继续。';
+
+  @override
   String get botRoutineFieldsRequired => '任务名称、指令和计划不能为空';
 
   @override
@@ -2364,10 +2370,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get featureAboutDesc => '版本信息';
 
   @override
-  String get featureAgent => 'Agent';
+  String get featureAgent => '机器人';
 
   @override
-  String get featureAgentDesc => '运行状态与后端信息';
+  String get featureAgentDesc => '机器人、群聊与运行状态';
 
   @override
   String get featureArtifacts => 'Artifacts';
@@ -5848,6 +5854,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentManageBots => '管理 / 新建 Bot';
 
   @override
+  String get agentBotRoutinesMenuItem => '机器人任务';
+
+  @override
+  String get agentBotsEmptyTitle => '还没有机器人';
+
+  @override
+  String get agentBotsEmptyDescription =>
+      '机器人是绑定到某个配置档案的独立聊天身份。点击右上角新建一个配置档案即可开始。';
+
+  @override
+  String get agentMentionAll => '所有人';
+
+  @override
   String get agentRefreshRoster => '刷新 Bot roster';
 
   @override
@@ -5943,11 +5962,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String botRoutineUpdateFailed(Object error) {
-    return 'Cronjob 更新失败：$error';
+    return '任务更新失败：$error';
   }
 
   @override
-  String get botRoutineDeleteQuestion => '删除 Cronjob？';
+  String get botRoutineDeleteQuestion => '删除任务？';
 
   @override
   String botRoutineDeletePrompt(Object title) {
@@ -5995,7 +6014,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String botRoutineTitle(Object name) {
-    return '$name · 定时任务';
+    return '$name · 机器人任务';
   }
 
   @override
@@ -6004,10 +6023,10 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get botRoutineLoading => '加载 Bot Cronjobs…';
+  String get botRoutineLoading => '加载机器人任务…';
 
   @override
-  String get botRoutineEmptyTitle => '还没有 Cronjob';
+  String get botRoutineEmptyTitle => '还没有任务';
 
   @override
   String botRoutineEmptyDescription(Object name) {
@@ -6015,7 +6034,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get botRoutineNew => '新建 Cronjob';
+  String get botRoutineNew => '新建任务';
 
   @override
   String botRoutineNext(Object time) {
@@ -6026,7 +6045,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get botRoutineLegacyPaused => '旧版任务，已安全暂停';
 
   @override
-  String get botRoutineDelete => '删除 Cronjob';
+  String get botRoutineDelete => '删除任务';
 
   @override
   String botRoutineScheduleOnce(Object duration) {
@@ -6058,7 +6077,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String botRoutineCreateTitle(Object name) {
-    return '新建 Cronjob · $name';
+    return '新建任务 · $name';
   }
 
   @override
@@ -6162,7 +6181,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get botRoutineCreating => '创建中…';
 
   @override
-  String get botRoutineCreate => '创建 Cronjob';
+  String get botRoutineCreate => '创建任务';
 
   @override
   String get mcpTitle => 'MCP 服务器';
@@ -9581,7 +9600,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get agentBotsTitle => 'Bots';
+  String get agentBotsTitle => '机器人';
 
   @override
   String agentRequestSummary(String title, String member) {

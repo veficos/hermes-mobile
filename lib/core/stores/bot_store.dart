@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show Color;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../l10n/runtime_l10n.dart';
 
@@ -22,6 +23,18 @@ const _groupTurnHardCap = Duration(minutes: 20);
 const _groupTurnPollInterval = Duration(seconds: 2);
 const _groupProjectionMaxBytes = 48000;
 const _legacyDelegatedRoutinePrefix = 'You are running the scheduled routine "';
+
+/// A bot's `ui_meta['hermes-bots']` carries the same `color` field desktop's
+/// avatar editor writes (see `hermes-bots/plugin.js` `botAppearance`) — use
+/// it instead of always falling back to a generic initials color.
+Color? botAvatarColor(Map<String, dynamic> metadata) {
+  final hex = metadata['color']?.toString().trim();
+  if (hex == null || hex.isEmpty) return null;
+  final cleaned = hex.startsWith('#') ? hex.substring(1) : hex;
+  final normalized = cleaned.length == 6 ? 'FF$cleaned' : cleaned;
+  final parsed = int.tryParse(normalized, radix: 16);
+  return parsed == null ? null : Color(parsed);
+}
 
 class BotIdentity {
   final OwnerRoute route;
@@ -1028,9 +1041,18 @@ class BotStore extends ChangeNotifier {
         ).where((member) => !state.stranded.containsKey(member.key));
         var spokeThisRound = 0;
         for (final member in responders) {
-          if (_disposed ||
-              state.epoch != epoch ||
-              posted >= _groupChatMaxMessages) {
+          if (_disposed || state.epoch != epoch) return;
+          if (posted >= _groupChatMaxMessages) {
+            _appendRoom(
+              BotRoomMessage(
+                id: 'cap-${DateTime.now().microsecondsSinceEpoch}',
+                groupId: group.id,
+                author: 'System',
+                text: runtimeL10n.botGroupMessageCapReached,
+                at: DateTime.now(),
+                threadId: threadId,
+              ),
+            );
             return;
           }
           final roomLog = messagesFor(group.id);
@@ -1115,6 +1137,18 @@ class BotStore extends ChangeNotifier {
           }
         }
         if (spokeThisRound == 0) return;
+      }
+      if (!_disposed && state.epoch == epoch) {
+        _appendRoom(
+          BotRoomMessage(
+            id: 'cap-${DateTime.now().microsecondsSinceEpoch}',
+            groupId: group.id,
+            author: 'System',
+            text: runtimeL10n.botGroupRoundCapReached,
+            at: DateTime.now(),
+            threadId: threadId,
+          ),
+        );
       }
     } finally {
       if (!started.isCompleted) started.complete();

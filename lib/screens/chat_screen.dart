@@ -1731,6 +1731,36 @@ class _ChatScreenState extends State<ChatScreen> {
         unawaited(_loadOlderKeepingViewport());
       });
     }
+    // A long transcript can get its newer end windowed out of the live list
+    // (see `ChatStore`'s render-weight trim) once the user pages far enough
+    // back into history — the only way back was an explicit "back to newer
+    // messages" button tap. From the user's side that reads as "scrolling
+    // down just stops working" partway through a long conversation: nothing
+    // loads no matter how far they drag, because the rest genuinely isn't
+    // in the list anymore. Mirror the near-top auto-load-older trigger on
+    // the other end: get close to the bottom of what's currently loaded and
+    // bring the newer window back automatically. Unlike a prepend, this
+    // appends at the end (and any resulting re-trim removes from the far,
+    // off-screen front) — neither needs scroll-position compensation, and
+    // once restored `maxScrollExtent` grows past the current position, so
+    // this can't re-trigger itself in a loop.
+    if (_scrollCoordinator.allowPagination &&
+        position.pixels > position.maxScrollExtent - 160 &&
+        mounted) {
+      final chat = context.read<ChatStore>();
+      if (chat.hasNewerTranscriptWindow) {
+        if (_diagnosticLogging) {
+          _logScroll(
+            'event=newer_window.restore_triggered '
+            'pixels=${position.pixels.toStringAsFixed(1)} '
+            'max_extent=${position.maxScrollExtent.toStringAsFixed(1)}',
+          );
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) chat.restoreNewerTranscriptWindow();
+        });
+      }
+    }
   }
 
   Future<void> _loadOlderKeepingViewport() async {
@@ -1768,8 +1798,22 @@ class _ChatScreenState extends State<ChatScreen> {
             }
             final position = _scrollCtrl.position;
             final extentDelta = position.maxScrollExtent - beforeExtent;
+            // Anchor to the LIVE position, not `beforePixels` (captured
+            // before the `await` above). Fetching the next history page is
+            // a real network round-trip — the user's own drag keeps moving
+            // `position.pixels` the whole time it's in flight. Restoring
+            // against the stale pre-fetch snapshot discards all of that
+            // progress and snaps the viewport back to roughly where the
+            // gesture *started*, which is exactly "scroll up a bit, then
+            // get yanked back near the top" on any connection slow enough
+            // for the fetch to take longer than one frame. `extentDelta`
+            // itself doesn't have this problem — inserting content at the
+            // front changes `maxScrollExtent` by the same amount regardless
+            // of where the user has scrolled to meanwhile — so only the
+            // anchor needs to change, not the compensation math.
+            final livePixels = position.pixels;
             final restoredPixels = _scrollCoordinator.restorePrependOffset(
-              beforePixels: beforePixels,
+              beforePixels: livePixels,
               beforeExtent: beforeExtent,
               afterExtent: position.maxScrollExtent,
               minExtent: position.minScrollExtent,
@@ -1782,6 +1826,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 'after_count=${session.chat.loadedCount} '
                 'duration_ms=${elapsed.elapsedMilliseconds} '
                 'before_pixels=${beforePixels.toStringAsFixed(1)} '
+                'live_pixels=${livePixels.toStringAsFixed(1)} '
                 'extent_delta=${extentDelta.toStringAsFixed(1)} '
                 'restored_pixels=${restoredPixels.toStringAsFixed(1)}',
               );

@@ -32,6 +32,45 @@ void main() {
     expect(chat.hasMoreHistory, isTrue);
   });
 
+  test(
+    'deferTrim skips the window trim until trimTranscriptWindowIfNeeded runs',
+    () {
+      // Regression for the scroll-to-top jank bug: `chat_screen.dart`'s
+      // viewport-preserving restore measures list extent before/after
+      // `appendOlderHistory` and assumes the whole delta is the prepend at
+      // the front. If a trim *also* silently removes messages from the
+      // newer end in that same call, the removed extent partly cancels the
+      // inserted extent in that delta and the restore lands the viewport
+      // in the wrong place — every load-more near the top of a long
+      // transcript, which is exactly "many messages, can't scroll smoothly
+      // after reaching the top". `deferTrim: true` must leave the prepend
+      // as the only source of extent change; the trim only happens once
+      // `trimTranscriptWindowIfNeeded` is called separately.
+      final chat = ChatStore();
+      addTearDown(chat.dispose);
+      chat.loadHistory([
+        for (var index = 100; index < 500; index++) _message(index, heavy: true),
+      ], hasMore: true);
+
+      chat.appendOlderHistory(
+        [for (var index = 0; index < 200; index++) _message(index, heavy: true)],
+        hasMore: false,
+        deferTrim: true,
+      );
+
+      // Nothing trimmed yet: all 600 messages are still live.
+      expect(chat.messages.length, 600);
+      expect(chat.hasNewerTranscriptWindow, isFalse);
+
+      chat.trimTranscriptWindowIfNeeded();
+
+      // Now it matches the non-deferred behavior from the test above.
+      expect(chat.messages.length, lessThan(600));
+      expect(chat.messages.first.id, 'm0');
+      expect(chat.hasNewerTranscriptWindow, isTrue);
+    },
+  );
+
   test('window is weighted and keeps a sticky anchor within slack', () {
     final messages = [
       for (var index = 0; index < 80; index++)

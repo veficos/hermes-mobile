@@ -2001,14 +2001,17 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
 
   /// Load an older page of the transcript (invoked when the user scrolls to
   /// the top of the message list).
-  Future<void> loadOlderMessages() async {
+  ///
+  /// [deferTrim] passes through to [ChatStore.appendOlderHistory] — see its
+  /// doc for why the scroll-to-top caller needs this.
+  Future<void> loadOlderMessages({bool deferTrim = false}) async {
     final id = _durableId;
     if (id == null) return;
     final api = _apiForStored(id);
     final generation = _generation;
     if (chat.loadingHistory || !chat.hasMoreHistory) return;
     if (_historyStartOffset <= 0) {
-      chat.appendOlderHistory(const [], hasMore: false);
+      chat.appendOlderHistory(const [], hasMore: false, deferTrim: deferTrim);
       return;
     }
     chat.startLoadingHistory();
@@ -2027,6 +2030,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       chat.appendOlderHistory(
         chat.fromSessionMessages(msgs, sessionModel: _info?.model),
         hasMore: next > 0,
+        deferTrim: deferTrim,
       );
     } catch (e) {
       if (generation != _generation) return;

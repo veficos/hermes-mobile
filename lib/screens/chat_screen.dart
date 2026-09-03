@@ -1752,7 +1752,11 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
     try {
-      await session.loadOlderMessages();
+      // `deferTrim: true` — see `ChatStore.appendOlderHistory`'s doc. The
+      // window trim runs after the restore below instead of alongside the
+      // prepend, so the extent delta this restore measures reflects only
+      // the prepend and the pixel math stays correct.
+      await session.loadOlderMessages(deferTrim: true);
       if (!mounted) return;
       final restored = Completer<void>();
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1789,6 +1793,10 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
       await restored.future;
+      // Now that the viewport is anchored, trimming the newer end (if the
+      // transcript crossed budget) is just an off-screen removal — no
+      // further position compensation needed.
+      if (mounted) session.chat.trimTranscriptWindowIfNeeded();
     } catch (error, stackTrace) {
       if (_diagnosticLogging) {
         _logScroll(

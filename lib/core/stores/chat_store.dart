@@ -1475,7 +1475,28 @@ class ChatStore extends ChangeNotifier {
   }
 
   /// Prepend an older page of history (scrolled-to-top pagination).
-  void appendOlderHistory(List<ChatMessage> older, {required bool hasMore}) {
+  ///
+  /// [deferTrim]: skip the synchronous window-trim below (see
+  /// [trimTranscriptWindowIfNeeded]) and leave it to the caller. The
+  /// scroll-to-top caller in `chat_screen.dart` needs this: its
+  /// scroll-position restore measures the list's extent before and after
+  /// this call and assumes the whole delta came from the prepend at the
+  /// front. If a trim *also* removes messages from the newer end in the
+  /// same update, that assumption breaks — the removed extent silently
+  /// cancels out part of the inserted extent in the before/after delta, so
+  /// the restore undershoots and the viewport lands somewhere other than
+  /// where the user was reading, which is what actually produces the
+  /// "can't scroll smoothly after reaching the top" symptom once a
+  /// transcript is long enough for trimming to kick in on every page.
+  /// Deferring the trim to a separate update — after the prepend-only
+  /// restore has already anchored the viewport — sidesteps this because
+  /// removing far-off-screen content from the newer end doesn't need any
+  /// position compensation at all.
+  void appendOlderHistory(
+    List<ChatMessage> older, {
+    required bool hasMore,
+    bool deferTrim = false,
+  }) {
     final beforeCount = _messages.length;
     historyError = null;
     if (older.isEmpty) {
@@ -1492,16 +1513,27 @@ class ChatStore extends ChangeNotifier {
     }
     _messages.insertAll(0, older);
     _markTranscriptStructureChanged();
-    _trimTranscriptWindowAfterPrepend();
+    if (!deferTrim) _trimTranscriptWindowAfterPrepend();
     hasMoreHistory = hasMore || _newerTranscriptWindow.isNotEmpty;
     loadingHistory = false;
     if (_diagnosticLogging) {
       _logStream(
         'event=history.prepended older_count=${older.length} '
         'before_count=$beforeCount after_count=${_messages.length} '
-        'has_more=$hasMore',
+        'has_more=$hasMore deferred_trim=$deferTrim',
       );
     }
+    notifyListeners();
+  }
+
+  /// Runs the transcript-window trim that [appendOlderHistory] skipped for
+  /// `deferTrim: true`. Safe to call unconditionally (a no-op once the
+  /// transcript is already under budget) and safe to call more than once.
+  void trimTranscriptWindowIfNeeded() {
+    final before = _newerTranscriptWindow.length;
+    _trimTranscriptWindowAfterPrepend();
+    if (_newerTranscriptWindow.length == before) return;
+    hasMoreHistory = true;
     notifyListeners();
   }
 

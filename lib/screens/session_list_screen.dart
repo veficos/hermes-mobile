@@ -10,7 +10,9 @@ import 'package:provider/provider.dart';
 
 import '../core/api_client.dart';
 import '../core/connection_reload_mixin.dart';
+import '../core/connectivity_service.dart';
 import '../core/models.dart';
+import '../core/performance_metrics.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/project_tree_store.dart';
 import '../core/stores/pull_request_store.dart';
@@ -39,6 +41,18 @@ class SessionListScreen extends StatefulWidget {
   State<SessionListScreen> createState() => _SessionListScreenState();
 }
 
+class _SessionVisibleRow {
+  final SessionRow row;
+  final _TimeGroup group;
+  final int depth;
+
+  const _SessionVisibleRow(
+    this.row, {
+    required this.group,
+    required this.depth,
+  });
+}
+
 enum _TimeGroup {
   pinned,
   running,
@@ -58,6 +72,8 @@ class _SessionListScreenState extends State<SessionListScreen>
   DateTime? _lastTouchAt;
   DateTime? _lastListLoad;
   Timer? _pollTimer;
+  int _idlePolls = 0;
+  String? _lastPollSignature;
   static const _interactionQuietMs = 1500;
   static const _pollIntervalMs = HermesPolicy.sessionPollInterval;
   static const _minListRefreshMs = 3500;
@@ -71,6 +87,21 @@ class _SessionListScreenState extends State<SessionListScreen>
   final Set<String> _selectedIds = {};
   final Set<String> _expandedSessionIds = {};
   final Map<String, List<SessionRow>> _childrenByParent = {};
+  Map<String, int> _projectedActivity = const {};
+  Map<String, bool> _projectedRunning = const {};
+  Map<String, bool> _projectedUnread = const {};
+  Map<String, int> _projectedDurableCount = const {};
+  Map<String, int> _projectedRuntimeCount = const {};
+  List<SessionRow>? _projectionRowsIdentity;
+  String? _projectionQuery;
+  int _projectionSessionRevision = -1;
+  int _projectionSidebarRevision = -1;
+  int _projectionPullRequestRevision = -1;
+  int _projectionSubagentRevision = -1;
+  int _projectionUnreadRevision = 0;
+  int _unreadRevision = 0;
+  List<SessionRow> _cachedDisplayRows = const [];
+  Map<_TimeGroup, List<SessionRow>> _cachedTimeGroups = const {};
   bool _deleting = false;
   String _query = '';
   final _queryController = TextEditingController();
@@ -90,10 +121,23 @@ class _SessionListScreenState extends State<SessionListScreen>
     context.read<SessionStore>().lastSessionId().then((id) {
       if (mounted) setState(() => _lastSessionId = id);
     });
-    _pollTimer = Timer.periodic(
-      _pollIntervalMs,
-      (_) => _maybeBackgroundRefresh(),
-    );
+    _schedulePolling();
+  }
+
+  void _schedulePolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer(_adaptivePollInterval, () async {
+      await _maybeBackgroundRefresh();
+      if (mounted) _schedulePolling();
+    });
+  }
+
+  Duration get _adaptivePollInterval {
+    final rows = context.read<SessionStore>().sessions ?? const <SessionRow>[];
+    if (rows.any((row) => row.effectivelyStreaming)) return _pollIntervalMs;
+    if (_idlePolls >= 6) return const Duration(seconds: 30);
+    if (_idlePolls >= 2) return const Duration(seconds: 15);
+    return const Duration(seconds: 8);
   }
 
   @override
@@ -119,6 +163,13 @@ class _SessionListScreenState extends State<SessionListScreen>
 
   Future<void> _maybeBackgroundRefresh() async {
     if (!mounted) return;
+    // Weak-network: skip this tick outright when the OS reports no network
+    // at all — firing on schedule into a request that can only time out
+    // just burns battery/data and delays the eventual timeout error.
+    if (Provider.of<ConnectivityService?>(context, listen: false)?.hasNetwork ==
+        false) {
+      return;
+    }
     final lastTouch = _lastTouchAt;
     if (lastTouch != null &&
         DateTime.now().difference(lastTouch).inMilliseconds <
@@ -144,6 +195,20 @@ class _SessionListScreenState extends State<SessionListScreen>
           : SessionStore.sessionPageSize;
       await session.refreshList(limit: limit);
       final rows = session.sessions ?? const <SessionRow>[];
+      final signature = rows
+          .take(SessionStore.sessionPageSize)
+          .map(
+            (row) =>
+                '${row.id}:${row.lastMessageAt}:${row.effectivelyStreaming}',
+          )
+          .join('|');
+      if (signature == _lastPollSignature) {
+        _idlePolls++;
+        ClientPerformanceMetrics.instance.adaptivePollBackoffs++;
+      } else {
+        _idlePolls = 0;
+        _lastPollSignature = signature;
+      }
       await _refreshSubagents(rows);
       unawaited(pullRequests.refreshForSessions(rows));
       if (session.groupingMode == 'project') {
@@ -337,16 +402,6 @@ class _SessionListScreenState extends State<SessionListScreen>
     _TimeGroup.archived => context.l10n.sessionGroupArchived,
   };
 
-  List<_TimeGroup> _computeVisibleGroupOrder(List<SessionRow> rows) {
-    final subagents = context.read<SubagentStore>();
-    final used = <_TimeGroup, bool>{};
-    for (final r in rows) {
-      if (!_rowMatchesFilters(r) || r.isDelegatedChild) continue;
-      used[_effectiveGroup(r, subagents)] = true;
-    }
-    return _TimeGroup.values.where((g) => used[g] == true).toList();
-  }
-
   void _prepareChildren(List<SessionRow> rows) {
     final filtered = rows.where(_rowMatchesFilters).toList();
     _childrenByParent.clear();
@@ -431,6 +486,8 @@ class _SessionListScreenState extends State<SessionListScreen>
   }
 
   int _activityMillis(SessionRow row) {
+    final projected = _projectedActivity[row.id];
+    if (projected != null) return projected;
     var latest =
         row.lastMessageAt ?? row.startedAt?.millisecondsSinceEpoch ?? 0;
     final seen = <String>{};
@@ -446,6 +503,113 @@ class _SessionListScreenState extends State<SessionListScreen>
 
     visit(row.id);
     return latest;
+  }
+
+  Map<_TimeGroup, List<SessionRow>> _projectTimeGroups(List<SessionRow> rows) {
+    final started = Stopwatch()..start();
+    final metrics = ClientPerformanceMetrics.instance;
+    metrics.sessionProjectionBuilds++;
+    metrics.sessionProjectionRows += rows.length;
+    final session = context.read<SessionStore>();
+    final subagents = context.read<SubagentStore>();
+    final filtered = rows.where(_rowMatchesFilters).toList(growable: false);
+    final visibleIds = {for (final row in filtered) row.id};
+    final byId = {for (final row in filtered) row.id: row};
+    final activity = <String, int>{};
+    final running = <String, bool>{};
+    final unread = <String, bool>{};
+    final durableCount = <String, int>{};
+    final runtimeCount = <String, int>{};
+    final visiting = <String>{};
+
+    void derive(String id) {
+      if (activity.containsKey(id) || !visiting.add(id)) return;
+      final row = byId[id];
+      if (row == null) return;
+      var latest =
+          row.lastMessageAt ?? row.startedAt?.millisecondsSinceEpoch ?? 0;
+      var hasRunning = false;
+      var hasUnread = false;
+      var descendants = 0;
+      var runtimeDescendants = subagents.runtimeDescendantCount(id);
+      for (final child in _childrenByParent[id] ?? const <SessionRow>[]) {
+        derive(child.id);
+        descendants += 1 + (durableCount[child.id] ?? 0);
+        runtimeDescendants += runtimeCount[child.id] ?? 0;
+        final childActivity = activity[child.id] ?? 0;
+        if (childActivity > latest) latest = childActivity;
+        hasRunning =
+            hasRunning ||
+            child.effectivelyStreaming ||
+            (running[child.id] ?? false);
+        hasUnread =
+            hasUnread ||
+            _unreadCache[child.id] == true ||
+            (unread[child.id] ?? false);
+      }
+      hasRunning = hasRunning || subagents.forSession(id).any(_runtimeRunning);
+      activity[id] = latest;
+      running[id] = hasRunning;
+      unread[id] = hasUnread;
+      durableCount[id] = descendants;
+      runtimeCount[id] = runtimeDescendants;
+      visiting.remove(id);
+    }
+
+    for (final row in filtered) {
+      derive(row.id);
+    }
+    _projectedActivity = activity;
+    _projectedRunning = running;
+    _projectedUnread = unread;
+    _projectedDurableCount = durableCount;
+    _projectedRuntimeCount = runtimeCount;
+
+    final result = <_TimeGroup, List<SessionRow>>{};
+    for (final row in filtered) {
+      if (row.isChildSession && visibleIds.contains(row.parentSessionId)) {
+        continue;
+      }
+      final group = row.archived || row.pinned
+          ? _groupOf(row)
+          : row.effectivelyStreaming || (running[row.id] ?? false)
+          ? _TimeGroup.running
+          : _groupOf(
+              SessionRow(
+                id: row.id,
+                lastMessageAt: activity[row.id],
+                startedAt: row.startedAt,
+              ),
+            );
+      (result[group] ??= <SessionRow>[]).add(row);
+    }
+    for (final entry in result.entries) {
+      final group = entry.key;
+      final list = entry.value;
+      if (group == _TimeGroup.pinned) {
+        result[group] = session.applyPinnedOrder(list);
+      } else if (group != _TimeGroup.running) {
+        switch (session.sortMode) {
+          case 'created':
+            list.sort(
+              (a, b) => (b.startedAt ?? DateTime(0)).compareTo(
+                a.startedAt ?? DateTime(0),
+              ),
+            );
+          case 'tokens':
+            list.sort((a, b) => b.totalTokens.compareTo(a.totalTokens));
+          default:
+            list.sort(
+              (a, b) => (activity[b.id] ?? 0).compareTo(activity[a.id] ?? 0),
+            );
+        }
+      }
+    }
+    started.stop();
+    if (started.elapsedMicroseconds > metrics.maxSessionProjectionMicros) {
+      metrics.maxSessionProjectionMicros = started.elapsedMicroseconds;
+    }
+    return result;
   }
 
   _TimeGroup _effectiveGroup(SessionRow row, SubagentStore store) {
@@ -469,36 +633,90 @@ class _SessionListScreenState extends State<SessionListScreen>
   /// (dozens to hundreds of rows) into a visible scroll-jank source.
   Widget _buildGroupSliver(
     BuildContext context,
-    List<SessionRow> displayRows,
+    List<SessionRow> rowsForGroup,
     _TimeGroup g,
   ) {
-    final rowsForGroup = _rowsInGroup(displayRows, g);
-    if (g == _TimeGroup.pinned && !_selectMode) {
+    final visibleRows = _flattenVisibleSessionRows(rowsForGroup, g);
+    final canReorderRoots =
+        g == _TimeGroup.pinned &&
+        !_selectMode &&
+        visibleRows.length == rowsForGroup.length;
+    if (canReorderRoots) {
       // Desktop parity: pinned rows are user-reorderable; order persists
       // client-side keyed by durable lineage id.
       return SliverReorderableList(
-        itemCount: rowsForGroup.length,
+        itemCount: visibleRows.length,
         onReorderItem: (oldIndex, newIndex) =>
-            _reorderPinned(displayRows, g, oldIndex, newIndex),
+            _reorderPinned(rowsForGroup, g, oldIndex, newIndex),
         itemBuilder: (context, i) {
-          final row = rowsForGroup[i];
-          return ReorderableDelayedDragStartListener(
-            key: ValueKey('pinned-${row.id}'),
-            index: i,
-            child: _rowWithChildren(context, row, group: g),
+          final row = visibleRows[i].row;
+          return Builder(
+            builder: (context) => ReorderableDelayedDragStartListener(
+              key: ValueKey('pinned-${row.id}'),
+              index: i,
+              child: _row(context, row, group: g),
+            ),
           );
         },
       );
     }
     return SliverList.builder(
-      itemCount: rowsForGroup.length,
+      itemCount: visibleRows.length,
       itemBuilder: (context, i) {
-        final row = rowsForGroup[i];
-        return _selectMode
-            ? _row(context, row, group: g)
-            : _rowWithChildren(context, row, group: g);
+        return Builder(
+          builder: (context) {
+            final item = visibleRows[i];
+            final row = item.row;
+            final child = row.isChildSession
+                ? _subagentRow(context, row)
+                : _row(context, row, group: item.group);
+            if (item.depth == 0) return child;
+            return Padding(
+              key: ValueKey('nested-session-${row.id}'),
+              padding: EdgeInsetsDirectional.only(
+                start: 28.0 + item.depth * 12,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: BorderDirectional(
+                    start: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 12),
+                  child: child,
+                ),
+              ),
+            );
+          },
+        );
       },
     );
+  }
+
+  List<_SessionVisibleRow> _flattenVisibleSessionRows(
+    List<SessionRow> roots,
+    _TimeGroup group,
+  ) {
+    final result = <_SessionVisibleRow>[];
+    final path = <String>{};
+    void append(SessionRow row, int depth) {
+      if (!path.add(row.id)) return;
+      result.add(_SessionVisibleRow(row, group: group, depth: depth));
+      if (_expandedSessionIds.contains(row.id)) {
+        for (final child in _childrenByParent[row.id] ?? const <SessionRow>[]) {
+          append(child, depth + 1);
+        }
+      }
+      path.remove(row.id);
+    }
+
+    for (final root in roots) {
+      append(root, 0);
+    }
+    return result;
   }
 
   List<SessionRow> _rowsInGroup(List<SessionRow> rows, _TimeGroup g) {
@@ -544,18 +762,63 @@ class _SessionListScreenState extends State<SessionListScreen>
   Future<void> _rebuildUnreadCache(List<SessionRow> rows) async {
     final session = context.read<SessionStore>();
     final snap = ++_unreadCacheKey;
-    final Map<String, bool> next = {};
-    for (final r in rows) {
-      if (await session.hasUnreadForSession(r)) next[r.id] = true;
-      if (snap != _unreadCacheKey) return; // stale async response
-    }
+    final all = await session.unreadForSessions(rows);
+    if (snap != _unreadCacheKey) return; // stale async response
+    final next = <String, bool>{
+      for (final entry in all.entries)
+        if (entry.value) entry.key: true,
+    };
     if (!mounted) return;
     if (mapEquals(next, _unreadCache)) return;
     setState(() {
       _unreadCache
         ..clear()
         ..addAll(next);
+      _unreadRevision++;
     });
+  }
+
+  ({List<SessionRow> displayRows, Map<_TimeGroup, List<SessionRow>> groups})
+  _sessionProjection(List<SessionRow> rows) {
+    final session = context.read<SessionStore>();
+    final pullRequests = context.read<PullRequestStore>();
+    final subagents = context.read<SubagentStore>();
+    final normalizedQuery = _query.trim().toLowerCase();
+    final reusable =
+        identical(_projectionRowsIdentity, rows) &&
+        _projectionQuery == normalizedQuery &&
+        _projectionSessionRevision == session.sessionListRevision &&
+        _projectionSidebarRevision == session.sidebarRevision &&
+        _projectionPullRequestRevision == pullRequests.projectionRevision &&
+        _projectionSubagentRevision == subagents.projectionRevision &&
+        _projectionUnreadRevision == _unreadRevision;
+    if (!reusable) {
+      _cachedDisplayRows = normalizedQuery.isEmpty
+          ? rows
+          : rows
+                .where((row) {
+                  final haystack = [
+                    row.title,
+                    row.preview,
+                    row.model,
+                    row.profile,
+                    row.cwd,
+                    row.gitBranch,
+                  ].whereType<String>().join('\n').toLowerCase();
+                  return haystack.contains(normalizedQuery);
+                })
+                .toList(growable: false);
+      _prepareChildren(_cachedDisplayRows);
+      _cachedTimeGroups = _projectTimeGroups(_cachedDisplayRows);
+      _projectionRowsIdentity = rows;
+      _projectionQuery = normalizedQuery;
+      _projectionSessionRevision = session.sessionListRevision;
+      _projectionSidebarRevision = session.sidebarRevision;
+      _projectionPullRequestRevision = pullRequests.projectionRevision;
+      _projectionSubagentRevision = subagents.projectionRevision;
+      _projectionUnreadRevision = _unreadRevision;
+    }
+    return (displayRows: _cachedDisplayRows, groups: _cachedTimeGroups);
   }
 
   void _showMenu(SessionRow row) {
@@ -864,8 +1127,19 @@ class _SessionListScreenState extends State<SessionListScreen>
 
   @override
   Widget build(BuildContext context) {
-    final session = context.watch<SessionStore>();
-    final pullRequests = context.watch<PullRequestStore>();
+    final session = context.read<SessionStore>();
+    context.select<SessionStore, int>(
+      (store) => Object.hash(
+        store.sessionListRevision,
+        store.sidebarRevision,
+        store.durableId,
+        store.listHasMore,
+        store.loadingMore,
+      ),
+    );
+    final pullRequests = context.read<PullRequestStore>();
+    context.select<PullRequestStore, int>((store) => store.projectionRevision);
+    context.select<SubagentStore, int>((store) => store.projectionRevision);
     final rows = session.sessions ?? [];
     SessionRow? lastSession;
     for (final row in rows) {
@@ -950,7 +1224,7 @@ class _SessionListScreenState extends State<SessionListScreen>
                 if (width >= HermesBreakpoints.navigation)
                   Builder(
                     builder: (context) {
-                      final store = context.watch<SessionStore>();
+                      final store = context.read<SessionStore>();
                       final projectMode = store.groupingMode == 'project';
                       return IconButton(
                         tooltip: projectMode
@@ -976,7 +1250,7 @@ class _SessionListScreenState extends State<SessionListScreen>
                 if (width >= HermesBreakpoints.navigation)
                   Builder(
                     builder: (context) {
-                      final store = context.watch<SessionStore>();
+                      final store = context.read<SessionStore>();
                       return IconButton(
                         tooltip: context.l10n.sessionFilterTitle,
                         icon: Stack(
@@ -1133,21 +1407,7 @@ class _SessionListScreenState extends State<SessionListScreen>
     List<SessionRow> rows,
     SessionRow? lastSession,
   ) {
-    final session = context.watch<SessionStore>();
-    final normalizedQuery = _query.trim().toLowerCase();
-    final displayRows = normalizedQuery.isEmpty
-        ? rows
-        : rows.where((row) {
-            final haystack = [
-              row.title,
-              row.preview,
-              row.model,
-              row.profile,
-              row.cwd,
-              row.gitBranch,
-            ].whereType<String>().join('\n').toLowerCase();
-            return haystack.contains(normalizedQuery);
-          }).toList();
+    final session = context.read<SessionStore>();
     // Honest skeleton: show placeholder content until the first real list
     // resolves (WebUI #4717 equivalent — skeleton based on known count).
     if (_loading && rows.isEmpty) {
@@ -1172,8 +1432,11 @@ class _SessionListScreenState extends State<SessionListScreen>
     if (session.groupingMode == 'project' && !_selectMode) {
       return _buildProjectTreeBody(context, session);
     }
-    _prepareChildren(displayRows);
-    final groups = _computeVisibleGroupOrder(displayRows);
+    final projection = _sessionProjection(rows);
+    final projectedGroups = projection.groups;
+    final groups = _TimeGroup.values
+        .where((group) => projectedGroups[group]?.isNotEmpty == true)
+        .toList(growable: false);
     return RefreshIndicator(
       onRefresh: _load,
       // Spec §186: virtualize with slivers so 1000+ sessions scroll smoothly.
@@ -1207,7 +1470,7 @@ class _SessionListScreenState extends State<SessionListScreen>
                   ),
                 ),
               ),
-              _buildGroupSliver(context, displayRows, g),
+              _buildGroupSliver(context, projectedGroups[g]!, g),
             ],
             if (groups.isEmpty)
               SliverFillRemaining(
@@ -1929,65 +2192,6 @@ class _SessionListScreenState extends State<SessionListScreen>
     );
   }
 
-  Widget _rowWithChildren(
-    BuildContext context,
-    SessionRow row, {
-    required _TimeGroup group,
-  }) {
-    final children = _childrenByParent[row.id] ?? const <SessionRow>[];
-    final expanded = _expandedSessionIds.contains(row.id);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        row.isChildSession
-            ? _subagentRow(context, row)
-            : _row(context, row, group: group),
-        AnimatedSize(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : HermesMotion.deliberate,
-          reverseDuration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : HermesMotion.standard,
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: ClipRect(
-            child: AnimatedOpacity(
-              duration: MediaQuery.disableAnimationsOf(context)
-                  ? Duration.zero
-                  : HermesMotion.standard,
-              curve: Curves.easeOut,
-              opacity: expanded ? 1 : 0,
-              child: expanded
-                  ? Container(
-                      margin: const EdgeInsets.fromLTRB(28, 0, 12, 4),
-                      padding: const EdgeInsets.only(left: 12),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(
-                            color: Theme.of(context).colorScheme.outlineVariant,
-                          ),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          for (final child in children)
-                            _rowWithChildren(
-                              context,
-                              child,
-                              group: _groupOf(child),
-                            ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   String _subagentAge(BuildContext context, DateTime when) {
     final difference = DateTime.now().difference(when.toLocal());
     if (difference.inMinutes < 1) return context.l10n.timeJustNow;
@@ -2001,7 +2205,9 @@ class _SessionListScreenState extends State<SessionListScreen>
   }
 
   Widget _subagentRow(BuildContext context, SessionRow child) {
-    final runtime = context.watch<SubagentStore>().runtimeForChild(child.id);
+    final runtime = context.select<SubagentStore, SubagentNode?>(
+      (store) => store.runtimeForChild(child.id),
+    );
     final running =
         child.effectivelyStreaming ||
         runtime?.status == 'running' ||
@@ -2211,27 +2417,27 @@ class _SessionListScreenState extends State<SessionListScreen>
     );
   }
 
-  /// attention takes priority over working (matches [SessionStore.statusBucket]).
-  (bool attention, bool working) _rowStatusFlags(
-    SessionRow s,
-    SubagentStore subagents,
-  ) {
+  Widget _row(BuildContext context, SessionRow s, {required _TimeGroup group}) {
+    final subagents = context.read<SubagentStore>();
+    context.select<SubagentStore, int>((store) => store.projectionRevision);
+    final durableCount =
+        _projectedDurableCount[s.id] ?? _durableDescendantCount(s.id);
+    final childrenCount =
+        durableCount +
+        (_projectedRuntimeCount[s.id] ??
+            _runtimeDescendantCount(s.id, subagents));
+    final expanded = _expandedSessionIds.contains(s.id);
+    final sessionColor = context.select<SessionAppearanceStore, Color?>(
+      (store) => store.colorFor(s.id),
+    );
+    final unread =
+        _unreadCache[s.id] == true ||
+        (_projectedUnread[s.id] ?? _hasUnreadDescendant(s));
     final attention = s.needsAttention;
     final working =
         !attention &&
-        (s.isActivelyWorking || _hasRunningDescendant(s, subagents));
-    return (attention, working);
-  }
-
-  Widget _row(BuildContext context, SessionRow s, {required _TimeGroup group}) {
-    final subagents = context.watch<SubagentStore>();
-    final durableCount = _durableDescendantCount(s.id);
-    final childrenCount =
-        durableCount + _runtimeDescendantCount(s.id, subagents);
-    final expanded = _expandedSessionIds.contains(s.id);
-    final sessionColor = context.watch<SessionAppearanceStore>().colorFor(s.id);
-    final unread = _unreadCache[s.id] == true || _hasUnreadDescendant(s);
-    final (attention, working) = _rowStatusFlags(s, subagents);
+        (s.isActivelyWorking ||
+            (_projectedRunning[s.id] ?? _hasRunningDescendant(s, subagents)));
     final selected = _selectedIds.contains(s.id);
     // In select mode, wrap the row with a tap-to-toggle handler and
     // show a leading checkbox instead of the swipe-to-dismiss gesture.

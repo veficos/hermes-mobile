@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
@@ -161,6 +162,83 @@ void main() {
         throwsA(isA<http.ClientException>()),
       );
       expect(transport.sends, 1);
+    },
+  );
+
+  test(
+    'uploadFile retries one transient weak-network failure',
+    () async {
+      final transport = _SequencedClient([
+        http.ClientException('network changed'),
+        200,
+      ]);
+      final delays = <Duration>[];
+      final api = ApiClient(
+        baseUrl: 'http://contract.invalid',
+        apiKey: 'key',
+        client: transport,
+        retryDelay: (delay) async => delays.add(delay),
+      );
+      addTearDown(api.close);
+
+      final result = await api.uploadFile('draft/note.txt', 'data:,hi');
+
+      expect(result, isA<Map>());
+      expect(transport.sends, 2);
+      expect(delays, [const Duration(milliseconds: 250)]);
+    },
+  );
+
+  test(
+    'uploadFile does not retry a definitive server response',
+    () async {
+      final transport = _SequencedClient([409, 200]);
+      final api = ApiClient(
+        baseUrl: 'http://contract.invalid',
+        apiKey: 'key',
+        client: transport,
+        retryDelay: (_) async {},
+      );
+      addTearDown(api.close);
+
+      // A received response — even an error one — means the server saw
+      // the request, so it must not be resent blind.
+      await expectLater(
+        api.uploadFile('draft/note.txt', 'data:,hi'),
+        throwsA(isA<ApiException>()),
+      );
+      expect(transport.sends, 1);
+    },
+  );
+
+  test(
+    'postMultipart retries one transient weak-network failure and honors a custom timeout',
+    () async {
+      final transport = _SequencedClient([
+        http.ClientException('network changed'),
+        200,
+      ]);
+      final delays = <Duration>[];
+      final api = ApiClient(
+        baseUrl: 'http://contract.invalid',
+        apiKey: 'key',
+        client: transport,
+        retryDelay: (delay) async => delays.add(delay),
+      );
+      addTearDown(api.close);
+
+      final result = await api.postMultipart(
+        '/api/v1/kanban/tasks/t-1/attachments',
+        fields: const {},
+        field: 'file',
+        filename: 'photo.jpg',
+        bytes: Uint8List.fromList([1, 2, 3]),
+        timeout: const Duration(minutes: 2),
+      );
+
+      expect(result, isA<Map>());
+      expect(transport.sends, 2);
+      expect(delays, [const Duration(milliseconds: 250)]);
     },
   );
 

@@ -6,6 +6,15 @@ import 'package:hermes_mobile/core/chat_message.dart';
 import 'package:hermes_mobile/core/stores/chat_store.dart';
 
 void main() {
+  test('non-streaming transcript exposes a stable zero-copy view', () {
+    final chat = ChatStore()
+      ..loadHistory([
+        ChatMessage(id: 'one', role: 'user', parts: [ChatPart.text('hi')]),
+      ], hasMore: false);
+    addTearDown(chat.dispose);
+    expect(identical(chat.messages, chat.messages), isTrue);
+  });
+
   test(
     'background runtimes assemble independently and restore on activation',
     () async {

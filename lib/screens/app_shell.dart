@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/app_navigation.dart';
 import '../core/connection_reload_mixin.dart';
 import '../core/connections/connection_registry.dart';
+import '../core/connectivity_service.dart';
 import '../core/deep_link_service.dart';
 import '../core/external_links.dart';
 import '../core/models.dart';
@@ -31,6 +32,7 @@ import '../core/stores/pet_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../core/stores/request_store.dart';
 import '../core/stores/session_store.dart';
+import '../core/stores/terminal_store.dart';
 import '../core/stores/voice_store.dart';
 import '../core/stores/update_store.dart';
 import '../kanban/store.dart';
@@ -84,6 +86,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   DeepLinkService? _deepLinkService;
   UpdateStore? _updateStore;
   bool _updateDialogScheduled = false;
+  StreamSubscription<bool>? _connectivitySub;
 
   // Spec §194: tabs are built lazily — only the visited ones stay alive in
   // the IndexedStack, so cold start only pays for the visible tab.
@@ -124,6 +127,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _updateStore = Provider.of<UpdateStore?>(context, listen: false);
     _updateStore?.addListener(_onUpdateStateChanged);
     _onUpdateStateChanged();
+    // Weak-network: nudge the reconnect loop the instant the OS reports
+    // connectivity back, instead of waiting out whatever's left of the
+    // current backoff delay (see `ConnectionRuntime.notifyConnectivityRegained`).
+    final connectivity = Provider.of<ConnectivityService?>(
+      context,
+      listen: false,
+    );
+    _connectivitySub = connectivity?.onChange.listen((hasNetwork) {
+      if (!hasNetwork || !mounted) return;
+      context.read<ConnectionStore>().registry.notifyConnectivityRegained();
+      _readOptional<TerminalStore>()?.notifyConnectivityRegained();
+    });
+    if (connectivity != null) {
+      _readOptional<KanbanStore>()?.hasNetwork = () => connectivity.hasNetwork;
+    }
     SharedPreferences.getInstance().then((prefs) {
       if (!mounted) return;
       // P5-3: restore the last active tab after a process kill.
@@ -159,6 +177,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _notificationsService?.onTapTarget = null;
     _deepLinkService?.handler = null;
     _updateStore?.removeListener(_onUpdateStateChanged);
+    unawaited(_connectivitySub?.cancel());
     super.dispose();
   }
 

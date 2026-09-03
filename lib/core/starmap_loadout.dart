@@ -129,8 +129,7 @@ int idxOf(List<String> table, String value) {
 int indexBits(int n) => n <= 1 ? 1 : (math.log(n) / math.ln2).ceil();
 
 // ── base64url over the raw bytes (URL- and clipboard-safe, no padding) ─────
-String _toBase64Url(Uint8List buf) =>
-    base64Url.encode(buf).replaceAll('=', '');
+String _toBase64Url(Uint8List buf) => base64Url.encode(buf).replaceAll('=', '');
 
 Uint8List _fromBase64Url(String s) {
   final padded = s + '=' * ((4 - s.length % 4) % 4);
@@ -231,7 +230,9 @@ class Loadout<T> {
 
     final payload = framed.sublist(_headBytes);
     if (_checksum16(payload) != storedSum) {
-      throw errorFactory('${_capitalize(noun)} looks corrupted (checksum mismatch).');
+      throw errorFactory(
+        '${_capitalize(noun)} looks corrupted (checksum mismatch).',
+      );
     }
 
     try {

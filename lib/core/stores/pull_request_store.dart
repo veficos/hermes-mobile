@@ -70,6 +70,14 @@ class PullRequestStore extends ChangeNotifier {
   Future<void>? _loadFuture;
   bool _scanUnavailable = false;
   int _generation = 0;
+  int _projectionRevision = 0;
+  int get projectionRevision => _projectionRevision;
+
+  @override
+  void notifyListeners() {
+    _projectionRevision++;
+    super.notifyListeners();
+  }
 
   final Map<String, String> _sessionLookups = {};
   final Set<String> _scannedSessions = {};

@@ -19,8 +19,9 @@ ApiClient _client(
   Future<http.Response> Function(http.Request request) handler, {
   Future<Map<String, dynamic>> Function(
     String method,
-    Map<String, dynamic> params,
-  )?
+    Map<String, dynamic> params, {
+    Duration? timeout,
+  })?
   gatewayRequest,
 }) => ApiClient(
   baseUrl: 'https://agent.example',
@@ -646,7 +647,7 @@ void main() {
           'title': 'Branched',
           'parent_session_id': 'stored-1',
         }),
-        gatewayRequest: (method, params) async {
+        gatewayRequest: (method, params, {timeout}) async {
           calls.add((method, params));
           return switch (method) {
             'projects.tree' => {
@@ -761,7 +762,7 @@ void main() {
             'cwd': '/srv/project',
           });
         },
-        gatewayRequest: (method, params) async {
+        gatewayRequest: (method, params, {timeout}) async {
           calls.add((method, params));
           return switch (method) {
             'llm.oneshot' => {'text': '  Release readiness  '},
@@ -804,7 +805,7 @@ void main() {
     final calls = <(String, Map<String, dynamic>)>[];
     final client = _client(
       (_) async => _json({'ok': true}),
-      gatewayRequest: (method, params) async {
+      gatewayRequest: (method, params, {timeout}) async {
         calls.add((method, params));
         return switch (method) {
           'pet.info' => {
@@ -851,7 +852,7 @@ void main() {
     final calls = <(String, Map<String, dynamic>)>[];
     final client = _client(
       (_) async => _json({'ok': true}),
-      gatewayRequest: (method, params) async {
+      gatewayRequest: (method, params, {timeout}) async {
         calls.add((method, params));
         return switch (method) {
           'billing.state' => {'ok': true, 'balance_usd': '19.75'},
@@ -904,7 +905,7 @@ void main() {
   test('direct structured RPC failures become ApiException', () async {
     final client = _client(
       (_) async => _json({'ok': true}),
-      gatewayRequest: (_, _) async => {
+      gatewayRequest: (_, _, {timeout}) async => {
         'ok': false,
         'error': 'insufficient_scope',
         'message': 'Billing permission required',
@@ -1038,7 +1039,7 @@ void main() {
           'diff': '+new line',
           'recent': ['previous commit'],
         }),
-        gatewayRequest: (method, params) async {
+        gatewayRequest: (method, params, {timeout}) async {
           rpcCalls.add((method, params));
           return {'text': 'feat: add new line'};
         },
@@ -1082,6 +1083,30 @@ void main() {
     expect(companion.capabilities.fileReveal, isTrue);
     expect(companion.capabilities.terminalExecute, isTrue);
   });
+
+  test(
+    'direct petGenerate forwards the 300s budget past the gateway default',
+    () async {
+      Duration? seenTimeout;
+      final client = _client(
+        (_) async => _json({'ok': true}),
+        gatewayRequest: (method, params, {timeout}) async {
+          expect(method, 'pet.generate');
+          seenTimeout = timeout;
+          return {'ok': true, 'slug': 'nova'};
+        },
+      );
+      addTearDown(client.close);
+
+      final result = await client.petGenerate({'slug': 'nova'});
+
+      expect(result['slug'], 'nova');
+      // The server allows this operation up to 300s — must not fall back to
+      // `HermesPolicy.gatewayTimeout` (120s), which would abort client-side
+      // while the server is still legitimately working.
+      expect(seenTimeout, const Duration(seconds: 300));
+    },
+  );
 
   test(
     'Kanban event URI follows transport path and refreshes OAuth token',

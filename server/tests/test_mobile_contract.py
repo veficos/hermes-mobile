@@ -168,3 +168,26 @@ def test_gateway_proxy_backpressures_without_dropping_frames() -> None:
         return received
 
     assert asyncio.run(exercise()) == ["delta-1", "delta-2", "approval", None]
+
+
+def test_cancelled_gateway_reader_does_not_deadlock_on_full_queue() -> None:
+    class Upstream:
+        def __aiter__(self):
+            async def frames():
+                yield "fills-queue"
+                await asyncio.Event().wait()
+
+            return frames()
+
+    async def exercise() -> None:
+        queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=1)
+        reader = asyncio.create_task(_read_upstream(Upstream(), queue))
+        await asyncio.sleep(0)
+        assert queue.full()
+        reader.cancel()
+        try:
+            await asyncio.wait_for(reader, timeout=0.1)
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(exercise())

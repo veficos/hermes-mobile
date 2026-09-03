@@ -450,6 +450,16 @@ class MutableAssistantMessage {
     return buffer.toString();
   }
 
+  int get streamedCharacterCount {
+    var count = _textRun.length + _reasoningRun.length;
+    for (final part in _parts) {
+      if (part.kind == 'text' || part.kind == 'reasoning') {
+        count += part.text.length;
+      }
+    }
+    return count;
+  }
+
   /// Flush any open text/reasoning run into [_parts]. At most one run is
   /// open at a time: starting one kind flushes the other first, preserving
   /// the interleaved append order of the delta stream.

@@ -29,13 +29,7 @@ const _recMax = (1 << _recBits) - 1;
 
 int? _finiteTs(int? v) => v == null ? null : (v < 0 ? 0 : v);
 
-void _writeNode(
-  BitWriter w,
-  StarmapNode n,
-  Dict dict,
-  int minTs,
-  int span,
-) {
+void _writeNode(BitWriter w, StarmapNode n, Dict dict, int minTs, int span) {
   w.uint(idxOf(_kinds, n.kind), 1);
   w.varint(dict.id(_trim(n.label)));
   w.varint(dict.id(n.category));
@@ -101,12 +95,8 @@ void _writeGraph(BitWriter w, StarmapGraph graph) {
       .map((n) => _finiteTs(n.timestamp))
       .whereType<int>()
       .toList();
-  final minTs = stamps.isEmpty
-      ? 0
-      : stamps.reduce((a, b) => a < b ? a : b);
-  final maxTs = stamps.isEmpty
-      ? 0
-      : stamps.reduce((a, b) => a > b ? a : b);
+  final minTs = stamps.isEmpty ? 0 : stamps.reduce((a, b) => a < b ? a : b);
+  final maxTs = stamps.isEmpty ? 0 : stamps.reduce((a, b) => a > b ? a : b);
   final span = maxTs - minTs;
 
   w.varint(minTs);
@@ -121,7 +111,9 @@ void _writeGraph(BitWriter w, StarmapGraph graph) {
     _writeNode(w, n, dict, minTs, span);
   }
 
-  final order = {for (var i = 0; i < graph.nodes.length; i++) graph.nodes[i].id: i};
+  final order = {
+    for (var i = 0; i < graph.nodes.length; i++) graph.nodes[i].id: i,
+  };
   final edges = graph.edges
       .where((e) => order.containsKey(e.source) && order.containsKey(e.target))
       .toList();
@@ -163,10 +155,9 @@ StarmapGraph _readGraph(BitReader r) {
   for (final n in nodes) {
     counts[n.category] = (counts[n.category] ?? 0) + 1;
   }
-  final clusters = counts.entries
-      .map((e) => {'category': e.key, 'count': e.value})
-      .toList()
-    ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+  final clusters =
+      counts.entries.map((e) => {'category': e.key, 'count': e.value}).toList()
+        ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
 
   // Memory cards are dropped (viz-only); `imported: true` lets the UI tell a
   // decoded map apart from a freshly-scanned one.

@@ -27,6 +27,8 @@ import 'chat_store.dart';
 import 'composer_status_store.dart';
 import 'connection_store.dart';
 import 'request_store.dart';
+import '../performance_metrics.dart';
+import '../refresh_scheduler.dart';
 
 typedef HandoffGatewayRequest =
     Future<Map<String, dynamic>> Function(
@@ -235,6 +237,7 @@ class SessionInfoView {
   final String? cwd;
   final String? branch;
   final bool running;
+  final int? messageCount;
 
   /// Desktop parity — conversation-scoped selector state.
   final String? personality;
@@ -249,6 +252,7 @@ class SessionInfoView {
     this.cwd,
     this.branch,
     this.running = false,
+    this.messageCount,
     this.personality,
     this.workspace,
     this.difficulty,
@@ -263,6 +267,7 @@ class SessionInfoView {
         cwd: json['cwd']?.toString(),
         branch: (json['branch'] ?? json['git_branch'])?.toString(),
         running: json['running'] == true,
+        messageCount: (json['message_count'] as num?)?.toInt(),
         personality: json['personality']?.toString(),
         workspace: json['workspace']?.toString(),
         difficulty: json['difficulty']?.toString(),
@@ -292,6 +297,9 @@ class SessionInfoView {
           ? (json['branch'] ?? json['git_branch'])?.toString()
           : branch,
       running: nextRunning && !allowRunningTrue ? false : nextRunning,
+      messageCount: json.containsKey('message_count')
+          ? (json['message_count'] as num?)?.toInt()
+          : messageCount,
       personality: field('personality', personality),
       workspace: field('workspace', workspace),
       difficulty: field('difficulty', difficulty),
@@ -309,6 +317,7 @@ class SessionInfoView {
     String? cwd,
     String? branch,
     bool? running,
+    int? messageCount,
     String? personality,
     String? workspace,
     String? difficulty,
@@ -321,6 +330,7 @@ class SessionInfoView {
       cwd: cwd ?? this.cwd,
       branch: branch ?? this.branch,
       running: running ?? this.running,
+      messageCount: messageCount ?? this.messageCount,
       personality: personality ?? this.personality,
       workspace: workspace ?? this.workspace,
       difficulty: difficulty ?? this.difficulty,
@@ -546,20 +556,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         }
         _setInflightRecoveryNotice(false);
       }
-      if (e.type == 'sessions.changed' ||
-          e.type == 'session.title' ||
-          e.type == 'message.start' ||
-          e.type == 'message.complete' ||
-          e.type == 'error' ||
-          e.type == 'session.reclaimed' ||
-          e.type == 'approval.request' ||
-          e.type == 'clarify.request' ||
-          e.type == 'secret.request' ||
-          e.type == 'sudo.request' ||
-          e.type == 'terminal.read.request' ||
-          e.type == 'mcp.setup.request' ||
-          e.type == 'interactive.expire' ||
-          e.type == 'interactive.expired') {
+      if (_requiresAuthoritativeListRefresh(e.type)) {
         _scheduleListRefresh();
       }
       if (e.type == 'gateway.ready' &&
@@ -611,21 +608,13 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
           notifyListeners();
         }
       }
-      if (e.type == 'sessions.changed' ||
-          e.type == 'session.title' ||
-          e.type == 'message.start' ||
-          e.type == 'message.complete' ||
-          e.type == 'error' ||
-          e.type == 'session.reclaimed' ||
-          e.type.endsWith('.request') ||
-          e.type == 'interactive.expire' ||
-          e.type == 'interactive.expired') {
+      if (_requiresAuthoritativeListRefresh(e.type)) {
         _scheduleListRefresh();
       }
     });
     // Restore both the authoritative list and the active session after reconnect.
     _reconnectSub = connection.reconnected.listen((_) {
-      unawaited(refreshList(limit: 500, profile: _sessionListProfile));
+      unawaited(refreshList(limit: 100, profile: _sessionListProfile));
       final id = _durableId;
       if (id == null) return;
       if (_readOnly) {
@@ -649,6 +638,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       ++_listGeneration;
       ++_profileGeneration;
       _sessions = null;
+      _invalidateSessionProjection();
       _listOffset = 0;
       _listHasMore = false;
       _liveStreamingById.clear();
@@ -662,7 +652,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       _profileConfig = const {};
       _reset(notify: false);
       notifyListeners();
-      if (nextApi != null) unawaited(refreshList(limit: 500));
+      if (nextApi != null) {
+        unawaited(refreshList(limit: _currentListWindow));
+      }
       return;
     }
     if (connection.phase != ConnectionPhase.disconnected) return;
@@ -889,8 +881,30 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   bool get readOnly => _readOnly;
 
   List<SessionRow>? _sessions;
+  List<SessionRow>? _projectedSessionsCache;
+  Map<String, String> _sessionTitlesById = const {};
+  int _sessionListRevision = 0;
+  int get sessionListRevision => _sessionListRevision;
+  final ValueNotifier<int> sessionListSignal = ValueNotifier<int>(0);
   List<SessionRow>? get sessions =>
-      _sessions?.map(_projectLiveState).toList(growable: false);
+      _projectedSessionsCache ??= _sessions == null
+      ? null
+      : List.unmodifiable(_sessions!.map(_projectLiveState));
+  Map<String, String> get sessionTitlesById => _sessionTitlesById;
+
+  void _invalidateSessionProjection() {
+    _sessionListRevision++;
+    sessionListSignal.value = _sessionListRevision;
+    _projectedSessionsCache = null;
+    final rows = _sessions;
+    _sessionTitlesById = rows == null
+        ? const {}
+        : Map.unmodifiable({
+            for (final row in rows)
+              if (row.id.isNotEmpty && (row.title ?? '').trim().isNotEmpty)
+                row.id: row.title ?? '',
+          });
+  }
 
   final Map<String, bool> _liveStreamingById = {};
   final Map<String, bool> _liveCronRunningById = {};
@@ -1015,7 +1029,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
           changed = true;
         }
     }
-    if (changed) notifyListeners();
+    if (changed) {
+      _invalidateSessionProjection();
+      notifyListeners();
+    }
   }
 
   void _onRequestsChanged() {
@@ -1040,6 +1057,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     if (!_requestAttentionIds.containsAll(next) ||
         !next.containsAll(_requestAttentionIds)) {
       _requestAttentionIds = next;
+      _invalidateSessionProjection();
       notifyListeners();
     }
   }
@@ -1047,6 +1065,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   // ------------------------------------------------------ list pagination
   /// Desktop sidebar parity: offset-window pagination with a "load more" row.
   static const int sessionPageSize = 50;
+  int get _currentListWindow => (_sessions?.length ?? 0) > sessionPageSize
+      ? _sessions!.length
+      : sessionPageSize;
   int _listOffset = 0;
   bool _listHasMore = false;
   bool _loadingMore = false;
@@ -1060,6 +1081,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   bool _showArchived = false;
   bool get showArchived => _showArchived;
   bool get filtersActive => statusFilter.isNotEmpty || _showArchived;
+  int _sidebarRevision = 0;
+  int get sidebarRevision => _sidebarRevision;
 
   static const _statusFilterKey = 'hm_sidebar_status_filter';
   static const _showArchivedKey = 'hm_sidebar_show_archived';
@@ -1075,6 +1098,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   Future<void> setGroupingMode(String mode) async {
     if (_groupingMode == mode) return;
     _groupingMode = mode;
+    _sidebarRevision++;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_groupingKey, mode);
     notifyListeners();
@@ -1092,6 +1116,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   Future<void> setSortMode(String mode) async {
     if (_sortMode == mode) return;
     _sortMode = mode;
+    _sidebarRevision++;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_sortKey, mode);
     notifyListeners();
@@ -1108,12 +1133,15 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     _pinnedOrder
       ..clear()
       ..addAll(prefs.getStringList(_pinnedOrderKey) ?? const []);
+    _sidebarRevision++;
+    notifyListeners();
   }
 
   Future<void> setStatusFilter(Set<String> buckets) async {
     statusFilter
       ..clear()
       ..addAll(buckets);
+    _sidebarRevision++;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_statusFilterKey, statusFilter.toList());
     notifyListeners();
@@ -1122,6 +1150,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   Future<void> setShowArchived(bool value) async {
     if (_showArchived == value) return;
     _showArchived = value;
+    _sidebarRevision++;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showArchivedKey, value);
     notifyListeners();
@@ -1213,6 +1242,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         if (seen.add(row.id)) merged.add(row);
       }
       _sessions = merged;
+      _invalidateSessionProjection();
       _listOffset += pageRows.length;
       _listHasMore = page.hasMore;
       notifyListeners();
@@ -1489,7 +1519,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       _profileConfig = const {};
       clearSessionList(notify: false);
       if (payload.active != null) {
-        unawaited(refreshList(limit: 500, profile: payload.active));
+        unawaited(
+          refreshList(limit: _currentListWindow, profile: payload.active),
+        );
       }
     }
     notifyListeners();
@@ -1835,6 +1867,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   int _historyStartOffset = 0;
 
   Future<void> refreshTranscript() async {
+    ClientPerformanceMetrics.instance.transcriptRefreshes++;
     final id = _durableId;
     if (id == null) return;
     final api = _apiForStored(id);
@@ -1845,7 +1878,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       // The backend's messages endpoint offsets from the OLDEST message, so
       // load the most recent page first (offset = total - pageSize) and page
       // backwards on scroll-to-top.
-      final fallbackTotal = await _messageCount(id);
+      // Opening/resuming a session already fetched session.info. Reuse its
+      // count and avoid an extra REST round trip on every transcript load.
+      final fallbackTotal = _info?.messageCount ?? await _messageCount(id);
       var firstOffset = fallbackTotal > historyPageSize
           ? fallbackTotal - historyPageSize
           : 0;
@@ -2047,12 +2082,45 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   }
 
   // ---------------------------------------------------------------- list
+  void _replaceSessionRow(
+    String id,
+    SessionRow Function(SessionRow row) update,
+  ) {
+    final rows = _sessions;
+    if (rows == null) return;
+    final index = rows.indexWhere((row) => row.id == id);
+    if (index < 0) return;
+    rows[index] = update(rows[index]);
+    _invalidateSessionProjection();
+    notifyListeners();
+  }
+
+  void _upsertSessionRow(SessionRow row) {
+    final rows = _sessions;
+    if (rows == null) {
+      _sessions = <SessionRow>[row];
+    } else {
+      final index = rows.indexWhere((existing) => existing.id == row.id);
+      if (index < 0) {
+        rows.insert(0, row);
+      } else {
+        rows[index] = row;
+      }
+    }
+    _rememberListedSession(row, row.profile ?? _sessionListProfile);
+    _invalidateSessionProjection();
+    notifyListeners();
+  }
+
   Future<void> refreshList({
     int limit = 100,
     bool includeArchived = false,
     String? profile,
     bool notify = true,
   }) async {
+    final metrics = ClientPerformanceMetrics.instance;
+    metrics.listRefreshes++;
+    final refreshStarted = DateTime.now();
     final api = connection.api;
     if (api == null) return;
     final connectionId = connection.activeConnectionId;
@@ -2101,6 +2169,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         _rememberListedSession(row, listProfile);
       }
       _sessions = fresh;
+      metrics.maxSessionRows = metrics.maxSessionRows < fresh.length
+          ? fresh.length
+          : metrics.maxSessionRows;
+      _invalidateSessionProjection();
       _listOffset = fresh.length;
       _listHasMore = page.hasMore;
       if (!includeArchived) {
@@ -2129,7 +2201,12 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       );
       connection.error = null;
       if (notify) notifyListeners();
+      metrics.totalListRefreshLatency += DateTime.now().difference(
+        refreshStarted,
+      );
+      metrics.listRefreshesCompleted++;
     } catch (e) {
+      metrics.listRefreshesFailed++;
       if (requestGeneration != _listGeneration ||
           connectionId != connection.activeConnectionId ||
           !identical(api, connection.api)) {
@@ -2139,6 +2216,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         final cb = await _cache.cachedSessions(scope: cacheScope);
         if (cb.isNotEmpty) {
           _sessions = cb.map(SessionRow.fromJson).toList();
+          _invalidateSessionProjection();
         }
       }
       connection.error = runtimeL10n.sessionListLoadFailed('$e');
@@ -2157,6 +2235,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   void clearSessionList({bool notify = true}) {
     ++_listGeneration;
     _sessions = null;
+    _invalidateSessionProjection();
     _listOffset = 0;
     _listHasMore = false;
     if (notify) notifyListeners();
@@ -2166,10 +2245,23 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     _listRefreshTimer?.cancel();
     _listRefreshTimer = Timer(const Duration(milliseconds: 250), () {
       if (connection.api != null) {
-        unawaited(refreshList(limit: 500, profile: _sessionListProfile));
+        final profile = _sessionListProfile;
+        unawaited(
+          clientRefreshScheduler.run(
+            'sessions:${connection.activeConnectionId.value}:${profile ?? ''}',
+            () => refreshList(limit: 100, profile: profile),
+          ),
+        );
       }
     });
   }
+
+  static bool _requiresAuthoritativeListRefresh(String type) =>
+      type == 'sessions.changed' ||
+      type == 'session.title' ||
+      type == 'message.complete' ||
+      type == 'error' ||
+      type == 'session.reclaimed';
 
   void _ensureWritable() {
     if (_profileSwitchTarget != null) {
@@ -2291,7 +2383,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
             cwd: _info!.cwd,
             running: _info!.running,
           );
-    await refreshList(limit: 500);
+    _replaceSessionRow(id, (row) => row.copyWith(title: normalized));
+    await refreshList(limit: _currentListWindow);
     notifyListeners();
   }
 
@@ -2302,12 +2395,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       archived,
       profile: _routeForStored(id).profile,
     );
+    _replaceSessionRow(id, (row) => row.copyWith(archived: archived));
   }
 
   Future<void> setPinned(String id, bool pinned) async {
     final api = _apiForStored(id);
     await api.pinSession(id, pinned, profile: _routeForStored(id).profile);
-    await refreshList(limit: 500);
+    _replaceSessionRow(id, (row) => row.copyWith(pinned: pinned));
+    await refreshList(limit: _currentListWindow);
   }
 
   Future<SessionRow> branchStoredSession(String id, {int? keepCount}) async {
@@ -2317,7 +2412,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       keepCount: keepCount,
       profile: _routeForStored(id).profile,
     );
-    await refreshList(limit: 500);
+    _upsertSessionRow(row);
+    await refreshList(limit: _currentListWindow);
     return row;
   }
 
@@ -2327,7 +2423,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       id,
       profile: _routeForStored(id).profile,
     );
-    await refreshList(limit: 500);
+    _upsertSessionRow(row);
+    await refreshList(limit: _currentListWindow);
     return row;
   }
 
@@ -2341,7 +2438,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       preferLatest: preferLatest,
       profile: _routeForStored(id).profile,
     );
-    await refreshList(limit: 500);
+    _replaceSessionRow(id, (row) => row.copyWith(title: title));
+    await refreshList(limit: _currentListWindow);
     return title;
   }
 
@@ -2386,7 +2484,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final share = result['share'] as Map?;
     final url = share?['url']?.toString() ?? '';
     if (url.isEmpty) throw StateError(runtimeL10n.sessionShareLinkMissing);
-    await refreshList(limit: 500);
+    await refreshList(limit: _currentListWindow);
     return url;
   }
 
@@ -2399,13 +2497,18 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   Future<void> revokeStoredSessionShare(String id) async {
     final api = _apiForStored(id);
     await api.revokeSessionShare(id, profile: _routeForStored(id).profile);
-    await refreshList(limit: 500);
+    await refreshList(limit: _currentListWindow);
   }
 
   Future<void> moveStoredSession(String id, String? projectId) async {
     final api = _apiForStored(id);
     await api.moveSession(id, projectId, profile: _routeForStored(id).profile);
-    await refreshList(limit: 500);
+    _replaceSessionRow(
+      id,
+      (row) =>
+          row.copyWith(projectId: projectId, clearProjectId: projectId == null),
+    );
+    await refreshList(limit: _currentListWindow);
   }
 
   Future<Map<String, dynamic>> exportStoredSession(
@@ -2430,7 +2533,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       profile: _routeForStored(row.id).profile,
     );
     if (row.id == _durableId) chat.markIdle();
-    await refreshList(limit: 500);
+    await refreshList(limit: _currentListWindow);
   }
 
   Future<void> delete(String id) async {
@@ -3033,6 +3136,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   static const _sessionViewedCountsKey = 'hm_session_viewed_counts';
   static const _sessionCompletionUnreadKey = 'hm_session_completion_unread';
   static const _sessionObservedStreamingKey = 'hm_session_observed_streaming';
+  Future<void>? _unreadStateLoading;
+  final Map<String, int> _viewedCounts = {};
+  final Map<String, dynamic> _completionUnread = {};
+  final Map<String, dynamic> _observedStreaming = {};
+  Timer? _observedStreamingPersistTimer;
+  bool _observedStreamingDirty = false;
+  Future<void> _observedStreamingWriteTail = Future<void>.value();
+  final ValueNotifier<int> unreadRevision = ValueNotifier<int>(0);
   static const _sessionProfileCountsKey = 'hm_session_profile_counts';
 
   final Map<String, Timer> _draftSaveTimers = {};
@@ -3295,6 +3406,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(key, jsonEncode(map));
+      ClientPerformanceMetrics.instance.unreadPersistenceWrites++;
     } catch (_) {}
   }
 
@@ -3313,6 +3425,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(key, jsonEncode(map));
+      ClientPerformanceMetrics.instance.unreadPersistenceWrites++;
     } catch (_) {}
   }
 
@@ -3320,35 +3433,71 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   /// Mirrors WebUI `_hasUnreadForSession`.
   Future<bool> hasUnreadForSession(SessionRow row) async {
     if (row.id.isEmpty) return false;
-    if (await _hasCompletionUnread(row.id)) return true;
-    final counts = await _loadStringIntMap(_sessionViewedCountsKey);
-    if (!counts.containsKey(row.id)) {
-      await setSessionViewedCount(row.id, row.messageCount ?? 0);
+    await _ensureUnreadStateLoaded();
+    if (_completionUnread.containsKey(row.id)) return true;
+    if (!_viewedCounts.containsKey(row.id)) {
+      _viewedCounts[row.id] = row.messageCount ?? 0;
+      await _saveStringIntMap(_sessionViewedCountsKey, _viewedCounts);
       return false;
     }
     final msgCount = row.messageCount ?? 0;
-    return msgCount > (counts[row.id] ?? 0);
+    return msgCount > (_viewedCounts[row.id] ?? 0);
   }
 
-  Future<bool> _hasCompletionUnread(String sid) async {
-    final m = await _loadJsonMap(_sessionCompletionUnreadKey);
-    return m.containsKey(sid);
+  Future<void> _ensureUnreadStateLoaded() {
+    return _unreadStateLoading ??= () async {
+      ClientPerformanceMetrics.instance.unreadBatchLoads++;
+      final loaded = await Future.wait([
+        _loadStringIntMap(_sessionViewedCountsKey),
+        _loadJsonMap(_sessionCompletionUnreadKey),
+        _loadJsonMap(_sessionObservedStreamingKey),
+      ]);
+      _viewedCounts.addAll(loaded[0] as Map<String, int>);
+      _completionUnread.addAll(loaded[1]);
+      _observedStreaming.addAll(loaded[2]);
+    }();
+  }
+
+  /// Computes all unread flags after one storage read. Newly encountered
+  /// sessions are initialized and persisted in one batch.
+  Future<Map<String, bool>> unreadForSessions(Iterable<SessionRow> rows) async {
+    await _ensureUnreadStateLoaded();
+    final result = <String, bool>{};
+    var initialized = false;
+    for (final row in rows) {
+      ClientPerformanceMetrics.instance.unreadRowsEvaluated++;
+      if (row.id.isEmpty) continue;
+      final completion = _completionUnread.containsKey(row.id);
+      final viewed = _viewedCounts[row.id];
+      if (viewed == null) {
+        _viewedCounts[row.id] = row.messageCount ?? 0;
+        initialized = true;
+        result[row.id] = completion;
+      } else {
+        result[row.id] = completion || (row.messageCount ?? 0) > viewed;
+      }
+    }
+    if (initialized) {
+      await _saveStringIntMap(_sessionViewedCountsKey, _viewedCounts);
+    }
+    return result;
   }
 
   /// Mark the viewed message count for a session (clears the message-count
   /// unread dot AND any stale completion-unread marker — WebUI #3020).
   Future<void> setSessionViewedCount(String sid, int messageCount) async {
-    final m = await _loadStringIntMap(_sessionViewedCountsKey);
-    m[sid] = messageCount;
-    await _saveStringIntMap(_sessionViewedCountsKey, m);
+    await _ensureUnreadStateLoaded();
+    _viewedCounts[sid] = messageCount;
+    await _saveStringIntMap(_sessionViewedCountsKey, _viewedCounts);
     await _clearCompletionUnread(sid);
   }
 
   Future<void> _clearCompletionUnread(String sid) async {
-    final m = await _loadJsonMap(_sessionCompletionUnreadKey);
-    if (!m.containsKey(sid)) return;
-    m.remove(sid);
-    await _saveJsonMap(_sessionCompletionUnreadKey, m);
+    await _ensureUnreadStateLoaded();
+    if (!_completionUnread.containsKey(sid)) return;
+    _completionUnread.remove(sid);
+    await _saveJsonMap(_sessionCompletionUnreadKey, _completionUnread);
+    unreadRevision.value++;
   }
 
   /// Background/async turn completion: mark this session with a completion
@@ -3365,12 +3514,13 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       notifyListeners();
       return;
     }
-    final m = await _loadJsonMap(_sessionCompletionUnreadKey);
-    m[sid] = {
+    await _ensureUnreadStateLoaded();
+    _completionUnread[sid] = {
       'message_count': messageCount,
       'completed_at': DateTime.now().millisecondsSinceEpoch,
     };
-    await _saveJsonMap(_sessionCompletionUnreadKey, m);
+    await _saveJsonMap(_sessionCompletionUnreadKey, _completionUnread);
+    unreadRevision.value++;
     notifyListeners();
   }
 
@@ -3381,20 +3531,49 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   /// it as a background completion that deserves an unread dot.
   Future<void> rememberObservedStreaming(SessionRow row) async {
     if (row.id.isEmpty) return;
-    final m = await _loadJsonMap(_sessionObservedStreamingKey);
-    m[row.id] = {
+    await _ensureUnreadStateLoaded();
+    final next = <String, dynamic>{
       'message_count': row.messageCount ?? 0,
       'last_message_at': row.lastMessageAt ?? 0,
       'observed_at': DateTime.now().millisecondsSinceEpoch,
     };
-    await _saveJsonMap(_sessionObservedStreamingKey, m);
+    final current = _observedStreaming[row.id];
+    if (current is Map &&
+        current['message_count'] == next['message_count'] &&
+        current['last_message_at'] == next['last_message_at']) {
+      return;
+    }
+    _observedStreaming[row.id] = next;
+    _scheduleObservedStreamingPersist();
   }
 
   Future<void> forgetObservedStreaming(String sid) async {
-    final m = await _loadJsonMap(_sessionObservedStreamingKey);
-    if (!m.containsKey(sid)) return;
-    m.remove(sid);
-    await _saveJsonMap(_sessionObservedStreamingKey, m);
+    await _ensureUnreadStateLoaded();
+    if (!_observedStreaming.containsKey(sid)) return;
+    _observedStreaming.remove(sid);
+    _scheduleObservedStreamingPersist();
+  }
+
+  void _scheduleObservedStreamingPersist() {
+    _observedStreamingDirty = true;
+    _observedStreamingPersistTimer?.cancel();
+    _observedStreamingPersistTimer = Timer(
+      const Duration(milliseconds: 500),
+      _flushObservedStreamingPersist,
+    );
+  }
+
+  Future<void> _flushObservedStreamingPersist() async {
+    _observedStreamingPersistTimer?.cancel();
+    _observedStreamingPersistTimer = null;
+    if (!_observedStreamingDirty) return;
+    _observedStreamingDirty = false;
+    final snapshot = Map<String, dynamic>.from(_observedStreaming);
+    _observedStreamingWriteTail = _observedStreamingWriteTail.then(
+      (_) => _saveJsonMap(_sessionObservedStreamingKey, snapshot),
+    );
+    await _observedStreamingWriteTail;
+    if (_observedStreamingDirty) _scheduleObservedStreamingPersist();
   }
 
   /// Snapshot id → streaming flag for sidebar rows (mirrors `_sessionStreamingById`).
@@ -3449,6 +3628,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       cancelInflightPersistTimer(sid);
     }
     _listRefreshTimer?.cancel();
+    _observedStreamingPersistTimer?.cancel();
+    if (_observedStreamingDirty) {
+      unawaited(_flushObservedStreamingPersist());
+    }
     for (final timer in _draftSaveTimers.values) {
       timer.cancel();
     }
@@ -3456,6 +3639,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     _eventSub?.cancel();
     _legacyEventSub?.cancel();
     _reconnectSub?.cancel();
+    unreadRevision.dispose();
+    sessionListSignal.dispose();
     super.dispose();
   }
 }

@@ -1205,4 +1205,3 @@ class _AttachmentsRow extends StatelessWidget {
     );
   }
 }
-

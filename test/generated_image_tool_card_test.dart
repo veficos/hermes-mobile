@@ -63,10 +63,13 @@ void main() {
       final imageFinder = find.byType(Image);
       expect(imageFinder, findsOneWidget);
       final image = tester.widget<Image>(imageFinder);
+      final resized = image.image as ResizeImage;
       expect(
-        (image.image as NetworkImage).url,
+        (resized.imageProvider as NetworkImage).url,
         'https://v3b.fal.media/files/b/0aa820c7/cat.png',
       );
+      expect(resized.width, 1600);
+      expect(resized.height, 1600);
     },
   );
 }

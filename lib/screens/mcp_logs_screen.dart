@@ -107,10 +107,10 @@ class _McpLogsScreenState extends State<McpLogsScreen>
     if (api != null) {
       try {
         final data = source == 'stdio'
-            ? await api.getLogs(file: 'mcp', lines: 500)
+            ? await api.getLogs(file: 'mcp', lines: 80)
             : await api.getLogs(
                 file: 'agent',
-                lines: 300,
+                lines: 80,
                 search: widget.serverName ?? 'mcp',
               );
         final rawLines = (data is Map ? data['lines'] : null) as List?;

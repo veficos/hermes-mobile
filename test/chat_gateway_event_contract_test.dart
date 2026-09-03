@@ -64,6 +64,40 @@ void main() {
       expect(tool.tool!['summary'], '正在安装依赖');
     });
 
+    test('streaming materialization is reused within one tick', () async {
+      await emit('message.start', const {});
+      await emit('message.delta', const {'text': 'one'});
+
+      final first = chat.streamingMessage;
+      expect(chat.streamingMessage, same(first));
+      expect(chat.messages.last, same(first));
+
+      await emit('message.delta', const {'text': ' two'});
+      final second = chat.streamingMessage;
+      expect(second, isNot(same(first)));
+      expect(second!.fullText, 'one two');
+    });
+
+    test('streaming structure reads remain stable and zero-copy', () async {
+      chat.loadHistory(
+        List.generate(
+          100,
+          (index) => ChatMessage(
+            id: 'history-$index',
+            role: index.isEven ? 'user' : 'assistant',
+            parts: [ChatPart.text('$index')],
+          ),
+        ),
+        hasMore: false,
+      );
+      await emit('message.start', const {});
+      final structure = chat.transcriptStructure;
+      await emit('message.delta', const {'text': 'new token'});
+      expect(chat.transcriptStructure, same(structure));
+      expect(chat.transcriptStructure.last.fullText, isEmpty);
+      expect(chat.streamingMessage!.fullText, 'new token');
+    });
+
     test(
       'successful image tool removes an earlier streamed image echo',
       () async {

@@ -22,6 +22,7 @@ Widget hermesMarkdownImageBuilder(MarkdownImageConfig config) {
 }
 
 class _ZoomableInlineImage extends StatelessWidget {
+  static const _inlineDecodeMaxDimension = 1600;
   final Uri uri;
   final String? semanticLabel;
 
@@ -62,6 +63,13 @@ class _ZoomableInlineImage extends StatelessWidget {
         ),
       );
     }
+    // Decode a display-sized variant in the transcript. The fullscreen viewer
+    // still receives the original provider and can resolve full detail.
+    final inlineProvider = ResizeImage.resizeIfNeeded(
+      _inlineDecodeMaxDimension,
+      _inlineDecodeMaxDimension,
+      provider,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: GestureDetector(
@@ -72,7 +80,7 @@ class _ZoomableInlineImage extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 360),
             child: Image(
-              image: provider,
+              image: inlineProvider,
               fit: BoxFit.contain,
               semanticLabel: semanticLabel,
               errorBuilder: (_, _, _) => Padding(

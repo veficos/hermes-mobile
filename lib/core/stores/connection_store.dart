@@ -563,7 +563,9 @@ class ConnectionStore extends ChangeNotifier {
           apiKey: tunnel.apiKey,
           extraHeaders: candidate.normalizedHeaders,
           directGateway: true,
-          gatewayRequest: (method, params) => gateway.request(method, params),
+          gatewayRequest: (method, params, {timeout}) => timeout == null
+              ? gateway.request(method, params)
+              : gateway.request(method, params, timeout: timeout),
           onClose: () => unawaited(tunnel.close()),
         ),
         gateway: gateway,
@@ -584,7 +586,9 @@ class ConnectionStore extends ChangeNotifier {
           extraHeaders: candidate.normalizedHeaders,
           directGateway: direct,
           gatewayRequest: direct
-              ? (method, params) => gateway.request(method, params)
+              ? (method, params, {timeout}) => timeout == null
+                    ? gateway.request(method, params)
+                    : gateway.request(method, params, timeout: timeout)
               : null,
         ),
         gateway: gateway,
@@ -621,7 +625,9 @@ class ConnectionStore extends ChangeNotifier {
         extraHeaders: candidate.normalizedHeaders,
         accessTokenProvider: oauth.accessToken,
         directGateway: true,
-        gatewayRequest: (method, params) => gateway.request(method, params),
+        gatewayRequest: (method, params, {timeout}) => timeout == null
+            ? gateway.request(method, params)
+            : gateway.request(method, params, timeout: timeout),
         onClose: oauthClient.close,
       ),
       gateway: gateway,

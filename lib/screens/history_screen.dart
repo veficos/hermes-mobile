@@ -8,6 +8,7 @@ import '../l10n/l10n.dart';
 import '../core/api_client.dart';
 import '../core/models.dart';
 import '../core/connection_reload_mixin.dart';
+import '../core/performance_metrics.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/session_store.dart';
 import '../widgets/h/hermes_states.dart';
@@ -47,6 +48,11 @@ class _HistoryScreenState extends State<HistoryScreen>
   Timer? _searchDebounce;
   int _loadGeneration = 0;
   ApiClient? _loadedApi;
+  List<SessionRow>? _projectedRowsIdentity;
+  late Map<String, List<SessionRow>> _cachedChildren = const {};
+  late List<SessionRow> _cachedRoots = const [];
+  late List<_HistoryGroup> _cachedGroups = const [];
+  int? _cachedGroupDay;
 
   @override
   void initState() {
@@ -129,6 +135,7 @@ class _HistoryScreenState extends State<HistoryScreen>
           _rows
             ..clear()
             ..addAll(page.sessions);
+          _projectedRowsIdentity = null;
           _hasMore = page.hasMore;
           _total = page.total;
           _loadedApi = api;
@@ -172,9 +179,9 @@ class _HistoryScreenState extends State<HistoryScreen>
           offset == _rows.length &&
           identical(api, connection.api)) {
         setState(() {
-          _rows.addAll(
-            page.sessions.where((row) => !_rows.any((old) => old.id == row.id)),
-          );
+          final knownIds = _rows.map((row) => row.id).toSet();
+          _rows.addAll(page.sessions.where((row) => knownIds.add(row.id)));
+          _projectedRowsIdentity = null;
           _hasMore = page.hasMore;
           _total = page.total;
           _loading = false;
@@ -215,8 +222,10 @@ class _HistoryScreenState extends State<HistoryScreen>
 
   @override
   Widget build(BuildContext context) {
-    context.watch<SessionStore>();
-    final rows = List<SessionRow>.unmodifiable(_rows);
+    // The private backing list is never exposed outside this State. Keeping
+    // its identity stable lets the adjacency projection survive unrelated
+    // rebuilds (selection, theme, progress indicators).
+    final rows = _rows;
     final width = MediaQuery.sizeOf(context).width;
     final content = _buildBody(context, rows);
     return Scaffold(
@@ -300,6 +309,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
     final filtered = _filterRows(rows);
     final groups = _groupRows(filtered);
+    final visibleItems = _projectVisibleItems(groups);
     return Column(
       children: [
         if (_error != null)
@@ -348,10 +358,22 @@ class _HistoryScreenState extends State<HistoryScreen>
                   child: ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 24),
-                    itemCount: groups.length + (_hasMore ? 1 : 0),
+                    itemCount: visibleItems.length + (_hasMore ? 1 : 0),
                     itemBuilder: (context, index) {
-                      if (index < groups.length) {
-                        return _buildGroup(context, groups[index]);
+                      if (index < visibleItems.length) {
+                        final item = visibleItems[index];
+                        if (item is _HistoryHeaderItem) {
+                          return _buildGroupHeader(context, item);
+                        }
+                        final session = item as _HistorySessionItem;
+                        return _buildSessionRow(
+                          context,
+                          session.row,
+                          key: ValueKey('history-${session.row.id}'),
+                          depth: session.depth,
+                          hasChildren: session.hasChildren,
+                          expanded: session.expanded,
+                        );
                       }
                       return Padding(
                         padding: const EdgeInsets.all(12),
@@ -379,84 +401,55 @@ class _HistoryScreenState extends State<HistoryScreen>
   List<SessionRow> _filterRows(List<SessionRow> rows) {
     final query = _searchCtrl.text.trim().toLowerCase();
     if (query.isEmpty) return rows;
-    final byId = {for (final row in rows) row.id: row};
-    final children = <String, List<SessionRow>>{};
-    for (final row in rows) {
-      final parentId = row.parentSessionId;
-      if (parentId != null && byId.containsKey(parentId)) {
-        (children[parentId] ??= <SessionRow>[]).add(row);
-      }
-    }
-    bool matches(SessionRow row) {
-      final text = [
-        row.title,
-        row.preview,
-        row.contentSnippet,
-        row.cwd,
-        row.sourceLabel,
-        ...row.tags,
-      ].whereType<String>().join('\n').toLowerCase();
-      return text.contains(query);
-    }
-
-    final included = <String>{};
-    void includeDescendants(String id) {
-      if (!included.add(id)) return;
-      for (final child in children[id] ?? const <SessionRow>[]) {
-        includeDescendants(child.id);
-      }
-    }
-
-    for (final row in rows) {
-      if (!matches(row)) continue;
-      includeDescendants(row.id);
-      var parentId = row.parentSessionId;
-      while (parentId != null && byId[parentId] != null) {
-        if (!included.add(parentId)) break;
-        parentId = byId[parentId]!.parentSessionId;
-      }
-    }
-    return rows
-        .where((row) => included.contains(row.id))
-        .toList(growable: false);
+    // Search results are already filtered by the server. Re-scanning every
+    // title/snippet/tag here doubled the work and could discard matches from
+    // server-only indexed fields. The server also returns lineage context.
+    return rows;
   }
 
   List<_HistoryGroup> _groupRows(List<SessionRow> rows) {
-    final byId = {for (final row in rows) row.id: row};
-    final children = <String, List<SessionRow>>{};
-    for (final row in rows) {
-      final parentId = row.parentSessionId;
-      if (parentId != null && byId.containsKey(parentId)) {
-        (children[parentId] ??= <SessionRow>[]).add(row);
+    final now = DateTime.now();
+    final localNow = now.toLocal();
+    final dayKey = localNow.year * 10000 + localNow.month * 100 + localNow.day;
+    if (!identical(_projectedRowsIdentity, rows) || _cachedGroupDay != dayKey) {
+      final byId = {for (final row in rows) row.id: row};
+      final children = <String, List<SessionRow>>{};
+      for (final row in rows) {
+        final parentId = row.parentSessionId;
+        if (parentId != null && byId.containsKey(parentId)) {
+          (children[parentId] ??= <SessionRow>[]).add(row);
+        }
       }
+      _cachedChildren = children;
+      _cachedRoots = rows
+          .where(
+            (row) =>
+                row.parentSessionId == null ||
+                !byId.containsKey(row.parentSessionId),
+          )
+          .toList(growable: false);
+      final buckets = <String, List<SessionRow>>{};
+      for (final root in _cachedRoots) {
+        final label = root.pinned ? _bucketPinned : _dateBucket(root.startedAt);
+        (buckets[label] ??= <SessionRow>[]).add(root);
+      }
+      const order = [
+        _bucketPinned,
+        _bucketToday,
+        _bucketYesterday,
+        _bucketThisWeek,
+        _bucketLastWeek,
+        _bucketEarlier,
+      ];
+      _cachedGroups = [
+        for (final label in order)
+          if (buckets[label]?.isNotEmpty == true)
+            _HistoryGroup(label, buckets[label]!),
+      ];
+      _projectedRowsIdentity = rows;
+      _cachedGroupDay = dayKey;
     }
-    final roots = rows
-        .where(
-          (row) =>
-              row.parentSessionId == null ||
-              !byId.containsKey(row.parentSessionId),
-        )
-        .toList();
-    final buckets = <String, List<_HistorySessionNode>>{};
-    for (final root in roots) {
-      final label = root.pinned ? _bucketPinned : _dateBucket(root.startedAt);
-      (buckets[label] ??= <_HistorySessionNode>[]).add(
-        _HistorySessionNode(root, children),
-      );
-    }
-    const order = [
-      _bucketPinned,
-      _bucketToday,
-      _bucketYesterday,
-      _bucketThisWeek,
-      _bucketLastWeek,
-      _bucketEarlier,
-    ];
-    return [
-      for (final label in order)
-        if (buckets[label]?.isNotEmpty == true)
-          _HistoryGroup(label, buckets[label]!),
-    ];
+    return _cachedGroups;
   }
 
   String _dateBucket(DateTime? value) {
@@ -482,101 +475,103 @@ class _HistoryScreenState extends State<HistoryScreen>
     _ => context.l10n.historyEarlier,
   };
 
-  Widget _buildGroup(BuildContext context, _HistoryGroup group) {
-    final collapsed = _collapsedGroups.contains(group.label);
-    final accent = Theme.of(context).colorScheme.primary;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => setState(() {
-            collapsed
-                ? _collapsedGroups.remove(group.label)
-                : _collapsedGroups.add(group.label);
-          }),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
-            child: Row(
-              children: [
-                AnimatedRotation(
-                  turns: collapsed ? -.25 : 0,
-                  duration: MediaQuery.disableAnimationsOf(context)
-                      ? Duration.zero
-                      : const Duration(milliseconds: 160),
-                  child: const Icon(Icons.arrow_drop_down, size: 20),
-                ),
-                if (group.label == _bucketPinned) ...[
-                  Icon(Icons.star, size: 14, color: accent),
-                  const SizedBox(width: 5),
-                ],
-                Text(
-                  _bucketLabel(context, group.label),
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '${group.items.length}',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (!collapsed)
-          for (final item in group.items) _buildSessionNode(context, item),
-      ],
-    );
-  }
-
-  Widget _buildSessionNode(
-    BuildContext context,
-    _HistorySessionNode node, {
-    int depth = 0,
-  }) {
-    final hasChildren = node.children.isNotEmpty;
-    final expanded = _expandedSessionIds.contains(node.row.id);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildSessionRow(
-          context,
-          node.row,
+  List<_HistoryVisibleItem> _projectVisibleItems(List<_HistoryGroup> groups) {
+    final started = Stopwatch()..start();
+    final result = <_HistoryVisibleItem>[];
+    void appendNode(SessionRow row, int depth, Set<String> path) {
+      if (!path.add(row.id)) return;
+      final children = _cachedChildren[row.id] ?? const <SessionRow>[];
+      final expanded = _expandedSessionIds.contains(row.id);
+      result.add(
+        _HistorySessionItem(
+          row,
           depth: depth,
-          hasChildren: hasChildren,
+          hasChildren: children.isNotEmpty,
           expanded: expanded,
         ),
-        if (hasChildren)
-          AnimatedSize(
-            duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: expanded
-                ? Column(
-                    children: [
-                      for (final child in node.children)
-                        _buildSessionNode(context, child, depth: depth + 1),
-                    ],
-                  )
-                : const SizedBox.shrink(),
-          ),
-      ],
+      );
+      if (expanded) {
+        for (final child in children) {
+          appendNode(child, depth + 1, path);
+        }
+      }
+      path.remove(row.id);
+    }
+
+    for (final group in groups) {
+      final collapsed = _collapsedGroups.contains(group.label);
+      result.add(
+        _HistoryHeaderItem(group.label, group.items.length, collapsed),
+      );
+      if (!collapsed) {
+        for (final node in group.items) {
+          appendNode(node, 0, <String>{});
+        }
+      }
+    }
+    final metrics = ClientPerformanceMetrics.instance;
+    metrics.historyProjectionBuilds++;
+    metrics.historyVisibleRows += result.length;
+    started.stop();
+    if (started.elapsedMicroseconds > metrics.maxHistoryProjectionMicros) {
+      metrics.maxHistoryProjectionMicros = started.elapsedMicroseconds;
+    }
+    return result;
+  }
+
+  Widget _buildGroupHeader(BuildContext context, _HistoryHeaderItem item) {
+    final collapsed = item.collapsed;
+    final accent = Theme.of(context).colorScheme.primary;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => setState(() {
+        collapsed
+            ? _collapsedGroups.remove(item.label)
+            : _collapsedGroups.add(item.label);
+      }),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
+        child: Row(
+          children: [
+            AnimatedRotation(
+              turns: collapsed ? -.25 : 0,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 160),
+              child: const Icon(Icons.arrow_drop_down, size: 20),
+            ),
+            if (item.label == _bucketPinned) ...[
+              Icon(Icons.star, size: 14, color: accent),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              _bucketLabel(context, item.label),
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${item.count}',
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildSessionRow(
     BuildContext context,
     SessionRow row, {
+    Key? key,
     int depth = 0,
     bool hasChildren = false,
     bool expanded = false,
   }) {
     final selected = context.read<SessionStore>().durableId == row.id;
     return Padding(
+      key: key,
       padding: EdgeInsets.only(left: depth * 18.0, bottom: 6),
       child: SessionRichCard(
         row: row,
@@ -913,21 +908,33 @@ class _HistoryScreenState extends State<HistoryScreen>
 
 class _HistoryGroup {
   final String label;
-  final List<_HistorySessionNode> items;
+  final List<SessionRow> items;
 
   const _HistoryGroup(this.label, this.items);
 }
 
-class _HistorySessionNode {
+sealed class _HistoryVisibleItem {}
+
+class _HistoryHeaderItem extends _HistoryVisibleItem {
+  final String label;
+  final int count;
+  final bool collapsed;
+
+  _HistoryHeaderItem(this.label, this.count, this.collapsed);
+}
+
+class _HistorySessionItem extends _HistoryVisibleItem {
   final SessionRow row;
-  final Map<String, List<SessionRow>> _childrenByParent;
+  final int depth;
+  final bool hasChildren;
+  final bool expanded;
 
-  _HistorySessionNode(this.row, this._childrenByParent);
-
-  List<_HistorySessionNode> get children => [
-    for (final child in _childrenByParent[row.id] ?? const <SessionRow>[])
-      _HistorySessionNode(child, _childrenByParent),
-  ];
+  _HistorySessionItem(
+    this.row, {
+    required this.depth,
+    required this.hasChildren,
+    required this.expanded,
+  });
 }
 
 class _SessionManageSheet extends StatefulWidget {

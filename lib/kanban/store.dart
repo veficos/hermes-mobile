@@ -30,6 +30,14 @@ class KanbanStore extends ChangeNotifier {
   String tenantFilter = '';
   bool includeArchived = false;
   bool _foreground = true;
+
+  /// Weak-network: lets the owner (see `AppShell`) plug in a live
+  /// connectivity signal so the poll timer can skip a tick when there is
+  /// provably no network, instead of firing on schedule into a request
+  /// that can only time out. `null` (unwired, or genuinely unknown) means
+  /// "assume available" — this must never be the thing that silently stops
+  /// polling.
+  bool Function()? hasNetwork;
   KanbanStore([KanbanApi? api]) : _api = api;
   KanbanApi get api => requireApi();
   bool get ready => _api != null;
@@ -135,7 +143,7 @@ class KanbanStore extends ChangeNotifier {
     await load();
     _poll?.cancel();
     _poll = Timer.periodic(const Duration(seconds: 8), (_) {
-      if (_foreground) unawaited(load());
+      if (_foreground && (hasNetwork?.call() ?? true)) unawaited(load());
     });
   }
 

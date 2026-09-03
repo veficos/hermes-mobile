@@ -40,7 +40,10 @@ bool isToolEnabled(Map<String, dynamic>? server, String name) {
 
 /// Toggle one tool, preserving the config's mode (include if present, else an
 /// exclude denylist). Empty lists — and an emptied `tools` — are dropped.
-Map<String, dynamic> toggleToolInServer(Map<String, dynamic> server, String name) {
+Map<String, dynamic> toggleToolInServer(
+  Map<String, dynamic> server,
+  String name,
+) {
   final filter = readToolsFilter(server);
   final useInclude = filter.include != null && filter.include!.isNotEmpty;
   final key = useInclude ? 'include' : 'exclude';

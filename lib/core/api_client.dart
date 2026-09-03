@@ -15,6 +15,7 @@ import 'package:yaml/yaml.dart';
 import 'model_catalog.dart';
 import 'models.dart';
 import 'composer_draft_store.dart';
+import 'performance_metrics.dart';
 import '../theme/hermes_tokens.dart';
 import '../l10n/runtime_l10n.dart';
 
@@ -98,8 +99,9 @@ class ApiClient {
   final Future<String> Function()? accessTokenProvider;
   final Future<Map<String, dynamic>> Function(
     String method,
-    Map<String, dynamic> params,
-  )?
+    Map<String, dynamic> params, {
+    Duration? timeout,
+  })?
   gatewayRequest;
   final bool directGateway;
   final void Function()? onClose;
@@ -241,11 +243,12 @@ class ApiClient {
   Future<Map<String, dynamic>> _directRpc(
     String method,
     Map<String, dynamic> params,
-    String feature,
-  ) async {
+    String feature, {
+    Duration? timeout,
+  }) async {
     final request = gatewayRequest;
     if (request == null) _unsupportedDirectGateway(feature);
-    return _asMap(await request(method, params));
+    return _asMap(await request(method, params, timeout: timeout));
   }
 
   Map<String, dynamic> _requireOk(Map<String, dynamic> result, String feature) {
@@ -313,7 +316,12 @@ class ApiClient {
       throw ApiException(resp.statusCode, detail, details);
     }
     if (resp.body.isEmpty) return null;
+    final started = DateTime.now();
     final decoded = jsonDecode(resp.body);
+    ClientPerformanceMetrics.instance.recordJsonDecode(
+      resp.bodyBytes.length,
+      DateTime.now().difference(started),
+    );
     if (rejectExplicitFailure && decoded is Map && decoded['ok'] == false) {
       final result = decoded.cast<String, dynamic>();
       throw ApiException(
@@ -350,6 +358,11 @@ class ApiClient {
           _client.get(uri, headers: await _headers()),
           timeout: timeout,
         );
+        final metrics = ClientPerformanceMetrics.instance;
+        metrics.httpResponseBytes += resp.bodyBytes.length;
+        if (uri.path.endsWith('/sessions')) {
+          metrics.sessionResponseBytes += resp.bodyBytes.length;
+        }
         if (_isTransientReadStatus(resp.statusCode) &&
             attempt < readRetryAttempts) {
           await _retryDelay(_readRetryDelay(attempt));
@@ -446,19 +459,47 @@ class ApiClient {
     required String filename,
     required Uint8List bytes,
     Map<String, String>? query,
+    Duration? timeout,
   }) async {
-    final request = http.MultipartRequest('POST', _uri(path, query));
-    final headers = (await _headers())..remove('Content-Type');
-    request.headers.addAll(headers);
-    request.fields.addAll(fields);
-    request.files.add(
-      http.MultipartFile.fromBytes(field, bytes, filename: filename),
-    );
-    final streamed = await request.send().timeout(requestTimeout);
-    return _decode(
-      await http.Response.fromStream(streamed),
-      rejectExplicitFailure: true,
-    );
+    // Retries only a transport-level failure (the request never reached a
+    // server response) — the same policy as `_getWithRetry`, and safe for
+    // the same reason: a response the server DID send (even an error one)
+    // means it may have already processed the upload, so only a case where
+    // we know nothing was received is worth resending. A fresh
+    // `MultipartRequest` per attempt: the request body stream is single-use.
+    final effectiveTimeout = timeout ?? requestTimeout;
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 0; attempt <= readRetryAttempts; attempt++) {
+      try {
+        final request = http.MultipartRequest('POST', _uri(path, query));
+        final headers = (await _headers())..remove('Content-Type');
+        request.headers.addAll(headers);
+        request.fields.addAll(fields);
+        request.files.add(
+          http.MultipartFile.fromBytes(field, bytes, filename: filename),
+        );
+        // NOT `request.send()`: per the `http` package's own docs, that
+        // spins up a brand-new default `Client()` per call, silently
+        // bypassing whatever `_client` this `ApiClient` was actually
+        // configured with.
+        final streamed = await _client.send(request).timeout(effectiveTimeout);
+        return _decode(
+          await http.Response.fromStream(streamed),
+          rejectExplicitFailure: true,
+        );
+      } on TimeoutException catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+      } on http.ClientException catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+      }
+      if (attempt < readRetryAttempts) {
+        await _retryDelay(_readRetryDelay(attempt));
+      }
+    }
+    Error.throwWithStackTrace(lastError!, lastStackTrace!);
   }
 
   Future<({Uint8List bytes, String filename})> downloadBytes(
@@ -620,6 +661,7 @@ class ApiClient {
     final sessions = (map['sessions'] as List? ?? [])
         .map((e) => SessionRow.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
+    ClientPerformanceMetrics.instance.sessionRowsReceived += sessions.length;
     return SessionPage(
       sessions: sessions,
       total: (map['total'] as num?)?.toInt(),
@@ -2453,12 +2495,35 @@ class ApiClient {
   /// Upload a file to the server working directory (attachment flow, D6).
   /// `path` is the server-side target path; `dataUrl` is base64-encoded data.
   Future<Map<String, dynamic>> uploadFile(String path, String dataUrl) async {
-    final data = await post(
-      '/api/v1/files/upload',
-      body: {'path': path, 'data_url': dataUrl, 'overwrite': false},
-      timeout: const Duration(minutes: 2),
-    );
-    return _asMap(data);
+    final body = {'path': path, 'data_url': dataUrl, 'overwrite': false};
+    const timeout = Duration(minutes: 2);
+    // Retries only a transport-level failure, same policy (and reasoning)
+    // as `postMultipart` — `overwrite: false` also means a retry that
+    // lands after an actually-successful-but-unacknowledged first attempt
+    // surfaces as a clear "already exists" error rather than silently
+    // duplicating anything.
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 0; attempt <= readRetryAttempts; attempt++) {
+      try {
+        final data = await post(
+          '/api/v1/files/upload',
+          body: body,
+          timeout: timeout,
+        );
+        return _asMap(data);
+      } on TimeoutException catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+      } on http.ClientException catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+      }
+      if (attempt < readRetryAttempts) {
+        await _retryDelay(_readRetryDelay(attempt));
+      }
+    }
+    Error.throwWithStackTrace(lastError!, lastStackTrace!);
   }
 
   // ------------------------------------------------------------------ git
@@ -3103,9 +3168,21 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> petGenerate(Map<String, dynamic> args) async {
+    // The server's own gateway RPC budget for `pet.generate` is up to 300s
+    // (image generation) — both the REST default (30s) and the direct-
+    // gateway default (`HermesPolicy.gatewayTimeout`, 120s) would abort the
+    // client side of a call the server is still legitimately working on.
+    const timeout = Duration(seconds: 300);
     final data = directGateway
-        ? await _directRpc('pet.generate', args, 'Generate pet')
-        : _asMap(await post('/api/v1/pet/generate', body: args));
+        ? await _directRpc(
+            'pet.generate',
+            args,
+            'Generate pet',
+            timeout: timeout,
+          )
+        : _asMap(
+            await post('/api/v1/pet/generate', body: args, timeout: timeout),
+          );
     return _requireOk(data, 'Generate pet');
   }
 
@@ -3595,6 +3672,11 @@ class ApiClient {
     final data = await post(
       '/api/v1/terminal/execute',
       body: {'command': command, if (cwd != null && cwd.isNotEmpty) 'cwd': cwd},
+      // The server allows this command up to 35s (`shell.exec` gateway RPC)
+      // — stay above that so a legitimately slow-but-finishing command
+      // isn't aborted client-side before the server's own timeout would
+      // even fire.
+      timeout: const Duration(seconds: 40),
     );
     return _asMap(data);
   }

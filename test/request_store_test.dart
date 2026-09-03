@@ -655,6 +655,7 @@ void main() {
       resolution: const {'choice': 'once', 'status': 'completed'},
     );
     // Persistence is intentionally fire-and-forget in production.
+    // Persistence is intentionally fire-and-forget in production.
     await Future<void>.delayed(const Duration(milliseconds: 20));
     first.dispose();
 

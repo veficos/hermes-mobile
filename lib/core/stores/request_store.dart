@@ -188,6 +188,8 @@ class RequestResolution {
 }
 
 class RequestStore extends ChangeNotifier {
+  bool _persistRunning = false;
+  bool _persistDirty = false;
   static const _storageKey = 'hm_pending_interactive_requests_v1';
   final List<PendingRequest> _queue = [];
   final Map<String, RequestResolution> _resolved = {};
@@ -369,43 +371,56 @@ class RequestStore extends ChangeNotifier {
   };
 
   void _persist() {
-    unawaited(() async {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(
-          _storageKey,
-          jsonEncode({
-            'version': 2,
-            'pending': [
-              for (final request in _queue)
-                {
-                  'scope_key': _scopeKey(request),
-                  'event_type': _eventType(request.kind),
-                  'payload': request.payload,
-                  'session_id': request.sessionId,
-                  'durable_session_id': request.durableSessionId,
-                  'connection_id': request.ownerRoute?.connectionId.value,
-                  'profile': request.ownerRoute?.profile,
-                },
-            ],
-            'resolved': [
-              for (final resolution in _resolved.values)
-                {
-                  'request_id': resolution.requestId,
-                  'scope_key': resolution.scopeKey,
-                  'kind': resolution.kind?.name,
-                  'status': resolution.status,
-                  'result': resolution.result,
-                  'resolved_at': resolution.resolvedAt.toIso8601String(),
-                },
-            ],
-          }),
-        );
-      } catch (_) {
-        // Persistence is recovery assistance; an unavailable platform plugin
-        // must never break the live approval/clarify path.
+    _persistDirty = true;
+    // A single writer snapshots the latest state. Mutations arriving while a
+    // platform write is in flight collapse into one trailing write.
+    if (!_persistRunning) unawaited(_drainPersist());
+  }
+
+  Future<void> _drainPersist() async {
+    if (_persistRunning) return;
+    _persistRunning = true;
+    try {
+      while (_persistDirty) {
+        _persistDirty = false;
+        final payload = jsonEncode({
+          'version': 2,
+          'pending': [
+            for (final request in _queue)
+              {
+                'scope_key': _scopeKey(request),
+                'event_type': _eventType(request.kind),
+                'payload': request.payload,
+                'session_id': request.sessionId,
+                'durable_session_id': request.durableSessionId,
+                'connection_id': request.ownerRoute?.connectionId.value,
+                'profile': request.ownerRoute?.profile,
+              },
+          ],
+          'resolved': [
+            for (final resolution in _resolved.values)
+              {
+                'request_id': resolution.requestId,
+                'scope_key': resolution.scopeKey,
+                'kind': resolution.kind?.name,
+                'status': resolution.status,
+                'result': resolution.result,
+                'resolved_at': resolution.resolvedAt.toIso8601String(),
+              },
+          ],
+        });
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_storageKey, payload);
+        } catch (_) {
+          // Persistence is recovery assistance; an unavailable platform plugin
+          // must never break the live approval/clarify path.
+        }
       }
-    }());
+    } finally {
+      _persistRunning = false;
+      if (_persistDirty) unawaited(_drainPersist());
+    }
   }
 
   void attachEvents(Stream<GatewayEvent> events) {

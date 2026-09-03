@@ -10,10 +10,18 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .config import Settings
+from .network_observability import NetworkMetrics, WebSocketConnectionLimiter
 from .terminal_pty import PtyManager
 
 
-def build_terminal_router(settings: Settings, manager: PtyManager) -> APIRouter:
+def build_terminal_router(
+    settings: Settings,
+    manager: PtyManager,
+    metrics: NetworkMetrics | None = None,
+    limiter: WebSocketConnectionLimiter | None = None,
+) -> APIRouter:
+    metrics = metrics or NetworkMetrics()
+    limiter = limiter or WebSocketConnectionLimiter(settings.websocket_max_per_client)
     router = APIRouter(tags=["terminal"])
 
     @router.websocket("/api/v1/terminal/ws")
@@ -21,13 +29,39 @@ def build_terminal_router(settings: Settings, manager: PtyManager) -> APIRouter:
         token = ws.query_params.get("token", "")
         authz = ws.headers.get("authorization", "")
         api_key_header = ws.headers.get("x-api-key", "")
-        presented = token or api_key_header or (authz[7:] if authz.startswith("Bearer ") else authz)
+        presented = token or api_key_header or (
+            authz[7:] if authz.startswith("Bearer ") else authz
+        )
         if not hmac.compare_digest(presented.encode(), settings.api_key.encode()):
             # Must accept before close so the client receives the 4401 close code.
             await ws.accept()
             await ws.close(code=4401, reason="invalid api key")
             return
-        await ws.accept()
+        slot = limiter.slot(ws)
+        allowed = await slot.__aenter__()
+        if not allowed:
+            metrics.reject("terminal")
+            try:
+                await ws.accept()
+                await ws.close(
+                    code=4429, reason="too many websocket connections"
+                )
+            finally:
+                await slot.__aexit__(None, None, None)
+            return
+        started = asyncio.get_running_loop().time()
+        try:
+            await ws.accept()
+        except Exception:
+            # Admission happens before the ASGI accept so concurrent upgrade
+            # requests are counted. Release the slot if that upgrade fails.
+            await slot.__aexit__(None, None, None)
+            raise
+        metrics.connected(
+            "terminal",
+            asyncio.get_running_loop().time() - started,
+            limiter.client_key(ws),
+        )
         outgoing: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=512)
         owned: set[str] = set()
         sender = asyncio.create_task(_send_frames(ws, outgoing))
@@ -39,27 +73,39 @@ def build_terminal_router(settings: Settings, manager: PtyManager) -> APIRouter:
                 op = str(request.get("op") or "")
                 request_id = request.get("request_id")
                 if op == "start":
-                    started = await manager.start(
-                        outgoing,
-                        cwd=request.get("cwd") if isinstance(request.get("cwd"), str) else None,
-                        cols=_dimension(request.get("cols"), 80),
-                        rows=_dimension(request.get("rows"), 24),
-                    )
-                    owned.add(started["id"])
-                    await outgoing.put({"event": "started", "request_id": request_id, **started})
+                    try:
+                        started = await manager.start(
+                            outgoing,
+                            cwd=request.get("cwd") if isinstance(request.get("cwd"), str) else None,
+                            cols=_dimension(request.get("cols"), 80),
+                            rows=_dimension(request.get("rows"), 24),
+                        )
+                    except RuntimeError as exc:
+                        await outgoing.put(
+                            {"event": "error", "request_id": request_id, "message": str(exc)}
+                        )
+                    else:
+                        owned.add(started["id"])
+                        await outgoing.put({"event": "started", "request_id": request_id, **started})
                 elif op == "ssh.start":
-                    started = await manager.start_ssh(
-                        outgoing,
-                        host=str(request.get("host") or ""),
-                        user=str(request.get("user") or ""),
-                        port=_optional_port(request.get("port")),
-                        identity_file=str(request.get("identity_file") or ""),
-                        cwd=request.get("cwd") if isinstance(request.get("cwd"), str) else None,
-                        cols=_dimension(request.get("cols"), 80),
-                        rows=_dimension(request.get("rows"), 24),
-                    )
-                    owned.add(started["id"])
-                    await outgoing.put({"event": "started", "request_id": request_id, **started})
+                    try:
+                        started = await manager.start_ssh(
+                            outgoing,
+                            host=str(request.get("host") or ""),
+                            user=str(request.get("user") or ""),
+                            port=_optional_port(request.get("port")),
+                            identity_file=str(request.get("identity_file") or ""),
+                            cwd=request.get("cwd") if isinstance(request.get("cwd"), str) else None,
+                            cols=_dimension(request.get("cols"), 80),
+                            rows=_dimension(request.get("rows"), 24),
+                        )
+                    except RuntimeError as exc:
+                        await outgoing.put(
+                            {"event": "error", "request_id": request_id, "message": str(exc)}
+                        )
+                    else:
+                        owned.add(started["id"])
+                        await outgoing.put({"event": "started", "request_id": request_id, **started})
                 elif op == "reattach":
                     sid = str(request.get("id") or "")
                     reattached = manager.reattach(sid, outgoing) if sid else None
@@ -116,6 +162,8 @@ def build_terminal_router(settings: Settings, manager: PtyManager) -> APIRouter:
                 await sender
             except (asyncio.CancelledError, Exception):
                 pass
+            metrics.disconnected("terminal", "client closed")
+            await slot.__aexit__(None, None, None)
 
     return router
 

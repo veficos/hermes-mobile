@@ -102,4 +102,34 @@ void main() {
     await expectLater(store.setFontFamily('Fira Code'), throwsStateError);
     expect(store.configuredFontFamily, isEmpty);
   });
+
+  test(
+    'notifyConnectivityRegained is a safe no-op with no recovery in flight',
+    () {
+      // Weak-network: `AppShell` calls this unconditionally on every
+      // regained-connectivity event, whether or not this store happens to
+      // be mid-reconnect at that moment — it must never throw or leave
+      // state inconsistent for the common case where it isn't.
+      final connection = ConnectionStore();
+      final store = TerminalStore(connection: connection);
+      addTearDown(store.dispose);
+      addTearDown(connection.dispose);
+
+      expect(store.notifyConnectivityRegained, returnsNormally);
+      expect(store.notifyConnectivityRegained, returnsNormally);
+    },
+  );
+
+  test(
+    'notifyConnectivityRegained after dispose does not throw',
+    () {
+      final connection = ConnectionStore();
+      final store = TerminalStore(connection: connection);
+      addTearDown(connection.dispose);
+
+      store.dispose();
+
+      expect(store.notifyConnectivityRegained, returnsNormally);
+    },
+  );
 }

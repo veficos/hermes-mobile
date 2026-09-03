@@ -71,6 +71,15 @@ class TerminalStore extends ChangeNotifier {
        _boundApi = connection.api;
 
   static const _maxSessions = 5;
+  // Weak-network: the server holds an orphaned PTY alive for
+  // `_ORPHAN_GRACE_SECONDS` (90s, terminal_pty.py) and buffers whatever it
+  // outputs during the gap for replay on reattach — so the client's own
+  // recovery budget needs a comfortable margin under that, or a retry late
+  // in the window arrives after the server already tore the shell down for
+  // nothing. Per-attempt delay ramps linearly, capped so a long outage
+  // doesn't burn the whole budget in a handful of widely-spaced attempts.
+  static const _recoveryBudget = Duration(seconds: 80);
+  static const _recoveryStepCap = Duration(seconds: 5);
   static const _prefsKey = 'hm_terminal_tabs_v2';
   static const _historyKey = 'hm_terminal_cmd_history_v1';
   static const _snapshotLines = 200;
@@ -106,6 +115,8 @@ class TerminalStore extends ChangeNotifier {
   bool _initialized = false;
   bool _reconnecting = false;
   String? _reconnectNotice;
+  Completer<void>? _recoveryWakeUp;
+  bool _disposed = false;
   String _fontFamily = '';
   bool _persistHistory = false;
   bool _persistSnapshots = false;
@@ -718,13 +729,43 @@ class TerminalStore extends ChangeNotifier {
     if (sent == false && !_reconnecting) unawaited(_recoverConnection());
   }
 
+  /// Weak-network: called when the OS reports connectivity has come back
+  /// (see `ConnectivityService`, wired from `AppShell`) — cuts short
+  /// whatever delay the recovery loop is currently waiting out and tries
+  /// the next attempt right away, the same idea as
+  /// `ConnectionRuntime.notifyConnectivityRegained` for the main gateway.
+  /// A no-op when there's no recovery in flight to nudge.
+  void notifyConnectivityRegained() {
+    final wakeUp = _recoveryWakeUp;
+    if (wakeUp != null && !wakeUp.isCompleted) wakeUp.complete();
+  }
+
+  /// A `Future.delayed` that [notifyConnectivityRegained] can cut short.
+  Future<void> _interruptibleDelay(Duration delay) async {
+    final completer = Completer<void>();
+    _recoveryWakeUp = completer;
+    final timer = Timer(delay, () {
+      if (!completer.isCompleted) completer.complete();
+    });
+    await completer.future;
+    timer.cancel();
+    if (identical(_recoveryWakeUp, completer)) _recoveryWakeUp = null;
+  }
+
   Future<void> _recoverConnection() async {
     if (_reconnecting) return;
     _reconnecting = true;
     _reconnectNotice = runtimeL10n.terminalReconnecting;
     notifyListeners();
-    for (var attempt = 0; attempt < 8; attempt++) {
-      await Future<void>.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+    final deadline = DateTime.now().add(_recoveryBudget);
+    for (var attempt = 0; DateTime.now().isBefore(deadline); attempt++) {
+      final step = Duration(milliseconds: 300 * (attempt + 1));
+      await _interruptibleDelay(step > _recoveryStepCap ? _recoveryStepCap : step);
+      // The now-much-longer recovery budget (up to 80s, vs. the old ~11s)
+      // makes it meaningfully more likely the screen/store is torn down
+      // while this loop is still waiting — bail out rather than touch a
+      // disposed ChangeNotifier.
+      if (_disposed) return;
       try {
         await _connectClient();
         for (final session in List<TerminalSession>.from(_sessions)) {
@@ -866,6 +907,11 @@ class TerminalStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    // Unblock a `_recoverConnection` loop mid-wait instead of leaving it to
+    // idle out its timer before the `_disposed` check above ever runs.
+    final wakeUp = _recoveryWakeUp;
+    if (wakeUp != null && !wakeUp.isCompleted) wakeUp.complete();
     for (final timer in _snapshotTimers.values) {
       timer.cancel();
     }

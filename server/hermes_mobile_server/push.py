@@ -38,6 +38,11 @@ _PUSH_EVENTS = {
     "error",
 }
 
+#: Total attempts (including the first) for a transiently-failing push.
+_PUSH_RETRY_ATTEMPTS = 3
+#: Delay before attempt 2 and attempt 3 respectively.
+_PUSH_RETRY_DELAYS = (0.5, 1.5)
+
 
 @dataclass(frozen=True)
 class DeviceSubscription:
@@ -212,6 +217,23 @@ class DeliveryResult:
     delivered: bool
     invalid_token: bool = False
     detail: str = ""
+    #: The provider's HTTP status code, when the failure came from one
+    #: (`None` for a locally-detected bad token, or on success). Lets the
+    #: dispatcher tell a transient failure (429/5xx — worth retrying) apart
+    #: from a permanent one (other 4xx) without parsing `detail`.
+    status_code: int | None = None
+
+
+def _is_transient_push_failure(result: DeliveryResult) -> bool:
+    """A failure worth retrying: rate-limited or a provider-side error.
+
+    Never true for `invalid_token` (permanent — retrying a dead
+    registration is pointless) or any other 4xx (a malformed request won't
+    fix itself either).
+    """
+    if result.invalid_token or result.status_code is None:
+        return False
+    return result.status_code == 429 or result.status_code >= 500
 
 
 class PushProvider(Protocol):
@@ -284,7 +306,12 @@ class FcmV1Provider:
         invalid = response.status_code in {400, 404} and any(
             marker in text for marker in ("UNREGISTERED", "INVALID_ARGUMENT")
         )
-        return DeliveryResult(False, invalid_token=invalid, detail=f"FCM {response.status_code}")
+        return DeliveryResult(
+            False,
+            invalid_token=invalid,
+            detail=f"FCM {response.status_code}",
+            status_code=response.status_code,
+        )
 
     async def close(self) -> None:
         if self._owns_client:
@@ -365,6 +392,7 @@ class ApnsProvider:
             invalid_token=response.status_code == 410
             or reason in {"BadDeviceToken", "DeviceTokenNotForTopic", "Unregistered"},
             detail=f"APNs {response.status_code} {reason}".strip(),
+            status_code=response.status_code,
         )
 
     async def close(self) -> None:
@@ -424,14 +452,8 @@ class PushDispatcher:
             if provider is None:
                 results["failed"] += 1
                 continue
-            try:
-                result = await provider.send(subscription, message)
-            except (httpx.HTTPError, jwt.PyJWTError, ValueError):
-                logger.exception(
-                    "push delivery failed platform=%s device=%s",
-                    subscription.platform,
-                    subscription.device_id,
-                )
+            result = await self._send_with_retry(provider, subscription, message)
+            if result is None:
                 results["failed"] += 1
                 continue
             if result.delivered:
@@ -441,6 +463,51 @@ class PushDispatcher:
                 if result.invalid_token:
                     results["removed"] += self.store.remove_token(subscription.token)
         return results
+
+    async def _send_with_retry(
+        self,
+        provider: PushProvider,
+        subscription: DeviceSubscription,
+        message: PushMessage,
+    ) -> DeliveryResult | None:
+        """Retry a TRANSIENT delivery failure a couple of times with backoff.
+
+        The same connectivity blip that made the mobile client fall back to
+        push in the first place can also make the push provider itself
+        transiently unreachable (a raised `httpx.HTTPError`, or a 429/5xx
+        response — see `_is_transient_push_failure`); this exists for that
+        overlap specifically. A permanent failure (invalid/expired token,
+        malformed request) is never retried — `send()` still handles token
+        cleanup for those on the returned (or `None`, on an exception with
+        no attempts left) result.
+        """
+        result: DeliveryResult | None = None
+        for attempt in range(_PUSH_RETRY_ATTEMPTS):
+            try:
+                result = await provider.send(subscription, message)
+            except (httpx.HTTPError, jwt.PyJWTError, ValueError):
+                logger.exception(
+                    "push delivery failed platform=%s device=%s attempt=%d/%d",
+                    subscription.platform,
+                    subscription.device_id,
+                    attempt + 1,
+                    _PUSH_RETRY_ATTEMPTS,
+                )
+                result = None
+            if result is not None and (
+                result.delivered or not _is_transient_push_failure(result)
+            ):
+                return result
+            if attempt < _PUSH_RETRY_ATTEMPTS - 1:
+                logger.info(
+                    "retrying push delivery platform=%s device=%s attempt=%d/%d",
+                    subscription.platform,
+                    subscription.device_id,
+                    attempt + 2,
+                    _PUSH_RETRY_ATTEMPTS,
+                )
+                await asyncio.sleep(_PUSH_RETRY_DELAYS[attempt])
+        return result
 
     async def close(self) -> None:
         await asyncio.gather(

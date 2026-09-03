@@ -331,10 +331,56 @@ void main() {
 
       gateway.connected = false;
       gateway.drops.add('backend restarted');
-      await Future<void>.delayed(const Duration(milliseconds: 350));
+      await Future<void>.delayed(const Duration(milliseconds: 400));
 
       expect(runtime.phase, RuntimePhase.connected);
       expect(runtime.socketGeneration, 2);
+    },
+  );
+
+  test(
+    'regained connectivity retries immediately instead of waiting out backoff',
+    () async {
+      final gateway = _Gateway('remote');
+      final runtime = _runtime('remote', gateway);
+      addTearDown(runtime.dispose);
+      await runtime.connect();
+      expect(gateway.connectCount, 1);
+
+      gateway.connected = false;
+      gateway.connectError = StateError('still down');
+      gateway.drops.add('network blip');
+      // Let the drop handler run and land in `reconnecting`, which
+      // schedules its own backoff timer (>= 240ms for the first attempt —
+      // 300ms base with -20% jitter at the floor).
+      await Future<void>.delayed(Duration.zero);
+      expect(runtime.phase, RuntimePhase.reconnecting);
+
+      gateway.connectError = null; // "the network" is back
+      runtime.notifyConnectivityRegained();
+      // Far shorter than the shortest possible natural backoff — this only
+      // passes if the pending timer was actually skipped, not just fast.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(runtime.phase, RuntimePhase.connected);
+      expect(gateway.connectCount, greaterThanOrEqualTo(2));
+    },
+  );
+
+  test(
+    'regained connectivity is a no-op while already connected',
+    () async {
+      final gateway = _Gateway('remote');
+      final runtime = _runtime('remote', gateway);
+      addTearDown(runtime.dispose);
+      await runtime.connect();
+      final before = gateway.connectCount;
+
+      runtime.notifyConnectivityRegained();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(gateway.connectCount, before);
+      expect(runtime.phase, RuntimePhase.connected);
     },
   );
 
@@ -375,7 +421,7 @@ void main() {
       expect(runtime.phase, RuntimePhase.reconnecting);
 
       gateway.connectError = null;
-      await Future<void>.delayed(const Duration(milliseconds: 350));
+      await Future<void>.delayed(const Duration(milliseconds: 400));
       expect(runtime.phase, RuntimePhase.connected);
       expect(gateway.connectCount, 2);
     },
@@ -393,13 +439,13 @@ void main() {
       await expectLater(runtime.reconnectAfterResume(), throwsStateError);
       runtime.setForeground(false);
       gateway.connectError = null;
-      await Future<void>.delayed(const Duration(milliseconds: 350));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
 
       expect(gateway.connectCount, 1);
       expect(runtime.phase, RuntimePhase.reconnecting);
 
       runtime.setForeground(true);
-      await Future<void>.delayed(const Duration(milliseconds: 350));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
       expect(gateway.connectCount, 2);
       expect(runtime.phase, RuntimePhase.connected);
     },

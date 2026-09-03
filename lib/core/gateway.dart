@@ -16,6 +16,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../l10n/runtime_l10n.dart';
 
 import '../theme/hermes_tokens.dart';
+import 'performance_metrics.dart';
 
 import 'ws_connect.dart';
 
@@ -71,6 +72,7 @@ class GatewayException implements Exception {
 }
 
 const gatewayAuthenticationFailedCode = -3;
+const gatewayTooManyPendingCode = -32001;
 
 String gatewayCloseMessage(int? code, String? reason) => switch (code) {
   4401 => runtimeL10n.commonAuthenticationFailed,
@@ -84,6 +86,10 @@ class GatewayClient {
   final Map<String, String> extraHeaders;
   final Future<Uri> Function()? webSocketUriProvider;
   final bool directGateway;
+
+  /// Maximum number of in-flight JSON-RPC calls. Prevents a burst of UI
+  /// actions from retaining unbounded completers and frames.
+  final int maxPendingRequests;
 
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
@@ -102,7 +108,8 @@ class GatewayClient {
     this.extraHeaders = const {},
     this.webSocketUriProvider,
     this.directGateway = false,
-  });
+    this.maxPendingRequests = 64,
+  }) : assert(maxPendingRequests > 0);
 
   Stream<GatewayEvent> get events => _events.stream;
   Stream<String> get onDisconnect => _onDisconnect.stream;
@@ -192,14 +199,25 @@ class GatewayClient {
 
   void _onFrame(dynamic raw) {
     if (raw is! String) return;
+    final metrics = ClientPerformanceMetrics.instance;
+    metrics.gatewayFrames++;
+    metrics.gatewayReceivedBytes += raw.length;
     Map<String, dynamic> frame;
+    final decodeStarted = DateTime.now();
     try {
       frame = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      // String length is a zero-allocation payload-size proxy on this hot path.
+      metrics.recordJsonDecode(
+        raw.length,
+        DateTime.now().difference(decodeStarted),
+      );
     } catch (_) {
+      metrics.gatewayDecodeErrors++;
       return;
     }
     final method = frame['method'];
     if (method == 'event') {
+      metrics.gatewayEvents++;
       _events.add(GatewayEvent.fromFrame(frame));
       return;
     }
@@ -207,6 +225,7 @@ class GatewayClient {
     if (id is int) {
       final completer = _pending.remove(id);
       if (completer != null) {
+        metrics.gatewayResponses++;
         if (frame.containsKey('error')) {
           final err = (frame['error'] as Map?)?.cast<String, dynamic>() ?? {};
           completer.completeError(
@@ -263,17 +282,36 @@ class GatewayClient {
     Map<String, dynamic> params, {
     Duration timeout = HermesPolicy.gatewayTimeout,
   }) async {
+    final metrics = ClientPerformanceMetrics.instance;
+    final startedAt = DateTime.now();
+    metrics.rpcStarted++;
     if (_channel == null) {
-      await connect();
+      try {
+        await connect();
+      } catch (_) {
+        metrics.rpcFailed++;
+        rethrow;
+      }
+    }
+    if (_pending.length >= maxPendingRequests) {
+      metrics.rpcFailed++;
+      throw GatewayException(
+        gatewayTooManyPendingCode,
+        'too many pending gateway requests',
+      );
     }
     // C2: capture the channel locally; it may die between connect() and add.
     final channel = _channel;
     if (channel == null) {
+      metrics.rpcFailed++;
       throw GatewayException(-1, 'gateway disconnected');
     }
     final id = _nextId++;
     final completer = Completer<Map<String, dynamic>>();
     _pending[id] = completer;
+    metrics.maxPendingRpc = metrics.maxPendingRpc < _pending.length
+        ? _pending.length
+        : metrics.maxPendingRpc;
     final frame = jsonEncode({
       'jsonrpc': '2.0',
       'id': id,
@@ -281,15 +319,24 @@ class GatewayClient {
       'params': params,
     });
     try {
+      metrics.gatewaySentBytes += frame.length;
       channel.sink.add(frame);
     } catch (e) {
       _pending.remove(id);
       _invalidateSocket(channel, 'send failed: $e');
+      metrics.rpcFailed++;
       throw GatewayException(-1, 'send failed: $e');
     }
     try {
-      return await completer.future.timeout(timeout);
+      final result = await completer.future.timeout(timeout);
+      metrics.recordRpc(DateTime.now().difference(startedAt));
+      return result;
+    } on GatewayException {
+      metrics.rpcFailed++;
+      rethrow;
     } on TimeoutException {
+      metrics.rpcFailed++;
+      metrics.rpcTimedOut++;
       _pending.remove(id);
       _invalidateSocket(channel, 'request timed out');
       throw GatewayException(

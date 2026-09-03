@@ -29,6 +29,7 @@ class AppearanceStore extends ChangeNotifier {
   HermesAccent get accent => HermesAccents.byId(_accentId);
   bool get highContrast => _highContrast;
   bool get hapticsEnabled => _hapticsEnabled;
+
   /// Desktop parity: `store/keep-awake.ts` — off by default, a device-local
   /// preference. Desktop blocks the machine from sleeping during long
   /// unattended runs; mobile's analog is keeping the *screen* on while

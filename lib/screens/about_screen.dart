@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
 
 import '../core/diagnostics.dart';
 import '../core/external_links.dart';
+import '../core/clipboard.dart';
+import '../core/performance_metrics.dart';
 import '../core/stores/update_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
@@ -179,6 +182,12 @@ class _AboutContent extends StatelessWidget {
               onTap: () => showSendDiagnosticsDialog(context),
             ),
             HermesMobileRow(
+              icon: Icons.speed_outlined,
+              title: 'Client performance',
+              subtitle: 'View and copy metrics from this app run',
+              onTap: () => _showPerformanceSnapshot(context),
+            ),
+            HermesMobileRow(
               icon: Icons.forum_outlined,
               title: l10n.reportIssueTitle,
               onTap: () => launchExternalOrNotify(
@@ -213,6 +222,43 @@ class _AboutContent extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+
+  Future<void> _showPerformanceSnapshot(BuildContext context) async {
+    final encoder = const JsonEncoder.withIndent('  ');
+    final snapshot = encoder.convert(
+      ClientPerformanceMetrics.instance.snapshot(),
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Client performance'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              snapshot,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(context.l10n.commonClose),
+          ),
+          FilledButton.icon(
+            onPressed: () => copyTextOrNotify(
+              dialogContext,
+              snapshot,
+              successMessage: context.l10n.commonCopied,
+            ),
+            icon: const Icon(Icons.copy, size: 18),
+            label: Text(context.l10n.commonCopy),
+          ),
+        ],
+      ),
     );
   }
 }

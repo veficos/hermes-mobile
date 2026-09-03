@@ -8,6 +8,8 @@
 /// with or without an [errorContext].
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -15,6 +17,7 @@ import '../l10n/l10n.dart';
 import 'clipboard.dart';
 import 'external_links.dart';
 import 'stores/connection_store.dart';
+import 'performance_metrics.dart';
 
 const _kSupportLinks = [
   ('GitHub Issues', 'https://github.com/NousResearch/hermes-agent/issues'),
@@ -55,9 +58,15 @@ Future<void> showSendDiagnosticsDialog(
   }
 
   try {
+    final performance = jsonEncode(
+      ClientPerformanceMetrics.instance.snapshot(),
+    );
+    final combinedContext = [
+      if (errorContext != null && errorContext.isNotEmpty) errorContext,
+      'client_performance=$performance',
+    ].join('\n');
     final result = await gateway.request('diagnostics.share_nous', {
-      if (errorContext != null && errorContext.isNotEmpty)
-        'error_context': errorContext,
+      'error_context': combinedContext,
     }, timeout: const Duration(seconds: 120));
     if (result['ok'] != true) {
       throw StateError(

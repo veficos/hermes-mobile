@@ -17,6 +17,7 @@ import 'mermaid_view.dart';
 /// as a highlighted [HermesCodeBlock].
 const _artifactLineThreshold = 40;
 const _artifactCharThreshold = 1600;
+const _highlightCharThreshold = 32000;
 
 bool _promotesToArtifact(String language, String code) {
   final lang = language.toLowerCase();
@@ -36,7 +37,8 @@ Widget codeBlockOrArtifact(
       : HermesCodeBlock(
           code: code,
           language: language,
-          enableHighlight: enableHighlight,
+          enableHighlight:
+              enableHighlight && code.length <= _highlightCharThreshold,
         );
 }
 

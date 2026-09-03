@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/app_licenses.dart';
+import 'core/connectivity_service.dart';
 import 'core/notifications_service.dart';
+import 'core/performance_metrics.dart';
 import 'core/remote_push.dart';
 import 'core/app_navigation.dart';
 import 'core/deep_link_service.dart';
@@ -43,6 +45,7 @@ import 'theme/hermes_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  ClientFrameMetricsBinding.start();
   registerAppLicenses();
   runApp(const HermesMobileApp());
 }
@@ -313,6 +316,11 @@ class HermesMobileApp extends StatelessWidget {
         Provider<DeepLinkService>(
           lazy: false,
           create: (_) => DeepLinkService(),
+        ),
+        Provider<ConnectivityService>(
+          lazy: false,
+          create: (_) => ConnectivityService()..start(),
+          dispose: (_, svc) => unawaited(svc.dispose()),
         ),
         ChangeNotifierProvider(create: (_) => AppearanceStore()..load()),
         ChangeNotifierProvider(create: (_) => LocaleStore()..load()),

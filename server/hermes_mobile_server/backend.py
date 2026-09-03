@@ -150,6 +150,13 @@ class BackendManager:
         self._event_listeners: list[Callable[[dict], Awaitable[None]]] = []
         self._lifecycle_listeners: list[Callable[[], None]] = []
         self._backend_epoch = 0
+        # These must be instance-owned: class-level mutable connection state
+        # can leak pending RPCs between multiple managers in one process.
+        self._gw_ws: websockets.ClientConnection | None = None
+        self._gw_reader: asyncio.Task | None = None
+        self._gw_lock: asyncio.Lock | None = None
+        self._gw_next_id = 1
+        self._gw_pending: dict[int, asyncio.Future] = {}
 
     def add_event_listener(self, listener: Callable[[dict], Awaitable[None]]) -> None:
         """Register a coroutine to receive every gateway broadcast event dict."""
@@ -439,6 +446,18 @@ class BackendManager:
             base["error"] = "failed to query backend status"
         return base
 
+    def rpc_concurrency_snapshot(self) -> dict:
+        """Cheap, non-blocking snapshot of in-flight gateway JSON-RPC calls.
+
+        ``gateway_rpc()`` lets concurrent callers run their RPCs in flight
+        together (matched by request id in ``_gw_pending``); this just
+        exposes how many are outstanding right now, for `/network/metrics`.
+        """
+        return {
+            "gateway_connected": self._gw_ws is not None,
+            "in_flight_rpcs": len(self._gw_pending),
+        }
+
     # ------------------------------------------------------------ ws proxy
     @property
     def gateway_ws_url(self) -> str:
@@ -459,6 +478,7 @@ class BackendManager:
         last_error: Exception | None = None
         deadline = asyncio.get_running_loop().time() + 15.0
         while asyncio.get_running_loop().time() < deadline:
+            ws: websockets.ClientConnection | None = None
             try:
                 ws = await websockets.connect(
                     self.gateway_ws_url,
@@ -473,6 +493,11 @@ class BackendManager:
                 return ws
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
+                if ws is not None:
+                    try:
+                        await ws.close()
+                    except Exception:  # noqa: BLE001
+                        pass
                 await asyncio.sleep(0.5)
         raise BackendError(f"could not reach backend gateway: {last_error}")
 
@@ -480,12 +505,6 @@ class BackendManager:
     # A long-lived upstream connection used by the domain API to call
     # gateway-only methods (session.create, projects.list, …). The connection
     # is separate from the per-client pass-through pipes in ws_proxy.py.
-    _gw_ws: websockets.ClientConnection | None = None
-    _gw_reader: asyncio.Task | None = None
-    _gw_lock: asyncio.Lock = None  # type: ignore[assignment]
-    _gw_next_id: int = 1
-    _gw_pending: dict[int, asyncio.Future] = {}
-
     def _gateway_lock(self) -> asyncio.Lock:
         if self._gw_lock is None:
             self._gw_lock = asyncio.Lock()
@@ -536,39 +555,57 @@ class BackendManager:
         finally:
             if self._gw_ws is ws:
                 self._gw_ws = None
-            # Fail anything still pending.
-            pending, self._gw_pending = self._gw_pending, {}
-            for future in pending.values():
-                if not future.done():
-                    future.set_exception(BackendError("gateway rpc connection lost"))
+                # Only the reader which still owns the active socket may fail
+                # its pending requests. A late reader from a replaced socket
+                # must not tear down requests sent on the new generation.
+                pending, self._gw_pending = self._gw_pending, {}
+                for future in pending.values():
+                    if not future.done():
+                        future.set_exception(
+                            BackendError("gateway rpc connection lost")
+                        )
 
     async def gateway_rpc(
-        self, method: str, params: dict | None = None, timeout: float = 60.0
+        self, method: str, params: dict | None = None, timeout: float | None = None
     ) -> dict:
         """Call a JSON-RPC method on the backend gateway and await its result."""
+        timeout = timeout if timeout is not None else _gateway_rpc_timeout(method)
         async with self._gateway_lock():
             await self._ensure_gateway_rpc()
-            assert self._gw_ws is not None
+            ws = self._gw_ws
+            assert ws is not None
             req_id = self._gw_next_id
             self._gw_next_id += 1
             loop = asyncio.get_running_loop()
             future: asyncio.Future = loop.create_future()
             self._gw_pending[req_id] = future
-            await self._gw_ws.send(
-                json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "method": method,
-                        "params": params or {},
-                    }
-                )
-            )
             try:
-                return await asyncio.wait_for(future, timeout=timeout)
-            except asyncio.TimeoutError:
+                await ws.send(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "method": method,
+                            "params": params or {},
+                        }
+                    )
+                )
+            except Exception:
                 self._gw_pending.pop(req_id, None)
-                raise BackendError(f"gateway rpc {method} timed out") from None
+                if self._gw_ws is ws:
+                    self._gw_ws = None
+                try:
+                    await ws.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                raise
+        # Do not serialize the response wait. The reader dispatches results by
+        # id, so independent slow RPCs can safely remain in flight together.
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            self._gw_pending.pop(req_id, None)
+            raise BackendError(f"gateway rpc {method} timed out") from None
 
     def describe(self) -> dict:
         return {
@@ -576,3 +613,21 @@ class BackendManager:
                 Path.home() / ".hermes-mobile-server" / "config.json"
             ),
         }
+
+
+def _gateway_rpc_timeout(method: str) -> float:
+    """Timeout by operation class: probes are fast, execution stays roomy."""
+    if method.endswith((".status", ".state", ".info")) or method in {
+        "projects.list",
+        "agents.list",
+        "model.options",
+        "usage.bars",
+        "delegation.status",
+    }:
+        return 15.0
+    if method.startswith(("shell.", "files.", "pet.generate")) or method in {
+        "prompt.submit",
+        "session.generate_title",
+    }:
+        return 300.0
+    return 60.0

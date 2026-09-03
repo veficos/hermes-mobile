@@ -606,6 +606,11 @@ class SessionRow {
   }
 
   SessionRow copyWith({
+    String? title,
+    bool? archived,
+    bool? pinned,
+    String? projectId,
+    bool clearProjectId = false,
     String? profile,
     bool? isStreaming,
     bool? cronRunning,
@@ -615,7 +620,7 @@ class SessionRow {
     bool clearActiveStreamId = false,
   }) => SessionRow(
     id: id,
-    title: title,
+    title: title ?? this.title,
     preview: preview,
     messageCount: messageCount,
     source: source,
@@ -623,7 +628,7 @@ class SessionRow {
     gitRepoRoot: gitRepoRoot,
     gitBranch: gitBranch,
     parentSessionId: parentSessionId,
-    projectId: projectId,
+    projectId: clearProjectId ? null : projectId ?? this.projectId,
     model: model,
     provider: provider,
     sessionSource: sessionSource,
@@ -686,8 +691,8 @@ class SessionRow {
         ? null
         : activeStreamId ?? this.activeStreamId,
     lastMessageAt: lastMessageAt,
-    archived: archived,
-    pinned: pinned,
+    archived: archived ?? this.archived,
+    pinned: pinned ?? this.pinned,
     tags: tags,
     contentSnippet: contentSnippet,
     matchMessageId: matchMessageId,

@@ -56,6 +56,9 @@ machine running hermes are on the same network (or tunnel the port).
 | `HERMES_MOBILE_APNS_BUNDLE_ID` | — | signed iOS application bundle ID |
 | `HERMES_MOBILE_APNS_PRIVATE_KEY_FILE` | — | path to the APNs `.p8` private key |
 | `HERMES_MOBILE_APNS_SANDBOX` | `false` | use the APNs sandbox endpoint for development builds |
+| `HERMES_MOBILE_WS_MAX_PER_CLIENT` | `12` | maximum WebSockets per source client across gateway, plugin, Kanban and terminal proxies |
+| `HERMES_MOBILE_TRUST_FORWARDED_FOR` | `false` | trust the first `X-Forwarded-For` address for connection limiting; enable only behind a trusted proxy |
+| `HERMES_MOBILE_PROXY_IDLE_TIMEOUT` | — | configured reverse-proxy WebSocket idle timeout in seconds; values at or below 40 emit a startup warning |
 
 ## API surface
 
@@ -63,6 +66,7 @@ machine running hermes are on the same network (or tunnel the port).
 - `GET /api/v1/health` — liveness (no auth)
 - `POST /api/v1/backend/restart` — restart the Hermes backend
 - `GET /api/v1/methods` — documentation of the API surface
+- `GET /api/v1/network/metrics` — authenticated aggregate WebSocket activity, reconnect, handshake and disconnect metrics
 - `/api/v1/push/*` — scoped device registration, provider status, unregister,
   and authenticated test delivery
 - `/api/v1/*` — domain REST API (sessions, config, files, git, …); git and
@@ -87,3 +91,24 @@ Notifications entitlement. Android client builds receive their public Firebase
 app configuration through Gradle properties or environment variables:
 `HERMES_FCM_APP_ID`, `HERMES_FCM_API_KEY`, `HERMES_FCM_PROJECT_ID`, and
 `HERMES_FCM_SENDER_ID`.
+
+## Reverse proxies and WebSockets
+
+The server sends WebSocket pings every 20 seconds and treats a missing pong
+within another 20 seconds as a dead connection. Configure every public proxy
+idle timeout comfortably above that 40-second failure window; **120 seconds or
+more is recommended**. Set `HERMES_MOBILE_PROXY_IDLE_TIMEOUT` to the effective
+value so the server warns about unsafe deployments at startup.
+
+- Nginx: set `proxy_http_version 1.1`, forward `Upgrade`/`Connection`, and use
+  `proxy_read_timeout 120s; proxy_send_timeout 120s;`.
+- Caddy: WebSocket proxying works automatically with `reverse_proxy`; do not
+  configure `stream_timeout` below 120 seconds.
+- Cloudflare: the managed WebSocket idle timeout depends on plan and product.
+  Keep application pings enabled, avoid a Worker/Durable Object idle timeout
+  below 120 seconds, and verify the current Cloudflare limit for the deployed
+  plan rather than assuming it is configurable.
+
+When a trusted reverse proxy terminates client connections, set
+`HERMES_MOBILE_TRUST_FORWARDED_FOR=true` and overwrite (do not append untrusted
+input to) `X-Forwarded-For`. Otherwise leave it disabled.

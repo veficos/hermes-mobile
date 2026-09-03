@@ -35,10 +35,7 @@ class Recency {
 /// agree. Timed by timestamp when the span is real, else ordinal so an
 /// undated graph still "builds up" in a stable order.
 Recency computeRecency(List<StarmapNode> nodes) {
-  final known = nodes
-      .map((n) => n.timestamp)
-      .whereType<int>()
-      .toList();
+  final known = nodes.map((n) => n.timestamp).whereType<int>().toList();
   final minTs = known.isEmpty ? null : known.reduce(math.min);
   final maxTs = known.isEmpty ? null : known.reduce(math.max);
   final timed = minTs != null && maxTs != null && maxTs > minTs;
@@ -83,7 +80,9 @@ int fnv1aHash(String input) {
 double nodeDotRadius(StarmapNode n) {
   if (n.kind == 'memory') return 4.4;
   final base = (n.state == 'archived' || n.state == 'stale') ? 2.4 : 3.0;
-  return base + math.sqrt(math.max(0, n.useCount)) * 0.55 + (n.pinned ? 0.8 : 0);
+  return base +
+      math.sqrt(math.max(0, n.useCount)) * 0.55 +
+      (n.pinned ? 0.8 : 0);
 }
 
 /// Smoothstep recency → ink alpha along the age gradient (old = quiet, recent
@@ -106,7 +105,8 @@ const int _daySeconds = 86400;
 const int clusterSize = 5;
 
 final double _ringCore = radiusForRecency(recForRatio(0));
-final double _ringBand = (radiusForRecency(recForRatio(1)) - _ringCore) / ringSteps;
+final double _ringBand =
+    (radiusForRecency(recForRatio(1)) - _ringCore) / ringSteps;
 double ringRadius(int i) => _ringCore + i * _ringBand;
 
 /// Position INSIDE a ring's band (the annulus the ring caps), biased toward
@@ -184,16 +184,36 @@ String _bucketLabel(int ts, _Unit u) {
   if (u.isDay) return _formatDate(d);
   if (u.step >= 12) return '${d.year}';
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${months[d.month - 1]} ${d.year}';
 }
 
 String _formatDate(DateTime d) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${months[d.month - 1]} ${d.day}, ${d.year}';
 }
@@ -247,19 +267,22 @@ class StarmapTimeLayout {
 
 /// Even, unlabeled-ish fallback when there's no usable time span (undated
 /// graph or one instant): a fixed 5-ring layout so nothing regresses.
-StarmapTimeLayout _evenLayout(
-  List<StarmapNode> allNodes,
-  Recency recency,
-) {
+StarmapTimeLayout _evenLayout(List<StarmapNode> allNodes, Recency recency) {
   final rings = List.generate(ringSteps + 1, (i) {
     String? label;
     if (recency.timed && recency.minTs != null && recency.maxTs != null) {
-      final ts = (recency.minTs! +
-              (recency.maxTs! - recency.minTs!) * (i / ringSteps))
-          .round();
-      label = _formatDate(DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true));
+      final ts =
+          (recency.minTs! + (recency.maxTs! - recency.minTs!) * (i / ringSteps))
+              .round();
+      label = _formatDate(
+        DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true),
+      );
     }
-    return StarmapRing(label: label, r: ringRadius(i), ratio: recForRatio(i / ringSteps));
+    return StarmapRing(
+      label: label,
+      r: ringRadius(i),
+      ratio: recForRatio(i / ringSteps),
+    );
   });
 
   int capRing(double rec) {
@@ -346,10 +369,11 @@ StarmapTimeLayout buildStarmapTimeLayout(List<StarmapNode> allNodes) {
   final recByNode = <String, double>{};
 
   for (var i = 0; i < buckets.length; i++) {
-    final bucket = buckets[i]..sort((a, b) {
-      final at = tsOf(a), bt = tsOf(b);
-      return at == bt ? a.id.compareTo(b.id) : at.compareTo(bt);
-    });
+    final bucket = buckets[i]
+      ..sort((a, b) {
+        final at = tsOf(a), bt = tsOf(b);
+        return at == bt ? a.id.compareTo(b.id) : at.compareTo(bt);
+      });
     final hi = rings[i].ratio;
     final lo = i > 0 ? rings[i - 1].ratio : 0.0;
     final m = bucket.length;

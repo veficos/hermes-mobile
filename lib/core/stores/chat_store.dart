@@ -22,6 +22,7 @@ import '../gateway.dart';
 import '../connections/connection_registry.dart';
 import '../transcript_window.dart';
 import 'composer_status_store.dart';
+import '../performance_metrics.dart';
 
 const _unscopedStreamEvents = {
   'approval.request',
@@ -92,6 +93,15 @@ ChatErrorLayer classifyChatError(String text, {ChatErrorSurface? surface}) {
       return ChatErrorLayer.network;
   }
   final t = text.toLowerCase();
+  // `GatewayClient.request`'s own client-side backpressure cap
+  // (`gatewayTooManyPendingCode`, gateway.dart) — a burst of in-flight RPCs
+  // (queued sends replaying after a reconnect are exactly this) rather than
+  // anything the server said. None of the generic network keywords below
+  // appear in its message, so without this it falls through to `generic`
+  // right when the user most needs to see "network", not a blank label.
+  if (t.contains('too many pending gateway requests')) {
+    return ChatErrorLayer.network;
+  }
   if (RegExp(
     r'\b(401|403|unauthor|invalid api key|invalid_api_key|authentication|forbidden|no api key|missing api key)\b',
   ).hasMatch(t)) {
@@ -194,6 +204,34 @@ class ChatStore extends ChangeNotifier {
   static const int _backgroundAssemblerLimit = 20;
 
   final List<ChatMessage> _messages = [];
+  int _transcriptRevision = 0;
+  int get transcriptRevision => _transcriptRevision;
+  void _markTranscriptChanged() => _transcriptRevision++;
+  int _transcriptStructureRevision = 0;
+  int get transcriptStructureRevision => _transcriptStructureRevision;
+  void _markTranscriptStructureChanged() {
+    _transcriptStructureRevision++;
+    _markTranscriptChanged();
+  }
+
+  void _markMessagesChanged({bool structure = false}) {
+    if (structure) {
+      _markTranscriptStructureChanged();
+    } else {
+      _markTranscriptChanged();
+    }
+  }
+
+  // Stable read-only view: wrapping the mutable backing list once avoids an
+  // O(N) copy every time selectors/widgets read `messages`.  The only
+  // composite copy is needed while a streaming row is materialized.
+  late final List<ChatMessage> _messagesView =
+      UnmodifiableListView<ChatMessage>(_messages);
+  List<ChatMessage>? _composedMessagesView;
+  int _composedMessagesTick = -1;
+  int _composedMessagesLength = -1;
+  int _composedMessagesIndex = -1;
+  String? _composedMessagesId;
   final List<ChatMessage> _newerTranscriptWindow = [];
   String? _transcriptWindowAnchorId;
   MutableAssistantMessage? _streaming;
@@ -220,6 +258,8 @@ class ChatStore extends ChangeNotifier {
   Timer? _streamNotifyTimer;
   bool _streamNotifyPending = false;
   int _streamTick = 0;
+  ChatMessage? _materializedStreamingMessage;
+  int _materializedStreamingTick = -1;
   final List<ChatRecoveryEntry> _recoveryJournal = [];
   final Map<String, ChatStatusItem> _statusItems = {};
   final ValueNotifier<int> composerSurfaceRevision = ValueNotifier<int>(0);
@@ -254,7 +294,23 @@ class ChatStore extends ChangeNotifier {
   /// deltas accumulate in a buffer inside [MutableAssistantMessage]; the UI
   /// reads this once per throttled notify instead of rewriting the
   /// transcript list per gateway token.
-  ChatMessage? get streamingMessage => _streaming?.toChatMessage();
+  ChatMessage? _materializedLive() {
+    final live = _streaming;
+    if (live == null) {
+      _materializedStreamingMessage = null;
+      _materializedStreamingTick = _streamTick;
+      return null;
+    }
+    if (_materializedStreamingTick != _streamTick ||
+        _materializedStreamingMessage?.id != live.id) {
+      _materializedStreamingMessage = live.toChatMessage();
+      _materializedStreamingTick = _streamTick;
+      ClientPerformanceMetrics.instance.streamMaterializations++;
+    }
+    return _materializedStreamingMessage;
+  }
+
+  ChatMessage? get streamingMessage => _materializedLive();
 
   void clearRecoveredStream() {
     if (_recoveredStreamId == null) return;
@@ -400,6 +456,7 @@ class ChatStore extends ChangeNotifier {
     _messages
       ..clear()
       ..addAll(messages);
+    _markTranscriptStructureChanged();
     _recoveredStreamId = streamId;
     _streaming = null;
     _interimBoundaryPending = false;
@@ -587,6 +644,7 @@ class ChatStore extends ChangeNotifier {
         errorSurface: surface,
       );
     }
+    _markTranscriptStructureChanged();
     _flushStreamNotify();
   }
 
@@ -636,6 +694,7 @@ class ChatStore extends ChangeNotifier {
       usage: current.usage,
       reactions: List.unmodifiable(reactions),
     );
+    _markTranscriptChanged();
     notifyListeners();
     return snapshot;
   }
@@ -674,16 +733,21 @@ class ChatStore extends ChangeNotifier {
 
   void _scheduleStreamNotify() {
     _streamTick++;
+    ClientPerformanceMetrics.instance.streamingTicks++;
     if (_streamNotifyPending) return;
     _streamNotifyPending = true;
-    _streamNotifyTimer ??= Timer(
-      const Duration(milliseconds: _streamNotifyIntervalMs),
-      () {
-        _streamNotifyPending = false;
-        _streamNotifyTimer = null;
-        notifyListeners();
-      },
-    );
+    final chars = _streaming?.streamedCharacterCount ?? 0;
+    final interval = chars > 12000
+        ? 120
+        : chars > 4000
+        ? 64
+        : _streamNotifyIntervalMs;
+    _streamNotifyTimer ??= Timer(Duration(milliseconds: interval), () {
+      _streamNotifyPending = false;
+      _streamNotifyTimer = null;
+      ClientPerformanceMetrics.instance.uiNotifications++;
+      notifyListeners();
+    });
   }
 
   void _flushStreamNotify() {
@@ -860,6 +924,10 @@ class ChatStore extends ChangeNotifier {
   /// Live read-only view of the transcript — no per-access copy (the
   /// transcript Selector evaluates this ~30 Hz while streaming).
   List<ChatMessage> get messages {
+    final metrics = ClientPerformanceMetrics.instance;
+    if (metrics.maxTranscriptMessages < _messages.length) {
+      metrics.maxTranscriptMessages = _messages.length;
+    }
     final previewAnchor = _versionPreviewAnchor;
     final previewIndex = _versionPreviewIndex;
     if (previewAnchor != null && previewIndex != null) {
@@ -878,16 +946,43 @@ class ChatStore extends ChangeNotifier {
     }
     final live = _streaming;
     if (live == null || !live.rowAdded || _messages.isEmpty) {
-      return UnmodifiableListView(_messages);
+      return _messagesView;
     }
-    final materialized = live.toChatMessage();
+    final materialized = _materializedLive();
+    if (materialized == null) return _messagesView;
     final index = _messages.lastIndexWhere((message) => message.id == live.id);
     if (index < 0) return UnmodifiableListView(_messages);
-    return UnmodifiableListView([
-      ..._messages.take(index),
-      materialized,
-      ..._messages.skip(index + 1),
-    ]);
+    if (_composedMessagesView == null ||
+        _composedMessagesTick != _streamTick ||
+        _composedMessagesLength != _messages.length ||
+        _composedMessagesIndex != index ||
+        _composedMessagesId != live.id) {
+      _composedMessagesView = UnmodifiableListView([
+        ..._messages.take(index),
+        materialized,
+        ..._messages.skip(index + 1),
+      ]);
+      metrics.transcriptComposedCopies++;
+      metrics.transcriptCopiedRows += _messages.length;
+      _composedMessagesTick = _streamTick;
+      _composedMessagesLength = _messages.length;
+      _composedMessagesIndex = index;
+      _composedMessagesId = live.id;
+    }
+    return _composedMessagesView!;
+  }
+
+  /// Stable viewport structure. During streaming this deliberately exposes
+  /// the immutable placeholder row rather than materializing and splicing the
+  /// live buffer into a new O(N) list on every selector evaluation. The live
+  /// row reads [streamingMessage] independently. Version preview is a
+  /// low-frequency structural mode and may use its composed snapshot.
+  List<ChatMessage> get transcriptStructure {
+    ClientPerformanceMetrics.instance.transcriptStructureReads++;
+    if (_versionPreviewAnchor != null && _versionPreviewIndex != null) {
+      return messages;
+    }
+    return _messagesView;
   }
 
   bool get busy => _busy;
@@ -972,6 +1067,7 @@ class ChatStore extends ChangeNotifier {
         _messages[index] = message.copyWith(pending: false);
       }
     }
+    _markTranscriptStructureChanged();
     _busy = false;
     _turnArmedAt = null;
     _turnLive = false;
@@ -1142,6 +1238,7 @@ class ChatStore extends ChangeNotifier {
         if (left == null || right == null) return 0;
         return left.compareTo(right);
       });
+      _markMessagesChanged(structure: true);
       notifyListeners();
     } catch (_) {}
   }
@@ -1288,8 +1385,11 @@ class ChatStore extends ChangeNotifier {
   void _resetSessionState({required bool notify}) {
     _cancelStreamNotifyTimer();
     _streamTick = 0;
+    _materializedStreamingTick = -1;
+    _materializedStreamingMessage = null;
     _recoveredStreamId = null;
     _messages.clear();
+    _markTranscriptStructureChanged();
     _turnVersions.clear();
     _artifacts.clear();
     _versionPreviewAnchor = null;
@@ -1316,6 +1416,7 @@ class ChatStore extends ChangeNotifier {
   /// only — server-side history is untouched and reloads on the next open.
   void clearView() {
     _messages.clear();
+    _markTranscriptStructureChanged();
     _turnVersions.clear();
     _versionPreviewAnchor = null;
     _versionPreviewIndex = null;
@@ -1356,6 +1457,7 @@ class ChatStore extends ChangeNotifier {
       final ids = _messages.map((message) => message.id).toSet();
       _messages.addAll(local.where((message) => !ids.contains(message.id)));
     }
+    _markTranscriptStructureChanged();
     _newerTranscriptWindow.clear();
     _transcriptWindowAnchorId = list.isEmpty ? null : list.first.id;
     if (!_busy) _streaming = null;
@@ -1389,6 +1491,7 @@ class ChatStore extends ChangeNotifier {
       return;
     }
     _messages.insertAll(0, older);
+    _markTranscriptStructureChanged();
     _trimTranscriptWindowAfterPrepend();
     hasMoreHistory = hasMore || _newerTranscriptWindow.isNotEmpty;
     loadingHistory = false;
@@ -1434,6 +1537,7 @@ class ChatStore extends ChangeNotifier {
   void restoreNewerTranscriptWindow() {
     if (_newerTranscriptWindow.isEmpty) return;
     _messages.addAll(_newerTranscriptWindow);
+    _markTranscriptStructureChanged();
     _newerTranscriptWindow.clear();
     var weight = _messages.fold<int>(
       0,
@@ -2029,6 +2133,7 @@ class ChatStore extends ChangeNotifier {
       timestamp: DateTime.now(),
     );
     _messages.add(row);
+    _markTranscriptStructureChanged();
     final owner = sessionId ?? _durableSessionIdOf?.call();
     if (owner != null && owner.isNotEmpty) {
       (_slashRowsBySession[owner] ??= []).add(row);
@@ -2065,6 +2170,7 @@ class ChatStore extends ChangeNotifier {
     );
     if (index >= 0) {
       _messages[index] = completed;
+      _markTranscriptChanged();
       notifyListeners();
     }
     if (storedIndex >= 0) {
@@ -2095,6 +2201,7 @@ class ChatStore extends ChangeNotifier {
         timestamp: DateTime.now(),
       ),
     );
+    _markTranscriptStructureChanged();
     _busy = true;
     _turnArmedAt = DateTime.now();
     _turnLive = false;
@@ -2107,6 +2214,7 @@ class ChatStore extends ChangeNotifier {
         final m = _messages[i];
         if (m.pending && m.role == 'user') {
           _messages[i] = m.copyWith(pending: false);
+          _markMessagesChanged();
           break;
         }
       }
@@ -2188,6 +2296,7 @@ class ChatStore extends ChangeNotifier {
       if (m.pending && m.role == 'user') {
         retryText = m.fullText.trim().isEmpty ? null : m.fullText;
         _messages[i] = m.copyWith(pending: false, isError: true);
+        _markMessagesChanged();
         break;
       }
     }
@@ -2562,6 +2671,7 @@ class ChatStore extends ChangeNotifier {
         timestamp: DateTime.now(),
       ),
     );
+    _markMessagesChanged(structure: true);
     if (_streaming == null) {
       notifyListeners();
     } else {
@@ -2668,6 +2778,7 @@ class ChatStore extends ChangeNotifier {
           timestamp: DateTime.now(),
         ),
       );
+      _markMessagesChanged(structure: true);
     }
     _recordRecovery(
       message,
@@ -2768,6 +2879,7 @@ class ChatStore extends ChangeNotifier {
     );
     _resetStreamDiagnostics();
     _messages.add(_streaming!.toChatMessage());
+    _markTranscriptStructureChanged();
     _streaming!.rowAdded = true;
     if (_diagnosticLogging) {
       _logStream(
@@ -2868,6 +2980,7 @@ class ChatStore extends ChangeNotifier {
         interim: true,
       ),
     );
+    _markMessagesChanged(structure: true);
     _interimBoundaryPending = true;
     if (_diagnosticLogging) {
       _logStream(
@@ -3079,6 +3192,7 @@ class ChatStore extends ChangeNotifier {
       _messages.add(
         m.toChatMessage(isError: isError, rowId: payload['row_id'] as int?),
       );
+      _markTranscriptStructureChanged();
     } else {
       streaming.errorSurface = surface;
       streaming.durationS = durationS;
@@ -3117,6 +3231,7 @@ class ChatStore extends ChangeNotifier {
             usage: settled.usage,
             reactions: settled.reactions,
           );
+          _markMessagesChanged();
         }
       }
     }
@@ -3160,10 +3275,12 @@ class ChatStore extends ChangeNotifier {
     for (var i = _messages.length - 1; i >= 0; i--) {
       if (_messages[i].id == m.id) {
         _messages[i] = m.toChatMessage(isError: isError, rowId: rowId);
+        _markTranscriptStructureChanged();
         return;
       }
     }
     _messages.add(m.toChatMessage(isError: isError, rowId: rowId));
+    _markTranscriptStructureChanged();
   }
 
   /// Delta-only sync: pure text/reasoning accumulation does not rewrite the
@@ -3175,6 +3292,7 @@ class ChatStore extends ChangeNotifier {
     if (!m.rowAdded) {
       // First delta/reasoning frame: add the streaming message.
       _messages.add(m.toChatMessage());
+      _markTranscriptStructureChanged();
       m.rowAdded = true;
     }
     _scheduleStreamNotify();
@@ -3186,6 +3304,7 @@ class ChatStore extends ChangeNotifier {
     for (var i = _messages.length - 1; i >= 0; i--) {
       if (_messages[i].id == m.id) {
         _messages[i] = m.toChatMessage();
+        _markTranscriptChanged();
         m.rowAdded = true;
         _scheduleStreamNotify();
         return;
@@ -3193,6 +3312,7 @@ class ChatStore extends ChangeNotifier {
     }
     // First structural frame: add the streaming message.
     _messages.add(m.toChatMessage());
+    _markTranscriptStructureChanged();
     m.rowAdded = true;
     _scheduleStreamNotify();
   }

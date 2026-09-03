@@ -111,16 +111,16 @@ void main() {
           sessionId: 's1',
         ),
       );
-    connection.controller.add(
-      GatewayEvent(
-        type: 'message.complete',
+      connection.controller.add(
+        GatewayEvent(
+          type: 'message.complete',
           payload: const {},
           sessionId: 's1',
-      ),
-    );
-    connection.controller.add(
-      GatewayEvent(type: 'cron.complete', payload: const {}, sessionId: 's1'),
-    );
+        ),
+      );
+      connection.controller.add(
+        GatewayEvent(type: 'cron.complete', payload: const {}, sessionId: 's1'),
+      );
       await Future<void>.delayed(Duration.zero);
       expect(store.sessions!.single.needsAttention, isFalse);
       expect(store.sessions!.single.isActivelyWorking, isFalse);
@@ -154,4 +154,45 @@ void main() {
 
     expect(await store.hasUnreadForSession(store.sessions!.single), isTrue);
   });
+
+  test(
+    'session projection and title lookup stay stable until state changes',
+    () async {
+      final api = _MutableSessionApi([
+        SessionRow(id: 's1', title: 'First'),
+        SessionRow(id: 's2', title: 'Second'),
+      ]);
+      final connection = _EventConnection(api);
+      final requests = RequestStore();
+      final chat = ChatStore();
+      final store = SessionStore(
+        connection: connection,
+        chat: chat,
+        requests: requests,
+        persistLastSession: false,
+      );
+      addTearDown(() {
+        store.dispose();
+        requests.dispose();
+        chat.dispose();
+        connection.dispose();
+      });
+
+      await store.refreshList();
+      final firstProjection = store.sessions;
+      expect(identical(firstProjection, store.sessions), isTrue);
+      expect(store.sessionTitlesById, {'s1': 'First', 's2': 'Second'});
+
+      connection.controller.add(
+        GatewayEvent(
+          type: 'message.start',
+          payload: const {'active_stream_id': 'stream-2'},
+          sessionId: 's2',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(identical(firstProjection, store.sessions), isFalse);
+      expect(store.sessions!.last.isActivelyWorking, isTrue);
+    },
+  );
 }

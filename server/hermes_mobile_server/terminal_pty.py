@@ -9,7 +9,8 @@ import shlex
 import subprocess
 import sys
 import uuid
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,22 @@ from typing import Any
 # After the owning WebSocket drops, keep the PTY alive briefly so a flaky
 # mobile reconnect can reattach instead of spawning a fresh shell.
 _ORPHAN_GRACE_SECONDS = 90.0
+
+# While orphaned, output isn't delivered live (nobody's draining the old
+# queue) — it's captured here instead and replayed to the new queue on
+# reattach. Bounded to the *most recent* frames: a shell that's still
+# spewing output during the whole grace window (a running build, `yes`,
+# ...) degrades to losing the middle rather than either blocking PTY reads
+# for 90s or growing unboundedly.
+_ORPHAN_BACKLOG_FRAMES = 200
+
+
+class PtySessionLimitError(RuntimeError):
+    """Raised when a new PTY would exceed the server-side session cap."""
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"terminal session limit reached ({limit})")
+        self.limit = limit
 
 
 @dataclass
@@ -27,6 +44,12 @@ class PtySession:
     shell: str
     output: asyncio.Queue[dict[str, Any]]
     reader: asyncio.Task[None]
+    #: Recent output frames, captured whenever there's no live consumer
+    #: draining `output` (i.e. while orphaned) so a reattach can replay them
+    #: instead of the gap silently vanishing. See `_ORPHAN_BACKLOG_FRAMES`.
+    backlog: deque[dict[str, Any]] = field(
+        default_factory=lambda: deque(maxlen=_ORPHAN_BACKLOG_FRAMES)
+    )
 
 
 @dataclass
@@ -38,9 +61,32 @@ class _Orphan:
 class PtyManager:
     """Own interactive shells for authenticated mobile WebSocket clients."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_sessions: int | None = None) -> None:
         self._sessions: dict[str, PtySession] = {}
         self._orphans: dict[str, _Orphan] = {}
+        self._max_sessions = max_sessions
+        # Guards the check-then-insert below so two concurrent `start`/
+        # `start_ssh` calls can't both pass the capacity check and jointly
+        # exceed `max_sessions`. Other dict access in this class stays
+        # lock-free: those methods are fully synchronous (no `await` between
+        # a read and its matching mutation), which is already race-free
+        # under asyncio's single-threaded cooperative scheduling — extend
+        # this lock to cover any of them only if that ever changes.
+        self._lock = asyncio.Lock()
+
+    def _active_count(self) -> int:
+        return len(self._sessions) + len(self._orphans)
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "active": len(self._sessions),
+            "orphaned": len(self._orphans),
+            "max_sessions": self._max_sessions,
+        }
+
+    def _check_capacity(self) -> None:
+        if self._max_sessions is not None and self._active_count() >= self._max_sessions:
+            raise PtySessionLimitError(self._max_sessions)
 
     async def start(
         self,
@@ -50,16 +96,18 @@ class PtyManager:
         cols: int,
         rows: int,
     ) -> dict[str, Any]:
-        resolved_cwd = self._safe_cwd(cwd)
-        process, shell = self._spawn(resolved_cwd, cols, rows)
-        session_id = str(uuid.uuid4())
-        reader = asyncio.create_task(
-            self._read_loop(session_id, process),
-            name=f"terminal-reader-{session_id}",
-        )
-        self._sessions[session_id] = PtySession(
-            session_id, process, resolved_cwd, shell, output, reader
-        )
+        async with self._lock:
+            self._check_capacity()
+            resolved_cwd = self._safe_cwd(cwd)
+            process, shell = self._spawn(resolved_cwd, cols, rows)
+            session_id = str(uuid.uuid4())
+            reader = asyncio.create_task(
+                self._read_loop(session_id, process),
+                name=f"terminal-reader-{session_id}",
+            )
+            self._sessions[session_id] = PtySession(
+                session_id, process, resolved_cwd, shell, output, reader
+            )
         return {"id": session_id, "cwd": resolved_cwd, "shell": shell}
 
     async def start_ssh(
@@ -99,13 +147,18 @@ class PtyManager:
         args.append(target)
         if cwd and cwd.strip():
             args.append(f"cd -- {shlex.quote(cwd.strip())} && exec ${{SHELL:-/bin/sh}} -l")
-        process = self._spawn_argv(args, str(Path.home()), cols, rows)
-        session_id = str(uuid.uuid4())
-        reader = asyncio.create_task(self._read_loop(session_id, process), name=f"ssh-terminal-reader-{session_id}")
-        remote_cwd = cwd.strip() if cwd else ""
-        self._sessions[session_id] = PtySession(
-            session_id, process, remote_cwd, f"ssh:{host}", output, reader
-        )
+        async with self._lock:
+            self._check_capacity()
+            process = self._spawn_argv(args, str(Path.home()), cols, rows)
+            session_id = str(uuid.uuid4())
+            reader = asyncio.create_task(
+                self._read_loop(session_id, process),
+                name=f"ssh-terminal-reader-{session_id}",
+            )
+            remote_cwd = cwd.strip() if cwd else ""
+            self._sessions[session_id] = PtySession(
+                session_id, process, remote_cwd, f"ssh:{host}", output, reader
+            )
         return {"id": session_id, "cwd": remote_cwd, "shell": f"SSH {host}"}
 
     def write(self, session_id: str, data: str) -> bool:
@@ -145,6 +198,14 @@ class PtyManager:
         if not self._alive(session.process):
             asyncio.create_task(self._finalize_session(session))
             return None
+        # Replay whatever accumulated while nobody was draining the old
+        # queue, oldest first, before switching the session over to live
+        # delivery on the new one.
+        while session.backlog:
+            try:
+                output.put_nowait(session.backlog.popleft())
+            except asyncio.QueueFull:
+                break
         session.output = output
         self._sessions[session.id] = session
         live = self._probe_process_cwd(session.process) or session.cwd
@@ -216,19 +277,23 @@ class PtyManager:
         last_queue: asyncio.Queue[dict[str, Any]] | None = None
         try:
             while self._alive(process):
-                session = self._sessions.get(session_id) or (
-                    self._orphans[session_id].session
-                    if session_id in self._orphans
-                    else None
-                )
+                owned_session = self._sessions.get(session_id)
+                orphaned = self._orphans.get(session_id)
+                session = owned_session or (orphaned.session if orphaned else None)
                 if session is None:
                     break
                 last_queue = session.output
                 chunk = await asyncio.to_thread(process.read, 4096)
                 if chunk:
-                    await session.output.put(
-                        {"event": "data", "id": session_id, "data": chunk}
-                    )
+                    frame = {"event": "data", "id": session_id, "data": chunk}
+                    if owned_session is not None:
+                        await session.output.put(frame)
+                    else:
+                        # Orphaned: nobody drains `output` right now, so
+                        # don't block PTY reads waiting on a dead queue —
+                        # capture into the bounded backlog for reattach to
+                        # replay instead (see `_ORPHAN_BACKLOG_FRAMES`).
+                        session.backlog.append(frame)
                 elif not self._alive(process):
                     break
             try:

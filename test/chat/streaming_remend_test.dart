@@ -2,6 +2,39 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/chat/content/streaming_remend.dart';
 
 void main() {
+  test('stable split keeps a bounded mutable tail', () {
+    final source = '${'paragraph text.\n\n' * 600}final paragraph';
+    final split = splitStableStreamingMarkdown(source, tailChars: 1000);
+    expect(split.stablePrefix, isNotEmpty);
+    expect(split.stablePrefix + split.mutableTail, source);
+    expect(split.mutableTail.length, lessThanOrEqualTo(1020));
+  });
+
+  test('stable split does not cut through an open fence', () {
+    final source = '${'intro ' * 200}\n\n```dart\n${'code ' * 1500}';
+    final split = splitStableStreamingMarkdown(source, tailChars: 1000);
+    expect(split.mutableTail, contains('```dart'));
+    expect(split.stablePrefix + split.mutableTail, source);
+  });
+
+  test(
+    'incremental scanner emits completed blocks without rescanning tail',
+    () {
+      final scanner = IncrementalStreamingMarkdownScanner(tailChars: 8);
+      expect(scanner.update('first block\n\nshort'), isEmpty);
+      final added = scanner.update('first block\n\nshort and now long enough');
+      expect(added, ['first block\n\n']);
+      expect(scanner.tail(scanner.source), 'short and now long enough');
+    },
+  );
+
+  test('incremental scanner keeps open fenced content mutable', () {
+    final scanner = IncrementalStreamingMarkdownScanner(tailChars: 4);
+    scanner.update('intro\n\n```dart\ncode\n\nmore');
+    expect(scanner.stableEnd, greaterThan(0));
+    expect(scanner.tail(scanner.source), contains('```dart'));
+  });
+
   test('closes an unclosed fenced code block', () {
     expect(
       remendStreamingMarkdown('here is code:\n```dart\nvoid main() {'),
@@ -49,8 +82,11 @@ void main() {
     expect(remendStreamingMarkdown(text), text);
   });
 
-  test('a closed fence containing backtick command substitution is untouched', () {
-    const text = '```sh\necho `date`\n```\nafter';
-    expect(remendStreamingMarkdown(text), text);
-  });
+  test(
+    'a closed fence containing backtick command substitution is untouched',
+    () {
+      const text = '```sh\necho `date`\n```\nafter';
+      expect(remendStreamingMarkdown(text), text);
+    },
+  );
 }

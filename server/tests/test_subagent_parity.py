@@ -396,6 +396,32 @@ class WaitingClientWebSocket:
         self.waiting.set()
 
 
+class DisconnectedClientWebSocket(WaitingClientWebSocket):
+    async def receive_text(self):
+        raise WebSocketDisconnect()
+
+
+class IdleUpstream:
+    def __init__(self) -> None:
+        self.closed = False
+        self.waiting = asyncio.Event()
+
+    def __aiter__(self):
+        async def frames():
+            await self.waiting.wait()
+            if False:
+                yield "never"
+
+        return frames()
+
+    async def send(self, frame):
+        return None
+
+    async def close(self):
+        self.closed = True
+        self.waiting.set()
+
+
 def _seed_state_db(home, sessions, messages=()):
     import sqlite3
 
@@ -506,10 +532,31 @@ class WsBackend:
 
 async def _run_upstream_close_case():
     client = WaitingClientWebSocket()
-    await asyncio.wait_for(_pipe(client, WsBackend()), timeout=0.5)
+    await asyncio.wait_for(_pipe(client, WsBackend()), timeout=1.0)
     return client
 
 
-def test_ws_upstream_close_immediately_closes_client_instead_of_hanging():
+def test_ws_upstream_close_eventually_closes_client_instead_of_hanging(monkeypatch):
+    """An upstream that keeps dying (never a single stable connection, see
+    `_STABLE_CONNECTION_SECONDS`) still closes the client — after its
+    reconnect grace window, not forever. `WsBackend` here always "succeeds"
+    at connecting but the resulting `ClosedUpstream` is dead on arrival, so
+    this exercises the flapping-upstream path, not just a single drop."""
+    import hermes_mobile_server.ws_proxy as ws_proxy_module
+
+    monkeypatch.setattr(ws_proxy_module, "_UPSTREAM_RECONNECT_GRACE", 0.05)
     client = asyncio.run(_run_upstream_close_case())
     assert client.closed == (1011, "backend gateway disconnected")
+
+
+def test_ws_client_disconnect_closes_idle_upstream_without_waiting_for_event():
+    upstream = IdleUpstream()
+
+    class Backend:
+        async def connect_gateway_ws(self, consume_ready=False):
+            return upstream
+
+    asyncio.run(
+        asyncio.wait_for(_pipe(DisconnectedClientWebSocket(), Backend()), timeout=0.5)
+    )
+    assert upstream.closed is True

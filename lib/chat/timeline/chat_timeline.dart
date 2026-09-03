@@ -14,11 +14,13 @@ sealed class ChatTimelineItem {
 
 class ChatTimelineMessage extends ChatTimelineItem {
   final ChatMessage message;
+  final ChatMessage? ownerUserMessage;
   const ChatTimelineMessage(
     this.message,
     super.sourceMessage,
-    super.sourceIndex,
-  );
+    super.sourceIndex, {
+    this.ownerUserMessage,
+  });
 
   @override
   String get key => 'message:${sourceMessage.id}:${message.id}';
@@ -28,12 +30,14 @@ class ChatTimelineToolGroup extends ChatTimelineItem {
   final String id;
   final List<ChatPart> tools;
   final List<ChatPart> interactions;
+  final ChatMessage? ownerUserMessage;
   ChatTimelineToolGroup(
     this.id,
     this.tools,
     super.sourceMessage,
     super.sourceIndex, {
     List<ChatPart>? interactions,
+    this.ownerUserMessage,
   }) : interactions = interactions ?? <ChatPart>[];
 
   bool get running => tools.any((p) => p.tool?['running'] == true);
@@ -131,6 +135,7 @@ List<ChatTimelineItem> buildChatTimeline(
   var toolOrdinal = 0;
   ChatTimelineToolGroup? openGroup;
   final assistantRun = <ChatMessage>[];
+  ChatMessage? ownerUserMessage;
 
   void flushTools() => openGroup = null;
   void appendTool(ChatMessage message, int sourceIndex, ChatPart part) {
@@ -146,6 +151,7 @@ List<ChatTimelineItem> buildChatTimeline(
       <ChatPart>[part],
       message,
       sourceIndex,
+      ownerUserMessage: ownerUserMessage,
     );
     rows.add(group);
     openGroup = group;
@@ -153,6 +159,14 @@ List<ChatTimelineItem> buildChatTimeline(
 
   for (var sourceIndex = 0; sourceIndex < source.length; sourceIndex++) {
     final message = source[sourceIndex];
+    if (message.role == 'user') {
+      ownerUserMessage = message.promptText.isEmpty ? null : message;
+    } else if (message.role != 'assistant' &&
+        message.role != 'tool' &&
+        message.role != 'system' &&
+        !message.interim) {
+      ownerUserMessage = null;
+    }
     final assistantLike = message.role == 'assistant' || message.interim;
     if (assistantLike) {
       assistantRun.add(message);
@@ -161,7 +175,16 @@ List<ChatTimelineItem> buildChatTimeline(
     }
     if (message.id == preserveMessageId) {
       flushTools();
-      rows.add(ChatTimelineMessage(message, message, sourceIndex));
+      rows.add(
+        ChatTimelineMessage(
+          message,
+          message,
+          sourceIndex,
+          ownerUserMessage: message.role == 'assistant'
+              ? ownerUserMessage
+              : null,
+        ),
+      );
       continue;
     }
     var partOrdinal = 0;
@@ -197,6 +220,9 @@ List<ChatTimelineItem> buildChatTimeline(
             message,
             sourceIndex,
             interactions: <ChatPart>[part],
+            ownerUserMessage: message.role == 'assistant'
+                ? ownerUserMessage
+                : null,
           );
           rows.add(group);
           openGroup = group;
@@ -208,6 +234,9 @@ List<ChatTimelineItem> buildChatTimeline(
             _partMessage(message, part, partOrdinal++),
             message,
             sourceIndex,
+            ownerUserMessage: message.role == 'assistant'
+                ? ownerUserMessage
+                : null,
           ),
         );
       }
@@ -275,6 +304,7 @@ List<ChatTimelineItem> _unwrapSingletonGroups(List<ChatTimelineItem> rows) {
           _singleToolMessage(row.sourceMessage, row.tools.single, row.id),
           row.sourceMessage,
           row.sourceIndex,
+          ownerUserMessage: row.ownerUserMessage,
         ),
       );
     } else {

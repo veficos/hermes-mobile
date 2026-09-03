@@ -4,6 +4,8 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
 
 import '../../core/message_preview_targets.dart';
+import '../../core/performance_metrics.dart';
+import '../../core/session_refs.dart';
 import '../../core/stores/plugin_contribution_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
@@ -20,6 +22,7 @@ import 'preview_file_card.dart';
 import 'pretty_links.dart';
 import 'reference_chips.dart';
 import 'resizable_markdown_table.dart';
+import 'streaming_remend.dart';
 import 'zoomable_markdown_image.dart';
 
 /// How long a single text node may be before it is collapsed behind a
@@ -41,6 +44,7 @@ class InlineContentRenderer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    ClientPerformanceMetrics.instance.markdownPrepares++;
     // L1: pull `@image:` / `@url:` / `@file:` refs out of the body — they
     // render as chips below, not as raw `@image:/path` text.
     final prepared = InlineContentCache.instance.prepare(
@@ -59,6 +63,81 @@ class InlineContentRenderer extends StatelessWidget {
             enableHighlight: cachePreparedContent,
           ),
         if (refs.isNotEmpty) MessageReferenceChips(references: refs),
+      ],
+    );
+  }
+}
+
+/// Streaming Markdown renderer that leaves completed blocks on the cached
+/// path and reparses only the bounded, synthetically repaired tail.
+class StreamingInlineContentRenderer extends StatefulWidget {
+  final String text;
+  final bool selectable;
+  final String? Function(String id)? sessionTitleOf;
+
+  const StreamingInlineContentRenderer({
+    super.key,
+    required this.text,
+    this.selectable = false,
+    this.sessionTitleOf,
+  });
+
+  @override
+  State<StreamingInlineContentRenderer> createState() =>
+      _StreamingInlineContentRendererState();
+}
+
+class _StreamingInlineContentRendererState
+    extends State<StreamingInlineContentRenderer> {
+  final IncrementalStreamingMarkdownScanner _scanner =
+      IncrementalStreamingMarkdownScanner();
+  final List<String> _stableBlocks = <String>[];
+  int oldScannedLength = 0;
+
+  @override
+  void didUpdateWidget(covariant StreamingInlineContentRenderer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.text.startsWith(oldWidget.text)) {
+      _stableBlocks.clear();
+      _scanner.reset();
+      oldScannedLength = 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final added = _scanner.update(widget.text);
+    final metrics = ClientPerformanceMetrics.instance;
+    metrics.markdownScannedChars += (widget.text.length - oldScannedLength)
+        .clamp(0, widget.text.length);
+    oldScannedLength = widget.text.length;
+    for (final block in added) {
+      _stableBlocks.add(
+        linkifySessionRefs(block, titleOf: widget.sessionTitleOf),
+      );
+      ClientPerformanceMetrics.instance.streamingStablePrefixChars +=
+          block.length;
+    }
+    final tail = linkifySessionRefs(
+      _scanner.tail(widget.text),
+      titleOf: widget.sessionTitleOf,
+    );
+    metrics.markdownTailChars += tail.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var index = 0; index < _stableBlocks.length; index++)
+          InlineContentRenderer(
+            key: ValueKey('stream-block-$index'),
+            text: _stableBlocks[index],
+            selectable: widget.selectable,
+          ),
+        if (tail.isNotEmpty)
+          InlineContentRenderer(
+            text: remendStreamingMarkdown(tail),
+            selectable: widget.selectable,
+            cachePreparedContent: false,
+          ),
       ],
     );
   }

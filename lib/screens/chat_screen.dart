@@ -33,6 +33,7 @@ import '../core/local_file_io.dart';
 import '../core/local_slash_commands.dart';
 import '../core/model_catalog.dart';
 import '../core/models.dart';
+import '../core/performance_metrics.dart';
 import '../core/session_tree.dart';
 import '../core/session_refs.dart';
 import '../chat/composer/background_process_sheet.dart';
@@ -202,6 +203,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _backgroundPollTimer;
   StreamSubscription<ComposerStatusItem>? _backgroundCompletionSub;
   StreamSubscription<ChatStatusItem>? _agentNoticeSub;
+  StreamSubscription<void>? _autoRetrySub;
   final Stopwatch _autoScrollLogWatch = Stopwatch()..start();
   int _lastAutoScrollLogMs = -500;
   int _lastAutoScrollSkipLogMs = -500;
@@ -437,6 +439,46 @@ class _ChatScreenState extends State<ChatScreen> {
     if (context.maybeRead<AppearanceStore>()?.keepAwake == true) {
       unawaited(WakelockPlus.enable());
     }
+    // Weak-network: a message that failed to submit because the socket was
+    // already down (see `ChatStore.submit`'s catch — this only fires when
+    // the gateway never accepted the turn, so resending can't duplicate an
+    // already-accepted one) gets one automatic resend when the connection
+    // comes back, instead of waiting on the user to notice the error bubble
+    // and tap retry themselves.
+    _autoRetrySub = context.maybeRead<ConnectionStore>()?.reconnected.listen((
+      _,
+    ) {
+      unawaited(_autoRetryAfterReconnect());
+    });
+  }
+
+  /// See the `_autoRetrySub` wiring in [initState]. Bounded to a recent
+  /// failure only — a much older one sitting unresolved on screen is more
+  /// likely something the user has already moved past than a message they
+  /// still want fired off the moment the network happens to come back.
+  static const _autoRetryMaxAge = Duration(minutes: 2);
+
+  /// Every store with a `connection.reconnected` listener (session list,
+  /// this one, others) fires on the same event — resending immediately
+  /// would pile this request onto that same first-instant burst, right
+  /// where `GatewayClient`'s in-flight cap (`gatewayTooManyPendingCode`,
+  /// gateway.dart) is most likely to actually bind. Let that initial burst
+  /// clear first.
+  static const _autoRetrySettleDelay = Duration(milliseconds: 600);
+
+  Future<void> _autoRetryAfterReconnect() async {
+    if (!mounted) return;
+    await Future<void>.delayed(_autoRetrySettleDelay);
+    if (!mounted || _sending) return;
+    final chat = context.read<ChatStore>();
+    if (chat.busy || chat.recoveryJournal.isEmpty) return;
+    final entry = chat.recoveryJournal.first;
+    if (!entry.retryable) return;
+    if (DateTime.now().difference(entry.at) > _autoRetryMaxAge) return;
+    final text = entry.retryText?.trim();
+    if (text == null || text.isEmpty) return;
+    chat.clearRecoveryJournal();
+    await _send(text);
   }
 
   /// Poll the gateway process registry every few seconds while the chat screen
@@ -1596,6 +1638,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _acDebounce?.cancel();
     _locatorHighlightTimer?.cancel();
+    unawaited(_autoRetrySub?.cancel());
     _stopBackgroundPolling();
     // Always disable on the way out — harmless no-op if this screen never
     // enabled it (e.g. the setting was off), and correct if another chat
@@ -8443,6 +8486,8 @@ class _ChatTranscriptSnapshot {
     required this.hasNewerWindow,
     required this.versionPreviewSignature,
     required this.tailStatusLabel,
+    required this.transcriptRevision,
+    required this.transcriptStructureRevision,
   });
 
   final List<ChatMessage> messages;
@@ -8457,10 +8502,12 @@ class _ChatTranscriptSnapshot {
   final bool hasNewerWindow;
   final String? versionPreviewSignature;
   final String? tailStatusLabel;
+  final int transcriptRevision;
+  final int transcriptStructureRevision;
 
   factory _ChatTranscriptSnapshot.from(ChatStore chat) {
     return _ChatTranscriptSnapshot(
-      messages: chat.messages,
+      messages: chat.transcriptStructure,
       isStreaming: chat.isStreaming,
       busy: chat.busy,
       streamingMessageId: chat.streamingMessageId,
@@ -8472,6 +8519,8 @@ class _ChatTranscriptSnapshot {
       hasNewerWindow: chat.hasNewerTranscriptWindow,
       versionPreviewSignature: chat.versionPreviewSignature,
       tailStatusLabel: chat.tailStatusLabel,
+      transcriptRevision: chat.transcriptRevision,
+      transcriptStructureRevision: chat.transcriptStructureRevision,
     );
   }
 
@@ -8488,6 +8537,8 @@ class _ChatTranscriptSnapshot {
         other.hasNewerWindow == hasNewerWindow &&
         other.versionPreviewSignature == versionPreviewSignature &&
         other.tailStatusLabel == tailStatusLabel &&
+        other.transcriptRevision == transcriptRevision &&
+        other.transcriptStructureRevision == transcriptStructureRevision &&
         other.messages.length == messages.length &&
         (messages.isEmpty || other.messages.last.id == messages.last.id);
   }
@@ -8504,6 +8555,8 @@ class _ChatTranscriptSnapshot {
     hasNewerWindow,
     versionPreviewSignature,
     tailStatusLabel,
+    transcriptRevision,
+    transcriptStructureRevision,
     messages.length,
     messages.isEmpty ? null : messages.last.id,
   );
@@ -8582,6 +8635,7 @@ class _ChatTranscriptPanelState extends State<_ChatTranscriptPanel> {
   ChatMessage? _timelineLast;
   String? _timelineStreamingId;
   String? _timelineVersionSignature;
+  int _timelineRevision = -1;
 
   List<ChatTimelineItem> _timelineFor(_ChatTranscriptSnapshot snapshot) {
     final messages = snapshot.messages;
@@ -8591,7 +8645,8 @@ class _ChatTranscriptPanelState extends State<_ChatTranscriptPanel> {
         identical(_timelineFirst, first) &&
         identical(_timelineLast, last) &&
         _timelineStreamingId == snapshot.streamingMessageId &&
-        _timelineVersionSignature == snapshot.versionPreviewSignature) {
+        _timelineVersionSignature == snapshot.versionPreviewSignature &&
+        _timelineRevision == snapshot.transcriptRevision) {
       return _timeline;
     }
     _timelineMessageCount = messages.length;
@@ -8599,10 +8654,18 @@ class _ChatTranscriptPanelState extends State<_ChatTranscriptPanel> {
     _timelineLast = last;
     _timelineStreamingId = snapshot.streamingMessageId;
     _timelineVersionSignature = snapshot.versionPreviewSignature;
-    return _timeline = buildChatTimeline(
+    _timelineRevision = snapshot.transcriptRevision;
+    final started = Stopwatch()..start();
+    _timeline = buildChatTimeline(
       messages,
       preserveMessageId: snapshot.streamingMessageId,
     );
+    started.stop();
+    final metrics = ClientPerformanceMetrics.instance;
+    if (started.elapsedMicroseconds > metrics.maxTimelineBuildMicros) {
+      metrics.maxTimelineBuildMicros = started.elapsedMicroseconds;
+    }
+    return _timeline;
   }
 
   void _notifyTranscriptChanged(_ChatTranscriptSnapshot snapshot) {
@@ -8806,13 +8869,6 @@ class _MessageList extends StatelessWidget {
     );
   }
 
-  ChatMessage? _questionFor(List<ChatMessage> messages, ChatMessage message) {
-    if (message.role != 'assistant' || message.interim || message.pending) {
-      return null;
-    }
-    return userTurnForMessage(messages, message.id);
-  }
-
   Widget _messageRow(
     BuildContext context,
     ChatTimelineMessage item,
@@ -8829,7 +8885,10 @@ class _MessageList extends StatelessWidget {
         previous != null &&
         (previous.role == 'assistant' || previous.interim) &&
         assistantLike;
-    final question = _questionFor(messages, logical);
+    final question =
+        logical.role == 'assistant' && !logical.interim && !logical.pending
+        ? item.ownerUserMessage
+        : null;
     final isEditing =
         editingMessageId == item.sourceMessage.id &&
         editController != null &&

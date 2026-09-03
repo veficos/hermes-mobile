@@ -55,6 +55,15 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if (
+        settings.reverse_proxy_idle_timeout is not None
+        and settings.reverse_proxy_idle_timeout <= 40
+    ):
+        logging.getLogger("hermes_mobile_server.network").warning(
+            "Reverse-proxy WebSocket idle timeout is %ss; configure it above "
+            "the 40s application ping/pong failure window",
+            settings.reverse_proxy_idle_timeout,
+        )
 
     import uvicorn
 
@@ -74,6 +83,17 @@ def main(argv: list[str] | None = None) -> int:
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level,
+        # Detect half-open mobile sockets consistently across uvicorn versions
+        # and common Wi-Fi/cellular NAT timeouts. iOS may suspend without a TCP
+        # FIN; ping/pong lets the server release that proxy promptly.
+        ws_ping_interval=20.0,
+        ws_ping_timeout=20.0,
+        # Backstop only: this is a single-user, single-process server (no
+        # `workers=`, by design — see docs on multi-device concurrency). The
+        # concurrency work itself is bounded upstream (BoundedExecutor,
+        # PtyManager's session cap); this just caps in-flight ASGI requests
+        # so a buggy/looping client can't exhaust memory.
+        limit_concurrency=settings.request_concurrency_limit,
     )
     return 0
 

@@ -68,6 +68,23 @@ class Settings:
     apns_private_key_file: str | None = None
     #: Use Apple's sandbox endpoint for development-signed applications.
     apns_sandbox: bool = False
+    #: Maximum simultaneous WebSockets accepted from one source address.
+    websocket_max_per_client: int = 12
+    #: Trust X-Forwarded-For for WebSocket limiting only behind a trusted proxy.
+    trust_forwarded_for: bool = False
+    #: Reverse-proxy WebSocket idle timeout, used for startup validation.
+    reverse_proxy_idle_timeout: int | None = None
+    #: Worker threads for local filesystem/Git operations (a dedicated pool,
+    #: separate from the default executor used elsewhere, so a slow Git op
+    #: can't starve SQLite/PTY reads — see ``concurrency.BoundedExecutor``).
+    local_fs_max_workers: int = 4
+    #: Maximum interactive terminal (PTY) sessions this server keeps alive
+    #: at once, across all clients. ``None`` disables the cap.
+    terminal_session_limit: int = 8
+    #: Uvicorn's ``limit_concurrency``: a backstop that rejects new
+    #: connections past this many in-flight ASGI requests, so a runaway
+    #: client can't exhaust server memory. ``None`` leaves it unbounded.
+    request_concurrency_limit: int | None = 200
 
 
 def _env_str(name: str, default: str = "") -> str:
@@ -175,4 +192,16 @@ def load_settings() -> Settings:
             _env_str("HERMES_MOBILE_APNS_PRIVATE_KEY_FILE") or None
         ),
         apns_sandbox=_env_bool("HERMES_MOBILE_APNS_SANDBOX"),
+        websocket_max_per_client=_env_int(
+            "HERMES_MOBILE_WS_MAX_PER_CLIENT", 12
+        ),
+        trust_forwarded_for=_env_bool("HERMES_MOBILE_TRUST_FORWARDED_FOR"),
+        reverse_proxy_idle_timeout=(
+            _env_int("HERMES_MOBILE_PROXY_IDLE_TIMEOUT", 0) or None
+        ),
+        local_fs_max_workers=_env_int("HERMES_MOBILE_LOCAL_FS_WORKERS", 4),
+        terminal_session_limit=_env_int("HERMES_MOBILE_TERMINAL_SESSION_LIMIT", 8),
+        request_concurrency_limit=(
+            _env_int("HERMES_MOBILE_CONCURRENCY_LIMIT", 200) or None
+        ),
     )

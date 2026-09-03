@@ -132,6 +132,9 @@ class KanbanApi {
     field: 'file',
     filename: filename,
     bytes: bytes,
+    // Attachments can be sizeable; the default request timeout (30s) is
+    // tuned for small JSON calls, not an upload over a slow connection.
+    timeout: const Duration(minutes: 2),
   );
   Future<dynamic> deleteAttachment(Object id) => client.delete(
     '/api/v1/kanban/attachments/${Uri.encodeComponent('$id')}',

@@ -33,6 +33,7 @@ from starlette.background import BackgroundTask
 
 from .auth import api_key_dependency
 from .backend import BackendError, BackendManager
+from .concurrency import BoundedExecutor
 from .config import Settings
 from .drafts import DraftStore
 from .profiles import ProfileStore
@@ -784,6 +785,7 @@ def build_domain_router(
     task_store: TaskStore | None = None,
     profile_store: ProfileStore | None = None,
     prompt_store: SavedPromptsStore | None = None,
+    local_executor: BoundedExecutor | None = None,
 ) -> APIRouter:
     router = APIRouter(
         prefix="/api/v1",
@@ -801,10 +803,23 @@ def build_domain_router(
             raise HTTPException(status_code=503, detail="Hermes backend is not running")
         return backend
 
-    def local(call):
-        """Convert local workspace failures into a stable client 422."""
+    # Own executor when the caller (app.py, in production) doesn't share one
+    # explicitly — keeps every existing `build_domain_router(settings,
+    # backend)` call site (tests included) working unchanged.
+    _local_executor = local_executor or BoundedExecutor(
+        settings.local_fs_max_workers, thread_name_prefix="hermes-local-fs"
+    )
+
+    async def local(call):
+        """Run a local-workspace call off the event loop.
+
+        File/Git operations shell out (`subprocess.run`) or walk directory
+        trees; run inline they'd block every other concurrent request (REST
+        and WS relay alike) for their duration. Workspace failures still
+        become a stable client 422.
+        """
         try:
-            return call()
+            return await _local_executor.run(call)
         except local_workspace.WorkspaceError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -2571,7 +2586,7 @@ def build_domain_router(
     # --------------------------------------------------------------- files
     @router.get("/files")
     async def list_files(path: str = Query(...)) -> Any:
-        return local(lambda: local_workspace.entries(path))
+        return await local(lambda: local_workspace.entries(path))
 
     @router.get("/files/drives")
     async def filesystem_drives() -> Any:
@@ -2583,25 +2598,25 @@ def build_domain_router(
         path: str = Query(...), root: str | None = Query(None)
     ) -> Any:
         """WebUI-compatible directory metadata (parent, repo flag, entries)."""
-        return local(lambda: local_workspace.project_entries(path, root))
+        return await local(lambda: local_workspace.project_entries(path, root))
 
     @router.get("/files/read")
     async def read_file(path: str = Query(...)) -> Any:
-        return local(lambda: local_workspace.read_text(path))
+        return await local(lambda: local_workspace.read_text(path))
 
     @router.post("/files/write")
     async def write_file(payload: dict = Body(...)) -> Any:
         """Overwrite/create a UTF-8 text file (spot editor)."""
-        return local(lambda: local_workspace.write_text(payload.get("path", ""), str(payload.get("content", ""))))
+        return await local(lambda: local_workspace.write_text(payload.get("path", ""), str(payload.get("content", ""))))
 
     @router.get("/files/read-data-url")
     async def read_file_data_url(path: str = Query(...)) -> Any:
-        return local(lambda: local_workspace.read_data_url(path))
+        return await local(lambda: local_workspace.read_data_url(path))
 
     @router.get("/files/download")
     async def download_file(path: str = Query(...)) -> Any:
         """Stream a file, or a zipped directory, to the mobile client."""
-        info = local(lambda: local_workspace.prepare_download(path))
+        info = await local(lambda: local_workspace.prepare_download(path))
         background = None
         if info.get("cleanup"):
             background = BackgroundTask(os.unlink, info["path"])
@@ -2614,7 +2629,7 @@ def build_domain_router(
 
     @router.post("/files/reveal")
     async def reveal_file(payload: dict = Body(...)) -> Any:
-        return local(lambda: local_workspace.reveal(payload.get("path", "")))
+        return await local(lambda: local_workspace.reveal(payload.get("path", "")))
 
     @router.get("/files/default-cwd")
     async def default_cwd() -> Any:
@@ -2932,14 +2947,14 @@ def build_domain_router(
         author: str | None = Query(None),
         branch: str | None = Query(None),
     ) -> Any:
-        return local(lambda: local_workspace.git_log(path, limit, offset, search, author, branch))
+        return await local(lambda: local_workspace.git_log(path, limit, offset, search, author, branch))
 
     @router.get("/git/log/commit")
     async def git_log_commit(
         path: str = Query(...),
         sha: str = Query(...),
     ) -> Any:
-        return local(lambda: local_workspace.git_commit_detail(path, sha))
+        return await local(lambda: local_workspace.git_commit_detail(path, sha))
 
     @router.get("/git/diff")
     async def git_diff(
@@ -2948,15 +2963,15 @@ def build_domain_router(
         mode: str = Query("worktree"),
         oid: str | None = Query(None),
     ) -> Any:
-        return local(lambda: local_workspace.git_diff(path, file, staged=mode == "staged", oid=oid))
+        return await local(lambda: local_workspace.git_diff(path, file, staged=mode == "staged", oid=oid))
 
     @router.get("/git/remotes")
     async def git_remotes(path: str = Query(...)) -> Any:
-        return local(lambda: local_workspace.git_remotes(path))
+        return await local(lambda: local_workspace.git_remotes(path))
 
     @router.get("/git/stashes")
     async def git_stashes(path: str = Query(...)) -> Any:
-        return local(lambda: local_workspace.git_stashes(path))
+        return await local(lambda: local_workspace.git_stashes(path))
 
     @router.get("/git/review/list")
     async def git_review_list(
@@ -3537,7 +3552,7 @@ def build_domain_router(
     # -------------------------------------------------- files (extended)
     @router.post("/files/move")
     async def move_file(payload: dict = Body(...)) -> Any:
-        return local(lambda: local_workspace.move(
+        return await local(lambda: local_workspace.move(
             payload.get("path", ""), payload.get("dest", ""), overwrite=bool(payload.get("overwrite"))
         ))
 
@@ -3552,24 +3567,24 @@ def build_domain_router(
         sources = [item for item in sources if isinstance(item, str) and item]
         if not sources or not isinstance(payload.get("dest_path") or payload.get("dest"), str):
             raise HTTPException(status_code=422, detail="sources and dest_path are required")
-        return local(lambda: local_workspace.copy(
+        return await local(lambda: local_workspace.copy(
             sources, payload.get("dest_path") or payload.get("dest"), overwrite=bool(payload.get("overwrite"))
         ))
 
     @router.post("/files/mkdir")
     async def mkdir(payload: dict = Body(...)) -> Any:
-        return local(lambda: local_workspace.mkdir(payload.get("path", "")))
+        return await local(lambda: local_workspace.mkdir(payload.get("path", "")))
 
     @router.post("/files/delete")
     async def delete_file(payload: dict = Body(...)) -> Any:
         sources = payload.get("sources") or [payload.get("path")]
         sources = [item for item in sources if isinstance(item, str) and item]
-        return local(lambda: local_workspace.remove(sources, recursive=bool(payload.get("recursive"))))
+        return await local(lambda: local_workspace.remove(sources, recursive=bool(payload.get("recursive"))))
 
     @router.post("/files/upload")
     async def upload_file(payload: dict = Body(...)) -> Any:
         """Upload a file via base64 data URL (attachment flow, D6)."""
-        return local(lambda: local_workspace.write_data_url(
+        return await local(lambda: local_workspace.write_data_url(
             payload.get("path", ""), payload.get("data_url", ""), overwrite=bool(payload.get("overwrite"))
         ))
 
@@ -3577,7 +3592,7 @@ def build_domain_router(
     async def delete_file_canonical(payload: dict = Body(default={})) -> Any:
         sources = payload.get("sources") or [payload.get("path")]
         sources = [item for item in sources if isinstance(item, str) and item]
-        return local(
+        return await local(
             lambda: local_workspace.remove(
                 sources, recursive=bool(payload.get("recursive"))
             )

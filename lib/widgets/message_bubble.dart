@@ -19,7 +19,6 @@ import '../chat/content/diff_view.dart';
 import '../chat/content/inline_content_renderer.dart';
 import '../chat/content/reference_chips.dart';
 import '../chat/content/resizable_markdown_table.dart';
-import '../chat/content/streaming_remend.dart';
 import '../chat/content/zoomable_markdown_image.dart';
 import '../chat/tools/tool_group_card.dart';
 import '../core/session_refs.dart';
@@ -578,10 +577,10 @@ class _MessageBubbleBody {
         // remendStreamingMarkdown 会闭合半截构造（未闭合 ``` / ** / 链接），
         // 让每帧只在末尾追加文字；结算前禁用选择以避开选区闪烁。
         if (isActivelyStreaming && part.kind == 'text') {
-          return InlineContentRenderer(
-            text: remendStreamingMarkdown(_markdownText(context, part.text)),
-            selectable: false,
-            cachePreparedContent: false,
+          return StreamingInlineContentRenderer(
+            text: part.text,
+            sessionTitleOf: (id) =>
+                context.read<SessionStore>().sessionTitlesById[id],
           );
         }
         // 正文 14px / 行高 1.75（WebUI --message-body-font-size/line-height）。
@@ -602,12 +601,7 @@ class _MessageBubbleBody {
     return linkifySessionRefs(
       text,
       titleOf: (id) {
-        final rows = session?.sessions;
-        if (rows == null) return null;
-        for (final row in rows) {
-          if (row.id == id) return row.title;
-        }
-        return null;
+        return session?.sessionTitlesById[id];
       },
     );
   }
@@ -849,6 +843,9 @@ class _GeneratedImageToolCard extends StatelessWidget {
     return NetworkImage(url);
   }
 
+  ImageProvider _thumbnailProvider(String url) =>
+      ResizeImage.resizeIfNeeded(1600, 1600, _provider(url));
+
   /// E1 / K1: save the generated image to the device gallery.
   Future<void> _saveToGallery(BuildContext context, String url) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -928,6 +925,7 @@ class _GeneratedImageToolCard extends StatelessWidget {
       );
     }
     final provider = _provider(url);
+    final thumbnailProvider = _thumbnailProvider(url);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -997,7 +995,7 @@ class _GeneratedImageToolCard extends StatelessWidget {
             child: AspectRatio(
               aspectRatio: _aspectRatio,
               child: Image(
-                image: provider,
+                image: thumbnailProvider,
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) => Padding(
                   padding: const EdgeInsets.all(12),

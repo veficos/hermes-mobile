@@ -16,6 +16,14 @@ class SessionAppearanceStore extends ChangeNotifier {
   );
 
   final Map<String, Color> _overrides = {};
+  int _revision = 0;
+  int get revision => _revision;
+
+  @override
+  void notifyListeners() {
+    _revision++;
+    super.notifyListeners();
+  }
 
   Color? colorFor(String sessionId) => _overrides[sessionId];
 

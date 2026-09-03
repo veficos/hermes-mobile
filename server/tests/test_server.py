@@ -123,3 +123,25 @@ def test_protected_endpoints_require_api_key():
         resp = client.get("/api/v1/status", headers={"Authorization": "Bearer test-key"})
         # Either 200 (backend up) or 503 (backend failed to boot) — but not 401.
         assert resp.status_code in (200, 503)
+
+        metrics = client.get("/api/v1/network/metrics")
+        assert metrics.status_code == 401
+        metrics = client.get(
+            "/api/v1/network/metrics",
+            headers={"Authorization": "Bearer test-key"},
+        )
+        assert metrics.status_code == 200
+        assert "active_proxies" in metrics.json()
+
+
+def test_network_settings_load_from_environment(monkeypatch):
+    monkeypatch.setenv("HERMES_MOBILE_API_KEY", "test-key")
+    monkeypatch.setenv("HERMES_MOBILE_WS_MAX_PER_CLIENT", "7")
+    monkeypatch.setenv("HERMES_MOBILE_TRUST_FORWARDED_FOR", "true")
+    monkeypatch.setenv("HERMES_MOBILE_PROXY_IDLE_TIMEOUT", "120")
+
+    settings = server_config.load_settings()
+
+    assert settings.websocket_max_per_client == 7
+    assert settings.trust_forwarded_for is True
+    assert settings.reverse_proxy_idle_timeout == 120

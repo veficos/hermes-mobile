@@ -83,7 +83,7 @@ void main() {
       baseUrl: 'https://agent.example',
       apiKey: 'secret',
       directGateway: true,
-      gatewayRequest: (_, _) async => const {},
+      gatewayRequest: (_, _, {timeout}) async => const {},
     );
     addTearDown(companion.close);
     addTearDown(direct.close);

@@ -181,6 +181,16 @@ class SubagentStore extends ChangeNotifier {
   final Map<String, Map<String, Map<String, SubagentNode>>>
   _runtimeByConnection = {};
   final Map<String, Map<String, List<SubagentNode>>> _treesByConnection = {};
+  final Map<String, Map<String, SubagentNode>> _runtimeByChildConnection = {};
+  int _projectionRevision = 0;
+  int get projectionRevision => _projectionRevision;
+
+  @override
+  void notifyListeners() {
+    _projectionRevision++;
+    super.notifyListeners();
+  }
+
   late String _activeConnectionId;
   ApiClient? _activeApi;
   StreamSubscription<RoutedGatewayEvent>? _eventSub;
@@ -236,12 +246,28 @@ class SubagentStore extends ChangeNotifier {
   }
 
   SubagentNode? runtimeForChild(String childSessionId) {
-    for (final nodes in _runtimeByParent.values) {
-      for (final node in nodes.values) {
-        if (node.sessionId == childSessionId) return node;
+    return _runtimeByChildConnection[connection
+        .activeConnectionId
+        .value]?[childSessionId];
+  }
+
+  void _rebuildRuntimeChildIndex() {
+    final connectionId = connection.activeConnectionId.value;
+    final index = <String, SubagentNode>{};
+    void addNode(SubagentNode node) {
+      final childId = node.sessionId;
+      if (childId != null && childId.isNotEmpty) index[childId] = node;
+      for (final child in node.children) {
+        addNode(child);
       }
     }
-    return null;
+
+    for (final nodes in _bySession.values) {
+      for (final node in nodes) {
+        addNode(node);
+      }
+    }
+    _runtimeByChildConnection[connectionId] = index;
   }
 
   OwnerRoute routeForChildSession(String sessionId, OwnerRoute fallback) {
@@ -396,6 +422,7 @@ class SubagentStore extends ChangeNotifier {
         }
     }
     _rebuildTrees(connectionId);
+    _rebuildRuntimeChildIndex();
     notifyListeners();
   }
 
@@ -439,6 +466,7 @@ class SubagentStore extends ChangeNotifier {
           ),
         );
       _rebuildTrees(connectionId);
+      _rebuildRuntimeChildIndex();
       _log(
         'projection refresh complete children=${children.length} '
         'groups=${runtime.length} total=${projection.total}',
@@ -557,6 +585,7 @@ class SubagentStore extends ChangeNotifier {
         _runtimeByParent[entry.key] = _flatten(entry.value);
       }
       _rebuildTrees();
+      _rebuildRuntimeChildIndex();
     } catch (error, stackTrace) {
       if (generation != _refreshGeneration ||
           !identical(api, connection.api) ||
@@ -595,6 +624,7 @@ class SubagentStore extends ChangeNotifier {
       }
       _runtimeByParent[sessionId] = _flatten(entries);
       _rebuildTrees();
+      _rebuildRuntimeChildIndex();
     } catch (error, stackTrace) {
       if (generation != _refreshGeneration ||
           !identical(api, connection.api) ||

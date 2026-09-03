@@ -190,7 +190,10 @@ class ConnectionRuntime {
     // permanently exhausting after roughly one minute. Authentication
     // failures are still terminal and are handled by the drop listener.
     final exponent = min(_reconnectAttempt, 6);
-    final delayMs = min(15000, 300 * pow(2, exponent).toInt());
+    final baseDelayMs = min(15000, 300 * pow(2, exponent).toInt());
+    // ±20% full jitter prevents a fleet of suspended phones from reconnecting
+    // in lockstep when the server becomes available again.
+    final delayMs = (baseDelayMs * (0.8 + Random().nextDouble() * 0.4)).round();
     if (_reconnectAttempt < 6) _reconnectAttempt++;
     _reconnectTimer = Timer(Duration(milliseconds: delayMs), () async {
       _reconnectTimer = null;
@@ -203,6 +206,39 @@ class ConnectionRuntime {
         _scheduleReconnect();
       }
     });
+  }
+
+  /// Called when the OS reports connectivity has come back (see
+  /// `ConnectivityService`). If a retry cycle is currently waiting out its
+  /// backoff timer, skip the rest of that wait and try now — "the network
+  /// is back" is a far stronger signal than "some seconds have passed
+  /// since the last failed attempt". A no-op outside `reconnecting`/
+  /// `disconnected` (nothing waiting to be nudged) or while backgrounded
+  /// (retry timers are already suspended for a reason — see
+  /// [setForeground]).
+  ///
+  /// Deliberately does NOT reset the backoff attempt counter the way
+  /// [reconnectNow] does: this fires on every connectivity transition,
+  /// including a flapping signal, so if this immediate attempt also fails
+  /// the schedule should keep backing off from where it was rather than
+  /// restart a retry storm each time.
+  void notifyConnectivityRegained() {
+    if (_disposed || !_foreground) return;
+    if (phase != RuntimePhase.reconnecting &&
+        phase != RuntimePhase.disconnected) {
+      return;
+    }
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    unawaited(
+      connect().catchError((_) {
+        if (!_disposed && phase != RuntimePhase.exhausted) {
+          phase = RuntimePhase.reconnecting;
+          onStateChanged?.call(this);
+          _scheduleReconnect();
+        }
+      }),
+    );
   }
 
   Future<void> reconnectNow() async {
@@ -307,6 +343,14 @@ class ConnectionRegistry {
     _runtimes[runtime.id] = runtime;
     _subs[runtime.id] = runtime.events.listen(_events.add);
     if (makeActive || activeId == null) activeId = runtime.id;
+  }
+
+  /// Fan-out of a regained-connectivity signal to every registered
+  /// runtime — see [ConnectionRuntime.notifyConnectivityRegained].
+  void notifyConnectivityRegained() {
+    for (final runtime in _runtimes.values) {
+      runtime.notifyConnectivityRegained();
+    }
   }
 
   void activate(ConnectionId id) {

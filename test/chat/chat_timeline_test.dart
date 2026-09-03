@@ -110,4 +110,24 @@ void main() {
     expect(store.isDismissed('interactive'), isFalse);
     expect(store.isDismissed('done'), isTrue);
   });
+
+  test('assistant rows carry their owner user turn from the linear scan', () {
+    final user = ChatMessage(
+      id: 'user',
+      role: 'user',
+      parts: [ChatPart.text('question')],
+    );
+    final assistant = ChatMessage(
+      id: 'assistant',
+      role: 'assistant',
+      parts: [ChatPart.text('answer')],
+    );
+
+    final row = buildChatTimeline([
+      user,
+      assistant,
+    ]).whereType<ChatTimelineMessage>().last;
+
+    expect(row.ownerUserMessage, same(user));
+  });
 }

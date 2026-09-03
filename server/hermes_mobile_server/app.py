@@ -14,16 +14,18 @@ from fastapi.responses import JSONResponse
 from . import local_workspace
 from .auth import api_key_dependency
 from .backend import BackendError, BackendManager
+from .concurrency import BoundedExecutor
 from .config import SERVER_VERSION, Settings, load_settings
 from .domain_api import build_domain_router
+from .kanban_proxy import build_kanban_router
+from .network_observability import NetworkMetrics, WebSocketConnectionLimiter
+from .push import PushCoordinator, PushDispatcher, PushStore, build_push_router
 from .runtime import get_hermes_home, resolve_runtime
 from .session_shares import render_share_html, share_store
 from .tasks import TaskStore
 from .terminal_pty import PtyManager
 from .terminal_ws import build_terminal_router
 from .ws_proxy import build_ws_router
-from .kanban_proxy import build_kanban_router
-from .push import PushCoordinator, PushDispatcher, PushStore, build_push_router
 
 logger = logging.getLogger("hermes_mobile_server")
 
@@ -47,7 +49,15 @@ def create_app(
     settings = settings or load_settings()
     state = AppState()
     state.settings = settings
-    terminal_manager = PtyManager()
+    terminal_manager = PtyManager(max_sessions=settings.terminal_session_limit)
+    local_executor = BoundedExecutor(
+        settings.local_fs_max_workers, thread_name_prefix="hermes-local-fs"
+    )
+    network_metrics = NetworkMetrics()
+    websocket_limiter = WebSocketConnectionLimiter(
+        settings.websocket_max_per_client,
+        trust_forwarded_for=settings.trust_forwarded_for,
+    )
     push_store = push_store or PushStore()
     push_dispatcher = push_dispatcher or PushDispatcher.from_settings(
         settings, push_store
@@ -94,6 +104,7 @@ def create_app(
         finally:
             await push_coordinator.stop()
             await terminal_manager.close_all()
+            local_executor.shutdown(wait=False)
             if state.backend is not None:
                 await state.backend.stop()
 
@@ -182,6 +193,24 @@ def create_app(
             "backend": backend_info,
             "ready_error": state.ready_error,
         }
+
+    @app.get(
+        "/api/v1/network/metrics",
+        tags=["management"],
+        dependencies=[Depends(api_key_dependency(state.settings))],
+    )
+    async def network_metrics_snapshot() -> dict:
+        snapshot = network_metrics.snapshot()
+        snapshot["concurrency"] = {
+            "local_workspace_pool": local_executor.snapshot(),
+            "terminal_sessions": terminal_manager.snapshot(),
+            "gateway_rpc": (
+                state.backend.rpc_concurrency_snapshot()
+                if state.backend is not None
+                else None
+            ),
+        }
+        return snapshot
 
     @app.post(
         "/api/v1/backend/restart",
@@ -323,6 +352,7 @@ def create_app(
             "management": {
                 "GET /api/v1/status": "server + runtime + backend status",
                 "GET /api/v1/health": "liveness",
+                "GET /api/v1/network/metrics": "aggregate WebSocket reliability metrics",
                 "GET /api/v1/logs": "proxy Hermes agent logs",
                 "POST /api/v1/backend/restart": "restart the Hermes backend",
             },
@@ -332,11 +362,25 @@ def create_app(
     # Routers are wired unconditionally; they report 503 until the backend
     # finishes booting in the lifespan.
     app.include_router(
-        build_domain_router(settings, state.backend, task_store=task_store)
+        build_domain_router(
+            settings, state.backend, task_store=task_store, local_executor=local_executor
+        )
     )
-    app.include_router(build_ws_router(settings, state.backend))
-    app.include_router(build_kanban_router(settings, state.backend))
-    app.include_router(build_terminal_router(settings, terminal_manager))
+    app.include_router(
+        build_ws_router(
+            settings, state.backend, network_metrics, websocket_limiter
+        )
+    )
+    app.include_router(
+        build_kanban_router(
+            settings, state.backend, network_metrics, websocket_limiter
+        )
+    )
+    app.include_router(
+        build_terminal_router(
+            settings, terminal_manager, network_metrics, websocket_limiter
+        )
+    )
     app.include_router(build_push_router(settings, push_store, push_dispatcher))
 
     @app.exception_handler(RequestValidationError)

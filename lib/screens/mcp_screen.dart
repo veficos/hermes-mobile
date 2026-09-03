@@ -23,6 +23,7 @@ import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/profile_scope_selector.dart';
+import 'mcp_config_editor_screen.dart';
 import 'mcp_logs_screen.dart';
 
 class McpScreen extends StatefulWidget {
@@ -471,61 +472,6 @@ class _McpScreenState extends State<McpScreen>
     }
   }
 
-  /// Desktop parity: `lib/mcp-import.ts` — turn a pasted mcp.json snippet, a
-  /// bare `npx`/`docker`/`uvx` command, a `claude mcp add` line, or a plain
-  /// URL into filled-in fields, instead of making the user hand-transcribe
-  /// every field from whatever a README told them to copy. A snippet
-  /// describing several servers at once bypasses the single-server form
-  /// entirely and is added directly (`_batchImport`).
-  List<McpImportEntry>? _applyImport(
-    String text,
-    void Function(void Function()) setDialogState, {
-    required TextEditingController name,
-    required TextEditingController endpoint,
-    required TextEditingController args,
-    required TextEditingController env,
-    required void Function(String) setTransport,
-  }) {
-    final entries = parseMcpImport(text);
-    if (entries == null || entries.isEmpty) {
-      showHermesToast(
-        context,
-        message: context.l10n.mcpImportUnrecognized,
-        kind: HermesToastKind.error,
-      );
-      return null;
-    }
-    if (entries.length > 1) return entries;
-    final entry = entries.single;
-    final representableKeys = entry.config['url'] is String
-        ? const {'url', 'auth'}
-        : const {'command', 'args', 'env'};
-    if (entry.config.keys.any((key) => !representableKeys.contains(key))) {
-      // The structured add form cannot faithfully represent headers, tool
-      // filters, enabled flags, OAuth extensions, or plugin-defined fields.
-      // Route these through the whole-map importer so no mcp.json data is lost.
-      return entries;
-    }
-    setDialogState(() {
-      name.text = entry.name;
-      final url = entry.config['url'];
-      if (url is String) {
-        setTransport('url');
-        endpoint.text = url;
-      } else {
-        setTransport('stdio');
-        endpoint.text = entry.config['command']?.toString() ?? '';
-        final rawArgs = entry.config['args'];
-        args.text = rawArgs is List ? rawArgs.join('\n') : '';
-        final rawEnv = entry.config['env'];
-        env.text = rawEnv is Map
-            ? const JsonEncoder.withIndent('  ').convert(rawEnv)
-            : '{}';
-      }
-    });
-    return null;
-  }
-
   Future<void> _batchImport(List<McpImportEntry> entries) async {
     final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
@@ -602,201 +548,15 @@ class _McpScreenState extends State<McpScreen>
     final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
     final profile = _profile;
-    final name = TextEditingController();
-    final endpoint = TextEditingController();
-    final args = TextEditingController();
-    final env = TextEditingController(text: '{}');
-    final bearer = TextEditingController();
-    final importCtrl = TextEditingController();
-    var transport = 'url';
-    var auth = 'none';
-    List<McpImportEntry>? batch;
-    final payload = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(context.l10n.mcpAddServer),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: importCtrl,
-                  minLines: 1,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.mcpPasteImport,
-                    suffixIcon: IconButton(
-                      tooltip: context.l10n.mcpParse,
-                      icon: const Icon(Icons.auto_fix_high),
-                      onPressed: () {
-                        final result = _applyImport(
-                          importCtrl.text,
-                          setDialogState,
-                          name: name,
-                          endpoint: endpoint,
-                          args: args,
-                          env: env,
-                          setTransport: (v) => transport = v,
-                        );
-                        if (result != null) {
-                          batch = result;
-                          Navigator.of(ctx).pop();
-                        }
-                      },
-                    ),
-                  ),
-                ),
-                const Divider(height: HermesSpacing.lg),
-                TextField(
-                  controller: name,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.commonName,
-                  ),
-                ),
-                const SizedBox(height: HermesSpacing.sm),
-                SegmentedButton<String>(
-                  segments: [
-                    ButtonSegment(
-                      value: 'url',
-                      label: Text(context.l10n.mcpRemoteUrl),
-                    ),
-                    ButtonSegment(
-                      value: 'stdio',
-                      label: Text(context.l10n.mcpLocalStdio),
-                    ),
-                  ],
-                  selected: {transport},
-                  onSelectionChanged: (value) =>
-                      setDialogState(() => transport = value.first),
-                ),
-                const SizedBox(height: HermesSpacing.sm),
-                TextField(
-                  controller: endpoint,
-                  decoration: InputDecoration(
-                    labelText: transport == 'url'
-                        ? context.l10n.mcpServerUrl
-                        : context.l10n.mcpCommand,
-                  ),
-                ),
-                if (transport == 'stdio') ...[
-                  const SizedBox(height: HermesSpacing.sm),
-                  TextField(
-                    controller: args,
-                    decoration: InputDecoration(
-                      labelText: context.l10n.mcpArgumentsOnePerLine,
-                    ),
-                    minLines: 2,
-                    maxLines: 5,
-                  ),
-                  const SizedBox(height: HermesSpacing.sm),
-                  TextField(
-                    controller: env,
-                    decoration: InputDecoration(
-                      labelText: context.l10n.mcpEnvironmentJson,
-                      hintText: const JsonEncoder().convert({'API_KEY': '...'}),
-                    ),
-                    minLines: 2,
-                    maxLines: 5,
-                  ),
-                ] else ...[
-                  const SizedBox(height: HermesSpacing.sm),
-                  DropdownButtonFormField<String>(
-                    initialValue: auth,
-                    decoration: InputDecoration(
-                      labelText: context.l10n.mcpAuthentication,
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'none',
-                        child: Text(context.l10n.mcpNoAuthentication),
-                      ),
-                      DropdownMenuItem(
-                        value: 'oauth',
-                        child: Text(context.l10n.mcpAuthOauth),
-                      ),
-                      DropdownMenuItem(
-                        value: 'header',
-                        child: Text(context.l10n.mcpAuthBearerToken),
-                      ),
-                    ],
-                    onChanged: (value) =>
-                        setDialogState(() => auth = value ?? 'none'),
-                  ),
-                  if (auth == 'header') ...[
-                    const SizedBox(height: HermesSpacing.sm),
-                    TextField(
-                      controller: bearer,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: context.l10n.mcpAuthBearerToken,
-                      ),
-                    ),
-                  ],
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(context.l10n.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                final serverName = name.text.trim();
-                final target = endpoint.text.trim();
-                if (serverName.isEmpty || target.isEmpty) return;
-                Map<String, dynamic> envMap = const {};
-                if (transport == 'stdio') {
-                  try {
-                    final decoded = jsonDecode(env.text) as Map;
-                    envMap = {
-                      for (final item in decoded.entries)
-                        item.key.toString(): item.value.toString(),
-                    };
-                  } catch (_) {
-                    showHermesToast(
-                      ctx,
-                      message: ctx.l10n.mcpEnvironmentMustBeJson,
-                      kind: HermesToastKind.error,
-                    );
-                    return;
-                  }
-                }
-                Navigator.of(ctx).pop({
-                  'name': serverName,
-                  if (transport == 'url') 'url': target else 'command': target,
-                  if (transport == 'stdio')
-                    'args': args.text
-                        .split('\n')
-                        .map((value) => value.trim())
-                        .where((value) => value.isNotEmpty)
-                        .toList(),
-                  if (transport == 'stdio') 'env': envMap,
-                  if (transport == 'url' && auth != 'none') 'auth': auth,
-                  if (auth == 'header') 'bearer_token': bearer.text,
-                });
-              },
-              child: Text(context.l10n.commonAdd),
-            ),
-          ],
-        ),
-      ),
+    final result = await Navigator.of(context).push<McpServerDraftResult>(
+      MaterialPageRoute(builder: (_) => const McpServerEditorScreen()),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      name.dispose();
-      endpoint.dispose();
-      args.dispose();
-      env.dispose();
-      bearer.dispose();
-      importCtrl.dispose();
-    });
+    final batch = result?.imports;
     if (batch != null) {
-      if (mounted) await _batchImport(batch!);
+      if (mounted) await _batchImport(batch);
       return;
     }
+    final payload = result?.payload;
     if (payload == null || !mounted) return;
     final serverName = payload['name'].toString();
     _requireTarget(api, profile);
@@ -902,39 +662,14 @@ class _McpScreenState extends State<McpScreen>
       return;
     }
     if (!mounted) return;
-    final controller = TextEditingController(
-      text: const JsonEncoder.withIndent('  ').convert(current),
-    );
-    final edited = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.mcpEditServer(name)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: controller,
-            maxLines: 16,
-            minLines: 8,
-            style: HermesType.code,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              alignLabelWithHint: true,
-            ),
-          ),
+    final edited = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => McpConfigEditorScreen(
+          title: context.l10n.mcpEditServer(name),
+          initialValue: const JsonEncoder.withIndent('  ').convert(current),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: Text(context.l10n.commonSave),
-          ),
-        ],
       ),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (edited == null || !mounted) return;
     dynamic decoded;
     try {
@@ -1014,37 +749,17 @@ class _McpScreenState extends State<McpScreen>
       return;
     }
     if (!mounted) return;
-    final controller = TextEditingController(
-      text: const JsonEncoder.withIndent('  ').convert({'mcpServers': current}),
-    );
-    final edited = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('mcp.json'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            key: const ValueKey('mcp-document-editor'),
-            controller: controller,
-            minLines: 12,
-            maxLines: 22,
-            style: HermesType.code,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-          ),
+    final edited = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => McpConfigEditorScreen(
+          title: 'mcp.json',
+          initialValue: const JsonEncoder.withIndent(
+            '  ',
+          ).convert({'mcpServers': current}),
+          documentEditor: true,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: Text(context.l10n.commonSave),
-          ),
-        ],
       ),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (edited == null || !mounted) {
       if (mounted) setState(() => _busyName = '');
       return;

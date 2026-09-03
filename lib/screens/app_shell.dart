@@ -286,6 +286,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           sessionId: row.id,
           connectionId: pendingConnectionId,
           profile: row.profile,
+          target: 'kanban',
         );
       }
     }

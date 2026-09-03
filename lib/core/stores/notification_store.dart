@@ -28,6 +28,9 @@ class NotificationItem {
   final String? connectionId;
   final String? profile;
   final String? requestId;
+
+  /// Optional feature destination for notifications without a session.
+  final String? target;
   final DateTime time;
   bool read;
   bool systemShown;
@@ -41,6 +44,7 @@ class NotificationItem {
     this.connectionId,
     this.profile,
     this.requestId,
+    this.target,
     required this.time,
     this.read = false,
     this.systemShown = false,
@@ -61,6 +65,7 @@ class NotificationItem {
       connectionId: json['connection_id']?.toString(),
       profile: json['profile']?.toString(),
       requestId: json['request_id']?.toString(),
+      target: json['target']?.toString(),
       time: DateTime.tryParse(json['time']?.toString() ?? '') ?? DateTime.now(),
       read: json['read'] == true,
       systemShown: json['system_shown'] == true,
@@ -76,6 +81,7 @@ class NotificationItem {
     'connection_id': connectionId,
     'profile': profile,
     'request_id': requestId,
+    'target': target,
     'time': time.toIso8601String(),
     'read': read,
     'system_shown': systemShown,
@@ -108,6 +114,7 @@ class NotificationStore extends ChangeNotifier {
     String? connectionId,
     String? profile,
     String? requestId,
+    String? target,
   }) => _add(
     kind: kind,
     title: title,
@@ -116,6 +123,7 @@ class NotificationStore extends ChangeNotifier {
     connectionId: connectionId,
     profile: profile,
     requestId: requestId,
+    target: target,
     key: key,
   );
 
@@ -224,6 +232,7 @@ class NotificationStore extends ChangeNotifier {
     String? connectionId,
     String? profile,
     String? requestId,
+    String? target,
     required String key,
   }) {
     // Dedupe: a repeated key replaces the earlier entry instead of stacking.
@@ -246,6 +255,7 @@ class NotificationStore extends ChangeNotifier {
                 connection.activeConnectionId.value,
             profile: profile ?? existing.profile,
             requestId: requestId ?? existing.requestId,
+            target: target ?? existing.target,
             time: DateTime.now(),
             read: false,
             systemShown: false,

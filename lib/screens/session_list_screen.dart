@@ -1627,11 +1627,20 @@ class _SessionListScreenState extends State<SessionListScreen>
             : TextButton.icon(
                 onPressed: () async {
                   _recordInteraction();
+                  final before = session.sessions?.length ?? 0;
                   await session.loadMoreSessions();
                   if (!context.mounted) return;
-                  await context.read<PullRequestStore>().refreshForSessions(
+                  final pullRequests = context.read<PullRequestStore>();
+                  await pullRequests.refreshForSessions(
                     session.sessions ?? const <SessionRow>[],
                   );
+                  if (!context.mounted) return;
+                  final after = session.sessions?.length ?? 0;
+                  if (!session.listHasMore || after == before) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(context.l10n.gitEndOfLog)),
+                    );
+                  }
                 },
                 icon: const Icon(Icons.expand_more, size: 18),
                 label: Text(context.l10n.sessionLoadMore),

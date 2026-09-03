@@ -1259,7 +1259,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       final page = await api.listSessionsPage(
         limit: sessionPageSize,
         offset: _listOffset,
-        includeArchived: true,
+        // Keep the paging scope identical to the initial refresh. Mixing the
+        // archived and active collections changes the server's offset window
+        // and can return an empty/duplicate page when the user taps Load more.
+        includeArchived: _showArchived,
         profile: profile,
       );
       if (profile != _sessionListProfile ||
@@ -1284,8 +1287,18 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       }
       _sessions = merged;
       _invalidateSessionProjection();
-      _listOffset += pageRows.length;
-      _listHasMore = page.hasMore;
+      // The server paginates root sessions. Its projection may append child
+      // sessions to the same response for display, but those children must
+      // not advance the server cursor or the next page will skip rows.
+      final fetchedRoots = pageRows.where((row) => !row.isChildSession).length;
+      _listOffset += fetchedRoots;
+      // An empty or entirely duplicate page is an EOF signal even when an
+      // older backend incorrectly leaves has_more=true. Stop exposing a
+      // button that can only issue the same request forever.
+      _listHasMore =
+          page.hasMore &&
+          pageRows.isNotEmpty &&
+          merged.length > existing.length;
       notifyListeners();
     } catch (e) {
       connection.error = runtimeL10n.sessionLoadMoreFailed('$e');
@@ -2220,7 +2233,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
           ? fresh.length
           : metrics.maxSessionRows;
       _invalidateSessionProjection();
-      _listOffset = fresh.length;
+      // Keep pagination in the server's root-session address space; projected
+      // child rows are display-only and are not part of the offset window.
+      _listOffset = fresh.where((row) => !row.isChildSession).length;
       _listHasMore = page.hasMore;
       if (!includeArchived) {
         unawaited(

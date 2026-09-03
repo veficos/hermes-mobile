@@ -400,8 +400,8 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       requireActiveApi(context, connection, api);
       await showDialog<void>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text(context.l10n.profilesSetupCommand),
+        builder: (dialogContext) => AlertDialog(
+          title: Text(dialogContext.l10n.profilesSetupCommand),
           content: SelectableText(
             command,
             style: const TextStyle(fontFamily: 'HermesJetBrainsMono'),
@@ -409,17 +409,25 @@ class _ProfilesScreenState extends State<ProfilesScreen>
           actions: [
             TextButton.icon(
               onPressed: () async {
-                if (await copyTextOrNotify(context, command) &&
-                    context.mounted) {
-                  Navigator.pop(context);
+                // Use the page context for clipboard feedback. The dialog
+                // context may be removed while the platform clipboard call
+                // crosses an async boundary (notably on Web).
+                final pageContext = context;
+                final copied = await copyTextOrNotify(
+                  pageContext,
+                  command,
+                  successMessage: pageContext.l10n.commonCopied,
+                );
+                if (copied && context.mounted) {
+                  Navigator.of(dialogContext).pop();
                 }
               },
               icon: const Icon(Icons.copy, size: 18),
-              label: Text(context.l10n.profilesCopy),
+              label: Text(dialogContext.l10n.profilesCopy),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(context.l10n.commonDone),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(dialogContext.l10n.commonDone),
             ),
           ],
         ),

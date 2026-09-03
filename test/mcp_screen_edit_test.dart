@@ -7,6 +7,7 @@ import 'package:hermes_mobile/core/stores/profile_scope_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
 import 'package:hermes_mobile/screens/mcp_screen.dart';
+import 'package:hermes_mobile/screens/mcp_config_editor_screen.dart';
 import 'package:provider/provider.dart';
 
 /// Regression coverage for the redaction hazard: `GET /api/v1/mcp/servers`
@@ -113,10 +114,11 @@ void main() {
       await tester.tap(find.text('编辑配置'));
       await tester.pumpAndSettle();
 
+      expect(find.byType(McpConfigEditorScreen), findsOneWidget);
       expect(find.textContaining('real-secret-123'), findsOneWidget);
       expect(find.textContaining('***'), findsNothing);
 
-      await tester.tap(find.widgetWithText(FilledButton, '保存'));
+      await tester.tap(find.byKey(const ValueKey('mcp-config-save')));
       await tester.pumpAndSettle();
 
       final saved = api.lastReplacedServers?['filesystem'];
@@ -155,6 +157,7 @@ void main() {
     await tester.pumpAndSettle();
     final editor = find.byKey(const ValueKey('mcp-document-editor'));
     expect(editor, findsOneWidget);
+    expect(find.byType(McpConfigEditorScreen), findsOneWidget);
     await tester.enterText(editor, '''
       {"mcpServers": {
         "renamed": {
@@ -164,7 +167,7 @@ void main() {
         }
       }}
     ''');
-    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.tap(find.byKey(const ValueKey('mcp-config-save')));
     await tester.pumpAndSettle();
 
     expect(api.lastReplacedServers?.containsKey('filesystem'), isFalse);

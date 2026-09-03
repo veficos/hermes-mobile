@@ -16,7 +16,6 @@ import '../widgets/mobile/mobile_page_scaffold.dart';
 import 'about_screen.dart';
 import 'billing_screen.dart';
 import 'config_screen.dart';
-import 'config_center_screen.dart';
 import 'credentials_screen.dart';
 import 'messaging_screen.dart';
 import 'profiles_screen.dart';
@@ -69,14 +68,6 @@ class _SettingsHubScreenState extends State<SettingsHubScreen> {
             subtitle: l10n.settingsProvidersDesc,
             compactPage: const ProviderConfigScreen(),
             widePage: const ProviderConfigScreen(embedded: true),
-          ),
-          _SettingsEntry(
-            id: 'capabilities',
-            icon: Icons.extension_outlined,
-            title: l10n.settingsCapabilitiesTitle,
-            subtitle: l10n.settingsCapabilitiesDesc,
-            compactPage: const ConfigCenterScreen(),
-            widePage: const ConfigCenterScreen(embedded: true),
           ),
           _SettingsEntry(
             id: 'profiles',

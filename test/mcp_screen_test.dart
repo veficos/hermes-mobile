@@ -7,6 +7,7 @@ import 'package:hermes_mobile/core/stores/profile_scope_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
 import 'package:hermes_mobile/screens/mcp_screen.dart';
+import 'package:hermes_mobile/screens/mcp_config_editor_screen.dart';
 import 'package:provider/provider.dart';
 
 class _McpContractApi extends ApiClient {
@@ -85,6 +86,14 @@ void main() {
 
       expect(find.text('filesystem'), findsOneWidget);
       expect(find.text('github'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('添加 MCP 服务器'));
+      await tester.pumpAndSettle();
+      expect(find.byType(McpServerEditorScreen), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const ValueKey('mcp-server-name')), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
 
       // Enabled servers are probed automatically on load, so connection
       // health and discovered tools represent runtime truth rather than the

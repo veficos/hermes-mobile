@@ -44,6 +44,7 @@ void main() {
     await tester.tap(find.text('打开设置'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('返回主页'), findsOneWidget);
+    expect(find.text('能力管理'), findsNothing);
 
     await tester.tap(find.byTooltip('返回主页'));
     await tester.pumpAndSettle();

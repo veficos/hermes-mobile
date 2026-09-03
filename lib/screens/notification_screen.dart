@@ -16,6 +16,7 @@ import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import 'chat_screen.dart';
+import 'kanban_canonical_screen.dart';
 import 'request_sheet.dart';
 
 class NotificationScreen extends StatelessWidget {
@@ -84,7 +85,19 @@ class NotificationScreen extends StatelessWidget {
       return;
     }
     final sessionId = n.sessionId;
-    if (sessionId == null) return;
+    if (sessionId == null) {
+      switch (n.target ?? (n.id.startsWith('kanban:') ? 'kanban' : null)) {
+        case 'kanban':
+          if (context.mounted) {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const KanbanCanonicalScreen()),
+            );
+          }
+        default:
+          return;
+      }
+      return;
+    }
     final session = context.read<SessionStore>();
     try {
       final connectionId = n.connectionId;

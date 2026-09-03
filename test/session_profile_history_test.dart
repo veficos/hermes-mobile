@@ -848,6 +848,37 @@ void main() {
   });
 
   test(
+    'load more appends the next server page and advances the root cursor',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _SwitchProfileApi()..profilesWithMore.add('unscoped');
+      final connection = ConnectionStore()..api = api;
+      final store = SessionStore(
+        connection: connection,
+        chat: ChatStore(),
+        requests: RequestStore(),
+      );
+      addTearDown(() {
+        store.dispose();
+        connection.dispose();
+      });
+
+      await store.refreshList(limit: 1);
+      expect(store.sessions!.map((row) => row.id), ['unscoped-0']);
+      expect(store.listHasMore, isTrue);
+
+      await store.loadMoreSessions();
+
+      expect(store.sessions!.map((row) => row.id), [
+        'unscoped-0',
+        'unscoped-1',
+      ]);
+      expect(api.sessionProfiles, [null, null]);
+      expect(store.listHasMore, isFalse);
+    },
+  );
+
+  test(
     'scoped refresh failure does not publish the shared session cache',
     () async {
       SharedPreferences.setMockInitialValues({});

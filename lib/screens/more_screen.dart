@@ -10,6 +10,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
+import '../widgets/h/hermes_logo.dart';
 import '../widgets/pet_overlay.dart';
 import '../widgets/plugin_contribution_surface.dart';
 import 'agent_screen.dart';
@@ -20,6 +21,7 @@ import 'cron_screen.dart';
 import 'files_screen.dart';
 import 'git_screen.dart';
 import 'insights_screen.dart';
+import 'knowledge_screen.dart';
 import 'mcp_screen.dart';
 import 'memory_screen.dart';
 import 'notification_screen.dart';
@@ -109,27 +111,7 @@ class _MoreScreenState extends State<MoreScreen> {
           HermesMobileCard(
             child: Row(
               children: [
-                Container(
-                  width: 37,
-                  height: 37,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [palette.accent, palette.accentHover],
-                    ),
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Text(
-                    'H',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
+                const HermesAgentAvatar(size: 40),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -299,6 +281,12 @@ class _MoreScreenState extends State<MoreScreen> {
           context.l10n.featureMemory,
           context.l10n.featureMemoryDesc,
           () => _push(const MemoryScreen()),
+        ),
+        _MenuEntry(
+          Icons.menu_book_outlined,
+          context.l10n.homeToolKnowledge,
+          context.l10n.configCenterKnowledgeEmptyDescription,
+          () => _push(const KnowledgeScreen()),
         ),
         _MenuEntry(
           Icons.pets_outlined,

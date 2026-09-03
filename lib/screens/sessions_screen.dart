@@ -1,6 +1,6 @@
 /// Batch 3: SessionsScreen — full session management UI with project picker,
-/// search, filter chips, sort dropdown, sortable session list and a bottom
-/// action bar. Data is read from [SessionStore.sessions]; null shows placeholders.
+/// search, filter chips, sort dropdown, and a sortable session list. Data is
+/// read from [SessionStore.sessions]; null shows placeholders.
 library;
 
 import 'package:flutter/material.dart';
@@ -20,7 +20,6 @@ import '../widgets/session/session_detail_panel.dart';
 import '../widgets/session/session_row_actions.dart';
 import 'chat_screen.dart';
 import 'new_session_screen.dart';
-import 'settings_hub_screen.dart';
 
 typedef SessionOpenCallback = void Function(SessionRow session);
 
@@ -30,9 +29,8 @@ enum _SessionSort { timeDesc, timeAsc, title, messageCount }
 
 class SessionsScreen extends StatefulWidget {
   final SessionOpenCallback? onOpen;
-  final bool showSettings;
 
-  const SessionsScreen({super.key, this.onOpen, this.showSettings = true});
+  const SessionsScreen({super.key, this.onOpen});
 
   @override
   State<SessionsScreen> createState() => _SessionsScreenState();
@@ -109,12 +107,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
         },
       ),
     );
-  }
-
-  void _showSettings() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const SettingsHubScreen()));
   }
 
   void _newSession() {
@@ -218,9 +210,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
           _searchBar(context),
         ],
         _filterChips(context),
-        _sortRow(context),
+        _sortRow(context, rows.length),
         Expanded(child: _buildBody(context, rawRows, rows)),
-        _bottomBar(context),
       ],
     );
 
@@ -234,6 +225,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
           icon: const Icon(Icons.arrow_back),
         ),
         title: Text(context.l10n.sessionManage),
+        actions: [
+          IconButton(
+            tooltip: context.l10n.commonRefresh,
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: SafeArea(
         child: width >= 1200
@@ -395,12 +393,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
               ),
             ),
           ),
-          const SizedBox(width: HermesSpacing.xs),
-          HermesIconButton(
-            icon: Icons.refresh,
-            tooltip: context.l10n.commonRefresh,
-            onTap: _load,
-          ),
         ],
       ),
     );
@@ -522,7 +514,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
     );
   }
 
-  Widget _sortRow(BuildContext context) {
+  Widget _sortRow(BuildContext context, int visibleCount) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final options = [
@@ -549,7 +541,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
       child: Row(
         children: [
           Text(
-            context.l10n.sessionSortTitle,
+            context.l10n.sessionProjectSessionCount(visibleCount),
             style: TextStyle(
               fontSize: 12,
               color: isDark
@@ -558,7 +550,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(width: HermesSpacing.xs),
+          const Spacer(),
           InkWell(
             onTap: () => _showSortSheet(context, options),
             borderRadius: BorderRadius.circular(HermesRadius.smallCard),
@@ -600,14 +592,16 @@ class _SessionsScreenState extends State<SessionsScreen> {
               ),
             ),
           ),
-          const Spacer(),
           if (_loading)
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: theme.colorScheme.primary,
+            Padding(
+              padding: const EdgeInsets.only(left: HermesSpacing.xs),
+              child: SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: theme.colorScheme.primary,
+                ),
               ),
             ),
         ],
@@ -762,7 +756,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
           HermesSpacing.md,
           4,
           HermesSpacing.md,
-          HermesSpacing.xxl,
+          HermesSpacing.md,
         ),
         itemCount: items.length,
         separatorBuilder: (_, _) => const SizedBox(height: HermesSpacing.xs),
@@ -783,7 +777,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
         HermesSpacing.md,
         4,
         HermesSpacing.md,
-        HermesSpacing.xxl,
+        HermesSpacing.md,
       ),
       itemCount: 8,
       separatorBuilder: (_, _) => const SizedBox(height: HermesSpacing.xs),
@@ -1143,67 +1137,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
       );
     }
     return context.l10n.sessionDurationMinutes(value.inMinutes);
-  }
-
-  Widget _bottomBar(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final border = isDark
-        ? HermesBackground.darkBorder
-        : HermesBackground.lightBorder;
-    final surface = isDark
-        ? HermesBackground.darkSecondary
-        : HermesBackground.lightSecondary;
-    final accent = theme.colorScheme.primary;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: surface,
-        border: Border(top: BorderSide(color: border, width: 1)),
-        boxShadow: hermesShadow(context, HermesShadowTier.sm),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            HermesSpacing.md,
-            HermesSpacing.sm,
-            HermesSpacing.md,
-            HermesSpacing.md,
-          ),
-          child: Wrap(
-            alignment: WrapAlignment.end,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: HermesSpacing.sm,
-            runSpacing: HermesSpacing.sm,
-            children: [
-              if (widget.showSettings)
-                OutlinedButton.icon(
-                  onPressed: _showSettings,
-                  icon: const Icon(Icons.settings_outlined, size: 18),
-                  label: Text(context.l10n.sessionsSettings),
-                ),
-              FilledButton.icon(
-                onPressed: _newSession,
-                style: FilledButton.styleFrom(
-                  backgroundColor: accent,
-                  foregroundColor: theme.colorScheme.onPrimary,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                ),
-                icon: const Icon(Icons.add, size: 18),
-                label: Text(
-                  context.l10n.sessionNew,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   static String _fmtTime(BuildContext context, DateTime? dt) {

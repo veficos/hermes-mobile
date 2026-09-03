@@ -182,11 +182,13 @@ class SubagentStore extends ChangeNotifier {
   _runtimeByConnection = {};
   final Map<String, Map<String, List<SubagentNode>>> _treesByConnection = {};
   final Map<String, Map<String, SubagentNode>> _runtimeByChildConnection = {};
+  final Map<String, Map<String, List<SessionRow>>> _childrenByParentConnection =
+      {};
+  final Map<String, Map<String, int>> _runtimeDescendantCountConnection = {};
   int _projectionRevision = 0;
   int get projectionRevision => _projectionRevision;
 
-  @override
-  void notifyListeners() {
+  void _notifyProjectionChanged() {
     _projectionRevision++;
     super.notifyListeners();
   }
@@ -220,7 +222,7 @@ class SubagentStore extends ChangeNotifier {
     _loading = false;
     _refreshPending = false;
     _error = null;
-    notifyListeners();
+    _notifyProjectionChanged();
     if (api != null) unawaited(refreshProjection());
   }
 
@@ -238,11 +240,10 @@ class SubagentStore extends ChangeNotifier {
       sid == null ? const [] : (_bySession[sid] ?? const []);
 
   List<SessionRow> childrenForParent(String parentId) {
-    final rows = _childrenById.values
-        .where((row) => row.parentSessionId == parentId)
-        .toList();
-    rows.sort((a, b) => (b.lastMessageAt ?? 0).compareTo(a.lastMessageAt ?? 0));
-    return rows;
+    return _childrenByParentConnection[connection
+            .activeConnectionId
+            .value]?[parentId] ??
+        const [];
   }
 
   SubagentNode? runtimeForChild(String childSessionId) {
@@ -279,18 +280,10 @@ class SubagentStore extends ChangeNotifier {
   }
 
   int runtimeDescendantCount(String parentSessionId) {
-    final seen = <String>{};
-    void visit(SubagentNode node) {
-      if (!seen.add(node.id)) return;
-      for (final child in node.children) {
-        visit(child);
-      }
-    }
-
-    for (final node in forSession(parentSessionId)) {
-      visit(node);
-    }
-    return seen.length;
+    return _runtimeDescendantCountConnection[connection
+            .activeConnectionId
+            .value]?[parentSessionId] ??
+        0;
   }
 
   int descendantCount(String parentSessionId) {
@@ -423,7 +416,7 @@ class SubagentStore extends ChangeNotifier {
     }
     _rebuildTrees(connectionId);
     _rebuildRuntimeChildIndex();
-    notifyListeners();
+    _notifyProjectionChanged();
   }
 
   Future<void> refreshProjection() async {
@@ -467,6 +460,7 @@ class SubagentStore extends ChangeNotifier {
         );
       _rebuildTrees(connectionId);
       _rebuildRuntimeChildIndex();
+      _notifyProjectionChanged();
       _log(
         'projection refresh complete children=${children.length} '
         'groups=${runtime.length} total=${projection.total}',
@@ -514,6 +508,22 @@ class SubagentStore extends ChangeNotifier {
     final children = _childrenByConnection.putIfAbsent(connectionId, () => {});
     final runtime = _runtimeForConnection(connectionId);
     trees.clear();
+    final childrenByParent = <String, List<SessionRow>>{};
+    for (final row in children.values) {
+      final parentId = row.parentSessionId;
+      if (parentId != null && parentId.isNotEmpty) {
+        (childrenByParent[parentId] ??= <SessionRow>[]).add(row);
+      }
+    }
+    for (final rows in childrenByParent.values) {
+      rows.sort(
+        (a, b) => (b.lastMessageAt ?? 0).compareTo(a.lastMessageAt ?? 0),
+      );
+    }
+    _childrenByParentConnection[connectionId] = {
+      for (final entry in childrenByParent.entries)
+        entry.key: List<SessionRow>.unmodifiable(entry.value),
+    };
     final durableChildIds = children.values
         .where((row) => row.isDelegatedChild)
         .map((row) => row.id)
@@ -559,6 +569,22 @@ class SubagentStore extends ChangeNotifier {
       }
       trees[entry.key] = roots;
     }
+    final counts = <String, int>{};
+    for (final entry in trees.entries) {
+      final seen = <String>{};
+      void visit(SubagentNode node) {
+        if (!seen.add(node.id)) return;
+        for (final child in node.children) {
+          visit(child);
+        }
+      }
+
+      for (final node in entry.value) {
+        visit(node);
+      }
+      counts[entry.key] = seen.length;
+    }
+    _runtimeDescendantCountConnection[connectionId] = counts;
   }
 
   /// Legacy batch query remains available for older call sites/backends.
@@ -586,6 +612,7 @@ class SubagentStore extends ChangeNotifier {
       }
       _rebuildTrees();
       _rebuildRuntimeChildIndex();
+      _notifyProjectionChanged();
     } catch (error, stackTrace) {
       if (generation != _refreshGeneration ||
           !identical(api, connection.api) ||
@@ -625,6 +652,7 @@ class SubagentStore extends ChangeNotifier {
       _runtimeByParent[sessionId] = _flatten(entries);
       _rebuildTrees();
       _rebuildRuntimeChildIndex();
+      _notifyProjectionChanged();
     } catch (error, stackTrace) {
       if (generation != _refreshGeneration ||
           !identical(api, connection.api) ||

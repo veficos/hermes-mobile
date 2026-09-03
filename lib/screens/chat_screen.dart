@@ -6960,7 +6960,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final connection = context.watch<ConnectionStore>();
-    final session = context.watch<SessionStore>();
+    final session = context.read<SessionStore>();
+    context.select<SessionStore, Object>(
+      (store) => Object.hash(
+        store.durableId,
+        store.info,
+        store.readOnly,
+        store.activeProfile,
+      ),
+    );
     final chat = context.read<ChatStore>();
     final voice = context.watch<VoiceStore>();
     _sessionStoreRef = session;
@@ -8755,11 +8763,23 @@ class _BackgroundResumeNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatStore>();
+    final busy = context.select<ChatStore, bool>((chat) => chat.busy);
     final status = context.maybeRead<ComposerStatusStore>();
-    final session = context.maybeRead<SessionStore>();
-    if (chat.busy || status == null) return const SizedBox.shrink();
-    final sid = session?.runtimeId ?? session?.durableId;
+    if (busy || status == null) return const SizedBox.shrink();
+    final sid = context.select<SessionStore, String?>(
+      (session) => session.runtimeId ?? session.durableId,
+    );
+    return ListenableBuilder(
+      listenable: status,
+      builder: (context, _) => _buildNotice(context, status, sid),
+    );
+  }
+
+  Widget _buildNotice(
+    BuildContext context,
+    ComposerStatusStore status,
+    String? sid,
+  ) {
     final running = status
         .itemsFor(sid)
         .where(

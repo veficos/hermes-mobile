@@ -885,6 +885,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   Map<String, String> _sessionTitlesById = const {};
   int _sessionListRevision = 0;
   int get sessionListRevision => _sessionListRevision;
+  int _sessionUnreadRevision = 0;
+  int get sessionUnreadRevision => _sessionUnreadRevision;
+  int _sessionUnreadFingerprint = 0;
+  List<SessionRow>? _indexedSessionsIdentity;
   final ValueNotifier<int> sessionListSignal = ValueNotifier<int>(0);
   List<SessionRow>? get sessions =>
       _projectedSessionsCache ??= _sessions == null
@@ -897,13 +901,39 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     sessionListSignal.value = _sessionListRevision;
     _projectedSessionsCache = null;
     final rows = _sessions;
-    _sessionTitlesById = rows == null
-        ? const {}
-        : Map.unmodifiable({
-            for (final row in rows)
-              if (row.id.isNotEmpty && (row.title ?? '').trim().isNotEmpty)
-                row.id: row.title ?? '',
-          });
+    if (rows == null) {
+      _indexedSessionsIdentity = null;
+      _sessionTitlesById = const {};
+      if (_sessionUnreadFingerprint != 0) {
+        _sessionUnreadFingerprint = 0;
+        _sessionUnreadRevision++;
+      }
+      return;
+    }
+    // Live-state invalidations keep the same immutable base rows. Titles and
+    // unread inputs only need re-indexing when a refresh replaces that list.
+    if (!identical(_indexedSessionsIdentity, rows)) {
+      final titles = <String, String>{};
+      var unreadFingerprint = rows.length;
+      for (final row in rows) {
+        final title = row.title ?? '';
+        if (row.id.isNotEmpty && title.trim().isNotEmpty) {
+          titles[row.id] = title;
+        }
+        unreadFingerprint = Object.hash(
+          unreadFingerprint,
+          row.id,
+          row.messageCount,
+          row.lastMessageAt,
+        );
+      }
+      _indexedSessionsIdentity = rows;
+      _sessionTitlesById = Map.unmodifiable(titles);
+      if (_sessionUnreadFingerprint != unreadFingerprint) {
+        _sessionUnreadFingerprint = unreadFingerprint;
+        _sessionUnreadRevision++;
+      }
+    }
   }
 
   final Map<String, bool> _liveStreamingById = {};
@@ -926,17 +956,28 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
 
   SessionRow _projectLiveState(SessionRow row) {
     final currentBusy = row.id == _durableId && chat.busy;
+    final isStreaming =
+        currentBusy || (_liveStreamingById[row.id] ?? row.isStreaming);
+    final cronRunning = _liveCronRunningById[row.id] ?? row.cronRunning;
+    final hasPendingUserMessage =
+        _requestAttentionIds.contains(row.id) ||
+        (_liveAttentionById[row.id] ?? row.hasPendingUserMessage);
+    final hasActiveStreamOverride = _liveActiveStreamIdById.containsKey(row.id);
+    final activeStreamId = hasActiveStreamOverride
+        ? _liveActiveStreamIdById[row.id]
+        : row.activeStreamId;
+    if (isStreaming == row.isStreaming &&
+        cronRunning == row.cronRunning &&
+        hasPendingUserMessage == row.hasPendingUserMessage &&
+        activeStreamId == row.activeStreamId) {
+      return row;
+    }
     return row.copyWith(
-      isStreaming:
-          currentBusy || (_liveStreamingById[row.id] ?? row.isStreaming),
-      cronRunning: _liveCronRunningById[row.id] ?? row.cronRunning,
-      hasPendingUserMessage:
-          _requestAttentionIds.contains(row.id) ||
-          (_liveAttentionById[row.id] ?? row.hasPendingUserMessage),
-      activeStreamId: _liveActiveStreamIdById[row.id],
-      clearActiveStreamId:
-          _liveActiveStreamIdById.containsKey(row.id) &&
-          _liveActiveStreamIdById[row.id] == null,
+      isStreaming: isStreaming,
+      cronRunning: cronRunning,
+      hasPendingUserMessage: hasPendingUserMessage,
+      activeStreamId: activeStreamId,
+      clearActiveStreamId: hasActiveStreamOverride && activeStreamId == null,
     );
   }
 
@@ -2095,6 +2136,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final index = rows.indexWhere((row) => row.id == id);
     if (index < 0) return;
     rows[index] = update(rows[index]);
+    _indexedSessionsIdentity = null;
     _invalidateSessionProjection();
     notifyListeners();
   }
@@ -2110,6 +2152,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       } else {
         rows[index] = row;
       }
+      _indexedSessionsIdentity = null;
     }
     _rememberListedSession(row, row.profile ?? _sessionListProfile);
     _invalidateSessionProjection();

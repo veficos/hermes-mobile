@@ -180,6 +180,9 @@ void main() {
 
       await store.refreshList();
       final firstProjection = store.sessions;
+      final firstUnchangedRow = firstProjection!.first;
+      final firstChangedRow = firstProjection.last;
+      final firstUnreadRevision = store.sessionUnreadRevision;
       expect(identical(firstProjection, store.sessions), isTrue);
       expect(store.sessionTitlesById, {'s1': 'First', 's2': 'Second'});
 
@@ -192,7 +195,10 @@ void main() {
       );
       await Future<void>.delayed(Duration.zero);
       expect(identical(firstProjection, store.sessions), isFalse);
+      expect(identical(firstUnchangedRow, store.sessions!.first), isTrue);
+      expect(identical(firstChangedRow, store.sessions!.last), isFalse);
       expect(store.sessions!.last.isActivelyWorking, isTrue);
+      expect(store.sessionUnreadRevision, firstUnreadRevision);
     },
   );
 }

@@ -16,6 +16,20 @@ ChatPart tool(
 });
 
 void main() {
+  test('accepts a stable list without mutating it', () {
+    final messages = List<ChatMessage>.unmodifiable([
+      ChatMessage(id: 'm', role: 'assistant', parts: [ChatPart.text('body')]),
+    ]);
+
+    final items = buildChatTimeline(messages);
+
+    expect(items, isNotEmpty);
+    expect(
+      items.whereType<ChatTimelineMessage>().single.sourceMessage,
+      same(messages.single),
+    );
+  });
+
   test('groups adjacent tools and preserves non-tool boundaries', () {
     final message = ChatMessage(
       id: 'm',

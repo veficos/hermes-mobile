@@ -53,6 +53,10 @@ class _HistoryScreenState extends State<HistoryScreen>
   late List<SessionRow> _cachedRoots = const [];
   late List<_HistoryGroup> _cachedGroups = const [];
   int? _cachedGroupDay;
+  List<_HistoryVisibleItem> _cachedVisibleItems = const [];
+  List<_HistoryGroup>? _visibleGroupsIdentity;
+  int _visibilityRevision = 0;
+  int _cachedVisibilityRevision = -1;
 
   @override
   void initState() {
@@ -476,6 +480,10 @@ class _HistoryScreenState extends State<HistoryScreen>
   };
 
   List<_HistoryVisibleItem> _projectVisibleItems(List<_HistoryGroup> groups) {
+    if (identical(_visibleGroupsIdentity, groups) &&
+        _cachedVisibilityRevision == _visibilityRevision) {
+      return _cachedVisibleItems;
+    }
     final started = Stopwatch()..start();
     final result = <_HistoryVisibleItem>[];
     void appendNode(SessionRow row, int depth, Set<String> path) {
@@ -516,7 +524,9 @@ class _HistoryScreenState extends State<HistoryScreen>
     if (started.elapsedMicroseconds > metrics.maxHistoryProjectionMicros) {
       metrics.maxHistoryProjectionMicros = started.elapsedMicroseconds;
     }
-    return result;
+    _visibleGroupsIdentity = groups;
+    _cachedVisibilityRevision = _visibilityRevision;
+    return _cachedVisibleItems = List.unmodifiable(result);
   }
 
   Widget _buildGroupHeader(BuildContext context, _HistoryHeaderItem item) {
@@ -525,6 +535,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: () => setState(() {
+        _visibilityRevision++;
         collapsed
             ? _collapsedGroups.remove(item.label)
             : _collapsedGroups.add(item.label);
@@ -594,6 +605,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                     ? context.l10n.historyCollapseChildren
                     : context.l10n.historyExpandChildren,
                 onPressed: () => setState(() {
+                  _visibilityRevision++;
                   expanded
                       ? _expandedSessionIds.remove(row.id)
                       : _expandedSessionIds.add(row.id);
@@ -792,6 +804,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                     constraints: const BoxConstraints(),
                     onPressed: () {
                       setState(() {
+                        _visibilityRevision++;
                         expanded
                             ? _expandedSessionIds.remove(row.id)
                             : _expandedSessionIds.add(row.id);

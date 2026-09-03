@@ -80,7 +80,7 @@ class _SessionListScreenState extends State<SessionListScreen>
   // Unread state cache (mirrors the in-memory sidebar cache in sessions.js).
   final Map<String, bool> _unreadCache = {};
   int _unreadCacheKey = 0;
-  String? _unreadRowsSignature;
+  int _unreadSessionRevision = -1;
   String? _openingSessionId;
 
   bool _selectMode = false;
@@ -102,6 +102,10 @@ class _SessionListScreenState extends State<SessionListScreen>
   int _unreadRevision = 0;
   List<SessionRow> _cachedDisplayRows = const [];
   Map<_TimeGroup, List<SessionRow>> _cachedTimeGroups = const {};
+  final Map<_TimeGroup, List<_SessionVisibleRow>> _cachedVisibleRows = {};
+  final Map<_TimeGroup, List<SessionRow>> _visibleRootsIdentity = {};
+  int _visibilityRevision = 0;
+  int _cachedVisibilityRevision = -1;
   bool _deleting = false;
   String _query = '';
   final _queryController = TextEditingController();
@@ -700,6 +704,15 @@ class _SessionListScreenState extends State<SessionListScreen>
     List<SessionRow> roots,
     _TimeGroup group,
   ) {
+    if (identical(_visibleRootsIdentity[group], roots) &&
+        _cachedVisibilityRevision == _visibilityRevision) {
+      return _cachedVisibleRows[group]!;
+    }
+    if (_cachedVisibilityRevision != _visibilityRevision) {
+      _cachedVisibleRows.clear();
+      _visibleRootsIdentity.clear();
+      _cachedVisibilityRevision = _visibilityRevision;
+    }
     final result = <_SessionVisibleRow>[];
     final path = <String>{};
     void append(SessionRow row, int depth) {
@@ -716,7 +729,8 @@ class _SessionListScreenState extends State<SessionListScreen>
     for (final root in roots) {
       append(root, 0);
     }
-    return result;
+    _visibleRootsIdentity[group] = roots;
+    return _cachedVisibleRows[group] = List.unmodifiable(result);
   }
 
   List<SessionRow> _rowsInGroup(List<SessionRow> rows, _TimeGroup g) {
@@ -1148,11 +1162,8 @@ class _SessionListScreenState extends State<SessionListScreen>
         break;
       }
     }
-    final unreadSignature = rows
-        .map((row) => '${row.id}:${row.messageCount}:${row.lastMessageAt}')
-        .join('|');
-    if (_unreadRowsSignature != unreadSignature) {
-      _unreadRowsSignature = unreadSignature;
+    if (_unreadSessionRevision != session.sessionUnreadRevision) {
+      _unreadSessionRevision = session.sessionUnreadRevision;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _rebuildUnreadCache(rows);
       });
@@ -2295,6 +2306,7 @@ class _SessionListScreenState extends State<SessionListScreen>
                   constraints: const BoxConstraints(),
                   onPressed: () {
                     setState(() {
+                      _visibilityRevision++;
                       if (!_expandedSessionIds.add(child.id)) {
                         _expandedSessionIds.remove(child.id);
                       }
@@ -2531,6 +2543,7 @@ class _SessionListScreenState extends State<SessionListScreen>
           childrenCount: childrenCount,
           expanded: expanded,
           onToggleExpand: () => setState(() {
+            _visibilityRevision++;
             if (expanded) {
               _expandedSessionIds.remove(s.id);
             } else {

@@ -131,7 +131,12 @@ List<ChatTimelineItem> buildChatTimeline(
   String? preserveMessageId,
 }) {
   final rows = <ChatTimelineItem>[];
-  final source = messages.toList(growable: false);
+  // ChatStore exposes a stable read-only List. Reuse it directly instead of
+  // copying the entire transcript on every legitimate timeline invalidation.
+  // Non-list callers retain the original iterable contract.
+  final source = messages is List<ChatMessage>
+      ? messages
+      : messages.toList(growable: false);
   var toolOrdinal = 0;
   ChatTimelineToolGroup? openGroup;
   final assistantRun = <ChatMessage>[];
@@ -251,15 +256,23 @@ List<ChatTimelineItem> buildChatTimeline(
     if (assistantRunEnds && assistantLike) {
       final run = assistantRun;
       final files = deriveTurnChangedFilesAcrossMessages(run);
-      final allParts = run.expand((item) => item.parts).toList(growable: false);
-      final startedAt = run
-          .map((item) => item.timestamp)
-          .whereType<DateTime>()
-          .firstOrNull;
-      final completedAt = run
-          .map((item) => item.timestamp)
-          .whereType<DateTime>()
-          .lastOrNull;
+      DateTime? startedAt;
+      DateTime? completedAt;
+      var toolCount = 0;
+      var reasoningBlocks = 0;
+      var running = false;
+      for (final item in run) {
+        final timestamp = item.timestamp;
+        if (timestamp != null) {
+          startedAt ??= timestamp;
+          completedAt = timestamp;
+        }
+        running = running || item.pending;
+        for (final part in item.parts) {
+          if (part.kind == 'tool') toolCount++;
+          if (part.kind == 'reasoning') reasoningBlocks++;
+        }
+      }
       rows.add(
         ChatTimelineTurnActivity(
           TurnActivity(
@@ -268,11 +281,9 @@ List<ChatTimelineItem> buildChatTimeline(
             endIndex: sourceIndex,
             startedAt: startedAt,
             completedAt: completedAt,
-            toolCount: allParts.where((part) => part.kind == 'tool').length,
-            reasoningBlocks: allParts
-                .where((part) => part.kind == 'reasoning')
-                .length,
-            running: run.any((item) => item.pending),
+            toolCount: toolCount,
+            reasoningBlocks: reasoningBlocks,
+            running: running,
           ),
           message,
           sourceIndex,
@@ -284,7 +295,8 @@ List<ChatTimelineItem> buildChatTimeline(
       assistantRun.clear();
     }
   }
-  return _unwrapSingletonGroups(rows);
+  _unwrapSingletonGroups(rows);
+  return rows;
 }
 
 /// A run of tool calls only reads as "使用了 N 个工具" once N ≥ 2 — a group
@@ -293,25 +305,20 @@ List<ChatTimelineItem> buildChatTimeline(
 /// keeps its full rich presentation without a redundant one-item wrapper,
 /// matching `_AssistantContent`'s identical `run.length > 1` gate for the
 /// actively-streaming message.
-List<ChatTimelineItem> _unwrapSingletonGroups(List<ChatTimelineItem> rows) {
-  final result = <ChatTimelineItem>[];
-  for (final row in rows) {
+void _unwrapSingletonGroups(List<ChatTimelineItem> rows) {
+  for (var index = 0; index < rows.length; index++) {
+    final row = rows[index];
     if (row is ChatTimelineToolGroup &&
         row.tools.length == 1 &&
         row.interactions.isEmpty) {
-      result.add(
-        ChatTimelineMessage(
-          _singleToolMessage(row.sourceMessage, row.tools.single, row.id),
-          row.sourceMessage,
-          row.sourceIndex,
-          ownerUserMessage: row.ownerUserMessage,
-        ),
+      rows[index] = ChatTimelineMessage(
+        _singleToolMessage(row.sourceMessage, row.tools.single, row.id),
+        row.sourceMessage,
+        row.sourceIndex,
+        ownerUserMessage: row.ownerUserMessage,
       );
-    } else {
-      result.add(row);
     }
   }
-  return result;
 }
 
 ChatMessage _singleToolMessage(ChatMessage source, ChatPart part, String id) {

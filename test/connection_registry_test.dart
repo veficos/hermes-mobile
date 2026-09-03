@@ -39,6 +39,7 @@ class _Gateway extends GatewayClient {
   Completer<Map<String, dynamic>>? resumeGate;
   Object? connectError;
   Completer<void>? connectGate;
+  Completer<void>? disconnectGate;
   int connectCount = 0;
   int disconnectCount = 0;
 
@@ -80,6 +81,8 @@ class _Gateway extends GatewayClient {
   @override
   Future<void> disconnect() async {
     disconnectCount++;
+    final gate = disconnectGate;
+    if (gate != null) await gate.future;
     connected = false;
   }
 }
@@ -367,22 +370,19 @@ void main() {
     },
   );
 
-  test(
-    'regained connectivity is a no-op while already connected',
-    () async {
-      final gateway = _Gateway('remote');
-      final runtime = _runtime('remote', gateway);
-      addTearDown(runtime.dispose);
-      await runtime.connect();
-      final before = gateway.connectCount;
+  test('regained connectivity is a no-op while already connected', () async {
+    final gateway = _Gateway('remote');
+    final runtime = _runtime('remote', gateway);
+    addTearDown(runtime.dispose);
+    await runtime.connect();
+    final before = gateway.connectCount;
 
-      runtime.notifyConnectivityRegained();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+    runtime.notifyConnectivityRegained();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      expect(gateway.connectCount, before);
-      expect(runtime.phase, RuntimePhase.connected);
-    },
-  );
+    expect(gateway.connectCount, before);
+    expect(runtime.phase, RuntimePhase.connected);
+  });
 
   test('foreground resume refreshes a potentially stale socket', () async {
     final gateway = _Gateway('remote');
@@ -439,13 +439,13 @@ void main() {
       await expectLater(runtime.reconnectAfterResume(), throwsStateError);
       runtime.setForeground(false);
       gateway.connectError = null;
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+      await Future<void>.delayed(const Duration(milliseconds: 400));
 
       expect(gateway.connectCount, 1);
       expect(runtime.phase, RuntimePhase.reconnecting);
 
       runtime.setForeground(true);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+      await Future<void>.delayed(const Duration(milliseconds: 400));
       expect(gateway.connectCount, 2);
       expect(runtime.phase, RuntimePhase.connected);
     },
@@ -470,6 +470,72 @@ void main() {
     expect(store.phase, ConnectionPhase.connected);
     expect(store.isConnected, isTrue);
   });
+
+  test(
+    'forced reconnect disconnects every runtime before reconnecting any',
+    () async {
+      final firstGateway = _Gateway('first');
+      final secondGateway = _Gateway('second');
+      final store = ConnectionStore()
+        ..settings = const ConnectionSettings(
+          serverUrl: 'http://first.invalid',
+          apiKey: 'test-key',
+        );
+      final first = _runtime('first', firstGateway);
+      final second = _runtime('second', secondGateway);
+      store.registry.add(first, makeActive: true);
+      store.registry.add(second);
+      addTearDown(store.dispose);
+      await Future.wait([first.connect(), second.connect()]);
+      firstGateway.disconnectGate = Completer<void>();
+      secondGateway.disconnectGate = Completer<void>();
+
+      final reconnect = store.reconnectAfterResume(refreshSocket: true);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(firstGateway.disconnectCount, 1);
+      expect(secondGateway.disconnectCount, 1);
+      expect(firstGateway.connectCount, 1);
+      expect(secondGateway.connectCount, 1);
+
+      firstGateway.disconnectGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(firstGateway.connectCount, 1);
+      expect(secondGateway.connectCount, 1);
+
+      secondGateway.disconnectGate!.complete();
+      await reconnect;
+
+      expect(firstGateway.connectCount, 2);
+      expect(secondGateway.connectCount, 2);
+      expect(first.phase, RuntimePhase.connected);
+      expect(second.phase, RuntimePhase.connected);
+      expect(store.phase, ConnectionPhase.connected);
+    },
+  );
+
+  test(
+    'forced reconnect closes a socket completed by a stale handshake',
+    () async {
+      final gateway = _Gateway('remote')..connectGate = Completer<void>();
+      final runtime = _runtime('remote', gateway);
+      addTearDown(runtime.dispose);
+
+      final staleConnect = runtime.connect();
+      await Future<void>.delayed(Duration.zero);
+      final reconnect = runtime.reconnectAfterResume(refreshSocket: true);
+      await Future<void>.delayed(Duration.zero);
+      expect(gateway.disconnectCount, 1);
+
+      gateway.connectGate!.complete();
+      await staleConnect;
+      await reconnect;
+
+      expect(gateway.disconnectCount, 2);
+      expect(gateway.connectCount, 2);
+      expect(runtime.phase, RuntimePhase.connected);
+    },
+  );
 
   test('concurrent foreground resumes share one socket replacement', () async {
     final gateway = _Gateway('remote');

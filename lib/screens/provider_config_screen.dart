@@ -11,7 +11,10 @@ import '../core/models.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../l10n/l10n.dart';
+import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 const _exampleProviderEndpoint = 'https://api.example.com/v1';
 
@@ -221,27 +224,67 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
   }) async {
     final l10n = context.l10n;
     final controller = TextEditingController(text: initial);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          maxLines: lines,
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: Text(l10n.commonConfirm),
-          ),
-        ],
-      ),
-    );
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    final result = compact
+        ? await showMobileSheet<String>(
+            context,
+            (context) => Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    maxLines: lines,
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(l10n.commonCancel),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () =>
+                              Navigator.pop(context, controller.text),
+                          child: Text(l10n.commonConfirm),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          )
+        : await showDialog<String>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(title),
+              content: TextField(
+                controller: controller,
+                maxLines: lines,
+                autofocus: true,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(l10n.commonCancel),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, controller.text),
+                  child: Text(l10n.commonConfirm),
+                ),
+              ],
+            ),
+          );
     WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     return result;
   }
@@ -332,10 +375,16 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
     if (api == null) return;
     final connectionId = _connectionId;
     final profile = _profile;
-    final value = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => _CustomEndpointDialog(current: current),
-    );
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    final value = compact
+        ? await showMobileSheet<Map<String, dynamic>>(
+            context,
+            (_) => _CustomEndpointDialog(current: current, compact: true),
+          )
+        : await showDialog<Map<String, dynamic>>(
+            context: context,
+            builder: (_) => _CustomEndpointDialog(current: current),
+          );
     if (value == null) return;
     if (!_ownsTarget(api, connectionId, profile)) {
       _showActionError(StateError(disconnected));
@@ -558,38 +607,29 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
     _requireTarget(api, connectionId, profile);
     final providers = _items(config['providers'], 'providers');
     if (!mounted) return;
-    final provider = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.l10n.providerToolsetProviderTitle(toolset.name)),
-        children: providers.map((raw) {
-          final row = raw is Map ? raw : const {};
-          final name = '${row['id'] ?? row['name'] ?? raw}';
-          final status = '${row['status'] ?? ''}';
-          final keys = (row['env_vars'] as List? ?? const [])
-              .whereType<Map>()
-              .where((env) => env['is_set'] != true)
-              .map((env) => '${env['key'] ?? ''}')
-              .where((key) => key.isNotEmpty)
-              .join(', ');
-          return SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, name),
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(name),
-              subtitle: Text(
-                [
-                  if (status.isNotEmpty) status,
-                  if (keys.isNotEmpty) context.l10n.providerMissingKeys(keys),
-                ].join(' · '),
-              ),
-              trailing: row['is_active'] == true
-                  ? const Icon(Icons.check_circle)
-                  : null,
-            ),
-          );
-        }).toList(),
-      ),
+    final providerChoices = providers.map((raw) {
+      final row = raw is Map ? raw : const {};
+      final name = '${row['id'] ?? row['name'] ?? raw}';
+      final status = '${row['status'] ?? ''}';
+      final keys = (row['env_vars'] as List? ?? const [])
+          .whereType<Map>()
+          .where((env) => env['is_set'] != true)
+          .map((env) => '${env['key'] ?? ''}')
+          .where((key) => key.isNotEmpty)
+          .join(', ');
+      return (
+        value: name,
+        label: name,
+        subtitle: [
+          if (status.isNotEmpty) status,
+          if (keys.isNotEmpty) context.l10n.providerMissingKeys(keys),
+        ].join(' · '),
+        selected: row['is_active'] == true,
+      );
+    }).toList();
+    final provider = await _chooseOption(
+      context.l10n.providerToolsetProviderTitle(toolset.name),
+      providerChoices,
     );
     if (provider != null) {
       _requireTarget(api, connectionId, profile);
@@ -638,20 +678,11 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
           .where((name) => name.isNotEmpty)
           .toList();
       if (models.isNotEmpty && mounted) {
-        final model = await showDialog<String>(
-          context: context,
-          builder: (context) => SimpleDialog(
-            title: Text(context.l10n.providerModelTitle(provider)),
-            children: models
-                .map(
-                  (name) => SimpleDialogOption(
-                    onPressed: () => Navigator.pop(context, name),
-                    child: Text(name),
-                  ),
-                )
-                .toList(),
-          ),
-        );
+        final model =
+            await _chooseOption(context.l10n.providerModelTitle(provider), [
+              for (final name in models)
+                (value: name, label: name, subtitle: '', selected: false),
+            ]);
         if (model != null) {
           _requireTarget(api, connectionId, profile);
           await api.selectToolsetModel(
@@ -665,6 +696,56 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
       _requireTarget(api, connectionId, profile);
       await _load();
     }
+  }
+
+  Future<String?> _chooseOption(
+    String title,
+    List<({String value, String label, String subtitle, bool selected})>
+    choices,
+  ) {
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return showMobileSheet<String>(
+        context,
+        (context) => _MobileChoiceSheet<String>(
+          title: title,
+          current: choices
+              .where((choice) => choice.selected)
+              .firstOrNull
+              ?.value,
+          choices: [
+            for (final choice in choices)
+              (
+                value: choice.value,
+                label: choice.subtitle.isEmpty
+                    ? choice.label
+                    : '${choice.label} · ${choice.subtitle}',
+              ),
+          ],
+        ),
+      );
+    }
+    return showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(title),
+        children: [
+          for (final choice in choices)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, choice.value),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(choice.label),
+                subtitle: choice.subtitle.isEmpty
+                    ? null
+                    : Text(choice.subtitle),
+                trailing: choice.selected
+                    ? const Icon(Icons.check_circle)
+                    : null,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _scope() {
@@ -745,6 +826,407 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
     );
   }
 
+  Future<void> _selectMobileConnection() async {
+    final runtimes = _store.registry.runtimes.toList();
+    final selected = await showMobileSheet<ConnectionId>(
+      context,
+      (context) => _MobileChoiceSheet<ConnectionId>(
+        title: context.l10n.configConnectionLabel,
+        current: _connectionId,
+        choices: [
+          if (runtimes.isEmpty)
+            (value: _connectionId!, label: _connectionId!.value),
+          for (final runtime in runtimes)
+            (value: runtime.id, label: runtime.id.value),
+        ],
+      ),
+    );
+    if (selected == null || selected == _connectionId || !mounted) return;
+    await _cancelOAuth();
+    if (!mounted) return;
+    setState(() {
+      _connectionId = selected;
+      _profile = null;
+      _profileInitialized = false;
+    });
+    _load(preserveProfile: false);
+  }
+
+  Future<void> _selectMobileProfile() async {
+    final selected = await showMobileSheet<_ProfileChoice>(
+      context,
+      (context) => _MobileChoiceSheet<_ProfileChoice>(
+        title: context.l10n.providerProfileLabel,
+        current: _ProfileChoice(_profile),
+        choices: [
+          (
+            value: const _ProfileChoice(null),
+            label: context.l10n.providerActiveDefault,
+          ),
+          for (final profile in _profiles)
+            (value: _ProfileChoice(profile.name), label: profile.name),
+        ],
+      ),
+    );
+    if (selected == null || selected.value == _profile || !mounted) return;
+    await _cancelOAuth();
+    if (!mounted) return;
+    setState(() {
+      _profile = selected.value;
+      _profileInitialized = true;
+    });
+    if (_viewingActiveConnection) _scopeStore?.setOverride(selected.value);
+    _load();
+  }
+
+  Future<void> _showEnvActions(String key, bool isSet) async {
+    final action = await _showMobileActions(
+      title: key,
+      actions: [
+        (
+          value: 'edit',
+          icon: Icons.edit_outlined,
+          label: context.l10n.commonEdit,
+        ),
+        if (isSet)
+          (
+            value: 'reveal',
+            icon: Icons.visibility_outlined,
+            label: context.l10n.providerRevealValue,
+          ),
+        (
+          value: 'delete',
+          icon: Icons.delete_outline,
+          label: context.l10n.commonDelete,
+        ),
+      ],
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'edit':
+        await _editEnv(key);
+      case 'reveal':
+        await _revealEnv(key);
+      case 'delete':
+        await _deleteEnv(key);
+    }
+  }
+
+  Future<void> _showEndpointActions(Map<String, dynamic> row) async {
+    final action = await _showMobileActions(
+      title:
+          '${row['name'] ?? row['id'] ?? context.l10n.providerEndpointFallback}',
+      actions: [
+        (
+          value: 'edit',
+          icon: Icons.edit_outlined,
+          label: context.l10n.commonEdit,
+        ),
+        (
+          value: 'activate',
+          icon: Icons.check_circle_outline,
+          label: context.l10n.providerSetActive,
+        ),
+        (
+          value: 'delete',
+          icon: Icons.delete_outline,
+          label: context.l10n.commonDelete,
+        ),
+      ],
+    );
+    if (action == null || !mounted) return;
+    if (action == 'edit') {
+      await _editEndpoint(row);
+      return;
+    }
+    final api = _apiOrNotify();
+    if (api == null) return;
+    final connectionId = _connectionId;
+    final profile = _profile;
+    try {
+      final id = '${row['id'] ?? ''}';
+      if (action == 'activate') {
+        await api.activateCustomEndpoint(id, profile: profile);
+      } else if (action == 'delete') {
+        await api.deleteCustomEndpoint(id, profile: profile);
+      }
+      _requireTarget(api, connectionId, profile);
+      await _load();
+    } catch (error) {
+      _showActionError(error);
+    }
+  }
+
+  Future<void> _showOAuthActions(Map<String, dynamic> row) async {
+    final action = await _showMobileActions(
+      title: '${row['name'] ?? row['id'] ?? row['provider']}',
+      actions: [
+        (
+          value: 'authorize',
+          icon: Icons.refresh,
+          label: context.l10n.commonReauthorize,
+        ),
+        (
+          value: 'disconnect',
+          icon: Icons.link_off,
+          label: context.l10n.commonDisconnect,
+        ),
+      ],
+    );
+    if (!mounted) return;
+    if (action == 'authorize') await _oauthStart(row);
+    if (action == 'disconnect') await _disconnectOAuth(row);
+  }
+
+  Future<String?> _showMobileActions({
+    required String title,
+    required List<({String value, IconData icon, String label})> actions,
+  }) => showMobileSheet<String>(
+    context,
+    (context) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+            child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+          ),
+          HermesMobileGroup(
+            children: [
+              for (final action in actions)
+                HermesMobileRow(
+                  icon: action.icon,
+                  title: action.label,
+                  trailing: const SizedBox.shrink(),
+                  onTap: () => Navigator.pop(context, action.value),
+                ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _mobileBody(bool Function() ownsRenderedTarget) {
+    final l10n = context.l10n;
+    final palette = HermesPalette.of(context);
+    final connectionLabel = _runtime?.id.value ?? _connectionId?.value ?? '—';
+    final profileLabel = _profile ?? l10n.providerActiveDefault;
+    Widget addButton(Key key, VoidCallback action) => IconButton.filledTonal(
+      key: key,
+      tooltip: l10n.commonAdd,
+      visualDensity: VisualDensity.compact,
+      onPressed: _busy.isEmpty
+          ? () {
+              if (ownsRenderedTarget()) action();
+            }
+          : null,
+      icon: const Icon(Icons.add, size: 18),
+    );
+
+    final scopeRows = <Widget>[
+      HermesMobileRow(
+        key: const ValueKey('provider-connection-row'),
+        icon: Icons.dns_outlined,
+        title: l10n.configConnectionLabel,
+        subtitle: connectionLabel,
+        onTap: _selectMobileConnection,
+      ),
+      HermesMobileRow(
+        key: const ValueKey('provider-profile-row'),
+        icon: Icons.person_outline,
+        title: l10n.providerProfileLabel,
+        subtitle: profileLabel,
+        onTap: _selectMobileProfile,
+      ),
+    ];
+
+    return ListView(
+      key: const ValueKey('provider-mobile-list'),
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 28),
+      children: [
+        HermesMobileSectionLabel(title: l10n.configAppliesToProfile, top: 8),
+        HermesMobileGroup(children: scopeRows),
+        HermesMobileSectionLabel(
+          title: l10n.providerEnvironmentSection,
+          trailing: addButton(const ValueKey('provider-add-env'), _addEnv),
+        ),
+        HermesMobileGroup(
+          children: _env.entries.isEmpty
+              ? [
+                  HermesMobileRow(
+                    icon: Icons.data_object,
+                    title: l10n.providerNoConfiguration,
+                    trailing: const SizedBox.shrink(),
+                  ),
+                ]
+              : [
+                  for (final entry in _env.entries)
+                    Builder(
+                      builder: (context) {
+                        final value = entry.value;
+                        final isSet = value is Map
+                            ? value['is_set'] == true
+                            : '$value'.isNotEmpty;
+                        final description = value is Map
+                            ? '${value['description'] ?? ''}'.trim()
+                            : '';
+                        final redacted = value is Map
+                            ? '${value['redacted_value'] ?? (isSet ? '••••••' : l10n.providerNotSet)}'
+                            : '$value';
+                        return HermesMobileRow(
+                          key: ValueKey('provider-env-${entry.key}'),
+                          icon: Icons.key_outlined,
+                          title: entry.key,
+                          subtitle: [
+                            if (description.isNotEmpty) description,
+                            redacted,
+                          ].join(' · '),
+                          trailing: _busy == 'env:${entry.key}'
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : HermesMobileStatusChip(
+                                  label: isSet
+                                      ? l10n.configConfigured
+                                      : l10n.providerNotSet,
+                                  color: isSet
+                                      ? HermesSemantic.green
+                                      : palette.text3,
+                                ),
+                          onTap: _busy.isEmpty
+                              ? () => _showEnvActions(entry.key, isSet)
+                              : null,
+                        );
+                      },
+                    ),
+                ],
+        ),
+        HermesMobileSectionLabel(
+          title: l10n.providerCustomEndpointsSection,
+          trailing: addButton(
+            const ValueKey('provider-add-endpoint'),
+            _editEndpoint,
+          ),
+        ),
+        HermesMobileGroup(
+          children: _endpoints.isEmpty
+              ? [
+                  HermesMobileRow(
+                    icon: Icons.hub_outlined,
+                    title: l10n.providerNoConfiguration,
+                    trailing: const SizedBox.shrink(),
+                  ),
+                ]
+              : [
+                  for (final endpoint in _endpoints)
+                    Builder(
+                      builder: (context) {
+                        final row = (endpoint as Map).cast<String, dynamic>();
+                        return HermesMobileRow(
+                          key: ValueKey('provider-endpoint-${row['id']}'),
+                          icon: Icons.hub_outlined,
+                          title:
+                              '${row['name'] ?? row['id'] ?? l10n.providerEndpointFallback}',
+                          subtitle: '${row['base_url'] ?? row['url'] ?? ''}',
+                          onTap: () => _showEndpointActions(row),
+                        );
+                      },
+                    ),
+                ],
+        ),
+        HermesMobileSectionLabel(title: l10n.providerOauthSection),
+        HermesMobileGroup(
+          children: _oauth.isEmpty
+              ? [
+                  HermesMobileRow(
+                    icon: Icons.link_outlined,
+                    title: l10n.providerNoConfiguration,
+                    trailing: const SizedBox.shrink(),
+                  ),
+                ]
+              : [
+                  for (final provider in _oauth)
+                    Builder(
+                      builder: (context) {
+                        final row = (provider as Map).cast<String, dynamic>();
+                        final id =
+                            '${row['id'] ?? row['name'] ?? row['provider']}';
+                        final connected =
+                            (row['status'] as Map?)?['logged_in'] == true ||
+                            row['connected'] == true;
+                        final working =
+                            _busy == 'oauth:$id' ||
+                            _busy == 'oauthDisconnect:$id';
+                        return HermesMobileRow(
+                          icon: Icons.link_outlined,
+                          title: '${row['name'] ?? id}',
+                          subtitle: connected
+                              ? l10n.commonConnected
+                              : l10n.commonDisconnected,
+                          trailing: working
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : HermesMobileStatusChip(
+                                  label: connected
+                                      ? l10n.commonConnected
+                                      : l10n.commonAuthorize,
+                                  color: connected
+                                      ? HermesSemantic.green
+                                      : palette.accent,
+                                ),
+                          onTap: _busy.isEmpty
+                              ? () {
+                                  if (!ownsRenderedTarget()) return;
+                                  connected
+                                      ? _showOAuthActions(row)
+                                      : _oauthStart(row);
+                                }
+                              : _oauthSessionId != null
+                              ? _cancelOAuth
+                              : null,
+                        );
+                      },
+                    ),
+                ],
+        ),
+        HermesMobileSectionLabel(title: l10n.providerToolsetProvidersSection),
+        HermesMobileGroup(
+          children: _toolsets.isEmpty
+              ? [
+                  HermesMobileRow(
+                    icon: Icons.extension_outlined,
+                    title: l10n.providerNoConfiguration,
+                    trailing: const SizedBox.shrink(),
+                  ),
+                ]
+              : [
+                  for (final toolset in _toolsets)
+                    HermesMobileRow(
+                      icon: Icons.extension_outlined,
+                      title: toolset.name,
+                      subtitle:
+                          toolset.description ??
+                          l10n.providerToolsCount(toolset.toolCount),
+                      onTap: () {
+                        if (ownsRenderedTarget()) _configureToolset(toolset);
+                      },
+                    ),
+                ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -763,10 +1245,13 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
       return false;
     }
 
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final body = _loading
         ? const Center(child: CircularProgressIndicator())
         : _error != null
         ? HermesErrorState(description: _error!, onRetry: _load)
+        : compact
+        ? _mobileBody(ownsRenderedTarget)
         : ListView(
             padding: const EdgeInsets.all(20),
             children: [
@@ -970,6 +1455,8 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
           );
     return widget.embedded
         ? body
+        : compact
+        ? MobilePageScaffold(title: l10n.settingsProvidersTitle, body: body)
         : Scaffold(
             appBar: AppBar(title: Text(l10n.settingsProvidersTitle)),
             body: body,
@@ -1009,12 +1496,72 @@ class _Section extends StatelessWidget {
   );
 }
 
+class _ProfileChoice {
+  final String? value;
+  const _ProfileChoice(this.value);
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ProfileChoice && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
+}
+
+class _MobileChoiceSheet<T> extends StatelessWidget {
+  const _MobileChoiceSheet({
+    required this.title,
+    required this.current,
+    required this.choices,
+  });
+
+  final String title;
+  final T? current;
+  final List<({T value, String label})> choices;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        ),
+        Flexible(
+          child: SingleChildScrollView(
+            child: HermesMobileGroup(
+              children: [
+                for (final choice in choices)
+                  HermesMobileRow(
+                    icon: Icons.circle_outlined,
+                    title: choice.label,
+                    trailing: choice.value == current
+                        ? Icon(
+                            Icons.check,
+                            color: Theme.of(context).colorScheme.primary,
+                          )
+                        : const SizedBox.shrink(),
+                    onTap: () => Navigator.pop(context, choice.value),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Structured form for an OpenAI-compatible custom endpoint — replaces the
 /// old raw-JSON textarea dialog (desktop parity: `custom-endpoints-settings`
 /// is a real form, not a JSON blob users had to hand-edit).
 class _CustomEndpointDialog extends StatefulWidget {
   final Map<String, dynamic>? current;
-  const _CustomEndpointDialog({this.current});
+  final bool compact;
+  const _CustomEndpointDialog({this.current, this.compact = false});
 
   @override
   State<_CustomEndpointDialog> createState() => _CustomEndpointDialogState();
@@ -1091,76 +1638,109 @@ class _CustomEndpointDialogState extends State<_CustomEndpointDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return AlertDialog(
-      scrollable: true,
-      title: Text(
-        widget.current == null
-            ? l10n.providerAddEndpointTitle
-            : l10n.providerEditEndpointTitle,
-      ),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _nameCtrl,
-            autofocus: true,
-            decoration: InputDecoration(labelText: l10n.providerEndpointName),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _baseUrlCtrl,
-            keyboardType: TextInputType.url,
-            decoration: InputDecoration(
-              labelText: l10n.providerEndpointBaseUrl,
-              hintText: _exampleProviderEndpoint,
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _apiKeyCtrl,
-            obscureText: _obscureKey,
-            decoration: InputDecoration(
-              labelText: l10n.providerEndpointApiKey,
-              suffixIcon: IconButton(
-                onPressed: () => setState(() => _obscureKey = !_obscureKey),
-                icon: Icon(
-                  _obscureKey ? Icons.visibility : Icons.visibility_off,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _modelCtrl,
-            decoration: InputDecoration(
-              labelText: l10n.providerEndpointDefaultModel,
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _modelsCtrl,
-            minLines: 2,
-            maxLines: 5,
-            decoration: InputDecoration(
-              labelText: l10n.providerEndpointModelsList,
-            ),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(l10n.providerEndpointDiscoverModels),
-            value: _discoverModels,
-            onChanged: (v) => setState(() => _discoverModels = v),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.commonCancel),
+    final title = widget.current == null
+        ? l10n.providerAddEndpointTitle
+        : l10n.providerEditEndpointTitle;
+    final fields = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _nameCtrl,
+          autofocus: true,
+          decoration: InputDecoration(labelText: l10n.providerEndpointName),
         ),
-        FilledButton(onPressed: _submit, child: Text(l10n.commonSave)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _baseUrlCtrl,
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            labelText: l10n.providerEndpointBaseUrl,
+            hintText: _exampleProviderEndpoint,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _apiKeyCtrl,
+          obscureText: _obscureKey,
+          decoration: InputDecoration(
+            labelText: l10n.providerEndpointApiKey,
+            suffixIcon: IconButton(
+              onPressed: () => setState(() => _obscureKey = !_obscureKey),
+              icon: Icon(_obscureKey ? Icons.visibility : Icons.visibility_off),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _modelCtrl,
+          decoration: InputDecoration(
+            labelText: l10n.providerEndpointDefaultModel,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _modelsCtrl,
+          minLines: 2,
+          maxLines: 5,
+          decoration: InputDecoration(
+            labelText: l10n.providerEndpointModelsList,
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(l10n.providerEndpointDiscoverModels),
+          value: _discoverModels,
+          onChanged: (v) => setState(() => _discoverModels = v),
+        ),
       ],
+    );
+    final actions = [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(l10n.commonCancel),
+      ),
+      FilledButton(onPressed: _submit, child: Text(l10n.commonSave)),
+    ];
+    if (!widget.compact) {
+      return AlertDialog(
+        scrollable: true,
+        title: Text(title),
+        content: fields,
+        actions: actions,
+      );
+    }
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * .84,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Expanded(child: SingleChildScrollView(child: fields)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: actions[0].onPressed,
+                    child: Text(l10n.commonCancel),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _submit,
+                    child: Text(l10n.commonSave),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

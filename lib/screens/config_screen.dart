@@ -217,25 +217,31 @@ class _ConfigScreenState extends State<ConfigScreen>
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < HermesBreakpoints.phone;
     final tabs = TabBar(
       controller: _tabController,
       isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      labelPadding: EdgeInsets.symmetric(horizontal: compact ? 16 : 20),
       tabs: [
         Tab(
-          icon: const Icon(Icons.auto_awesome),
+          icon: compact ? null : const Icon(Icons.auto_awesome),
           text: context.l10n.configTabModel,
         ),
         Tab(
-          icon: const Icon(Icons.chat_bubble),
+          icon: compact ? null : const Icon(Icons.chat_bubble),
           text: context.l10n.configTabChat,
         ),
-        Tab(icon: const Icon(Icons.memory), text: context.l10n.configTabMemory),
         Tab(
-          icon: const Icon(Icons.mic_none),
+          icon: compact ? null : const Icon(Icons.memory),
+          text: context.l10n.configTabMemory,
+        ),
+        Tab(
+          icon: compact ? null : const Icon(Icons.mic_none),
           text: context.l10n.configTabVoice,
         ),
         Tab(
-          icon: const Icon(Icons.vpn_key),
+          icon: compact ? null : const Icon(Icons.vpn_key),
           text: context.l10n.configTabToolsKeys,
         ),
       ],
@@ -326,26 +332,15 @@ class _ConfigScreenState extends State<ConfigScreen>
   // =====================================================================
   Widget _buildModelTab() {
     final theme = Theme.of(context);
-    final providers = _providers;
-    final allModels = <String, List<String>>{};
-
-    // Group models by provider
-    for (final p in providers) {
-      final providerName = p.provider;
-      if (p.models.isNotEmpty) {
-        allModels[providerName] = p.models;
-      }
-    }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Main model selector (wired to api.setModel)
           _sectionTitle(theme, context.l10n.modelDefaultTitle),
           const SizedBox(height: 8),
-          _buildModelSelectorCard(theme, allModels),
+          _buildModelSelectorCard(),
           if (_recommended != null) ...[
             const SizedBox(height: 8),
             _buildRecommendedRow(theme),
@@ -365,91 +360,64 @@ class _ConfigScreenState extends State<ConfigScreen>
     );
   }
 
-  Widget _buildModelSelectorCard(
-    ThemeData theme,
-    Map<String, List<String>> allModels,
-  ) {
+  Widget _buildModelSelectorCard() {
+    final model = _currentModel?.trim();
+    final provider = _providers
+        .where((item) => item.slug == _currentProvider)
+        .firstOrNull;
     return HermesGlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Main model display
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  initialValue: _currentModel,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.modelDefaultTitle,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _buildModelDropdownItems(allModels),
-                  onChanged: (value) async {
-                    if (value == null) return;
-                    await _switchModel(_currentProvider ?? '', value);
-                  },
-                ),
-              ),
-            ],
+      padding: EdgeInsets.zero,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 70),
+        child: ListTile(
+          key: const ValueKey('main-model-setting-row'),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 6,
           ),
-          const SizedBox(height: 12),
-          // Provider display
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  initialValue: _currentProvider,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.modelProvider,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _providers.map((p) {
-                    final name = p.provider;
-                    return DropdownMenuItem(value: name, child: Text(name));
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _currentProvider = value;
-                      final models = _providers
-                          .where((provider) => provider.slug == value)
-                          .expand((provider) => provider.models)
-                          .toList();
-                      if (!models.contains(_currentModel)) {
-                        _currentModel = models.firstOrNull;
-                      }
-                      _recommended = null;
-                    });
-                    unawaited(_loadRecommendation(value));
-                  },
-                ),
-              ),
-            ],
+          onTap: _saving ? null : _chooseMainModel,
+          leading: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: HermesPalette.of(context).accentBg,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              Icons.auto_awesome,
+              color: HermesPalette.of(context).accent,
+              size: 20,
+            ),
           ),
-        ],
+          title: Text(
+            model?.isNotEmpty == true ? model! : context.l10n.modelNoAvailable,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            provider?.name ?? _currentProvider ?? context.l10n.modelProvider,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: _saving
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+        ),
       ),
     );
   }
 
-  List<DropdownMenuItem<String>> _buildModelDropdownItems(
-    Map<String, List<String>> allModels,
-  ) {
-    final items = <DropdownMenuItem<String>>[];
-    final entries = _currentProvider == null
-        ? allModels.entries
-        : allModels.entries.where((entry) => entry.key == _currentProvider);
-    for (final entry in entries) {
-      for (final model in entry.value) {
-        items.add(DropdownMenuItem(value: model, child: Text(model)));
-      }
+  Future<void> _chooseMainModel() async {
+    final selected = await _chooseCatalogModel(title: context.l10n.modelChoose);
+    if (selected == null || !mounted) return;
+    if (selected.provider == _currentProvider &&
+        selected.model == _currentModel) {
+      return;
     }
-    if (items.isEmpty) {
-      items.add(
-        DropdownMenuItem(value: '', child: Text(context.l10n.modelNoAvailable)),
-      );
-    }
-    return items;
+    await _switchModel(selected.provider, selected.model);
   }
 
   Future<void> _switchModel(String provider, String modelName) async {
@@ -469,6 +437,7 @@ class _ConfigScreenState extends State<ConfigScreen>
       return;
     }
 
+    setState(() => _saving = true);
     try {
       final result = await _applyModelAssignment(
         api,
@@ -481,7 +450,9 @@ class _ConfigScreenState extends State<ConfigScreen>
         setState(() {
           _currentModel = modelName;
           _currentProvider = provider;
+          _recommended = null;
         });
+        unawaited(_loadRecommendation(provider));
         final applied = result['applied']?.toString() ?? 'now';
         if (applied == 'deferred') {
           showHermesToast(context, message: context.l10n.modelSwitchDeferred);
@@ -499,6 +470,10 @@ class _ConfigScreenState extends State<ConfigScreen>
           message: context.l10n.modelSwitchFailed('$e'),
           kind: HermesToastKind.error,
         );
+      }
+    } finally {
+      if (mounted && _ownsMutation(api, generation, profile)) {
+        setState(() => _saving = false);
       }
     }
   }
@@ -646,45 +621,89 @@ class _ConfigScreenState extends State<ConfigScreen>
     return showModalBottomSheet<({String provider, String model})>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * .72,
-          child: Column(
-            children: [
-              ListTile(title: Text(title ?? context.l10n.modelChoose)),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView(
-                  children: [
-                    if (allowAuto)
-                      ListTile(
-                        leading: const Icon(Icons.auto_awesome_outlined),
-                        title: Text(context.l10n.modelFollowMain),
-                        onTap: () => Navigator.pop(context, (
-                          provider: 'auto',
-                          model: '',
-                        )),
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .72,
+        minChildSize: .45,
+        maxChildSize: .94,
+        builder: (context, controller) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title ?? context.l10n.modelChoose,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
-                    for (final provider in providers)
-                      ExpansionTile(
-                        title: Text(provider.name),
-                        subtitle: Text(provider.slug),
-                        children: [
-                          for (final model in provider.models)
-                            ListTile(
-                              title: Text(model),
-                              onTap: () => Navigator.pop(context, (
-                                provider: provider.slug,
-                                model: model,
-                              )),
-                            ),
-                        ],
-                      ),
-                  ],
-                ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(context.l10n.commonCancel),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView(
+                controller: controller,
+                padding: const EdgeInsets.only(bottom: 24),
+                children: [
+                  if (allowAuto)
+                    ListTile(
+                      minTileHeight: 56,
+                      leading: const Icon(Icons.auto_awesome_outlined),
+                      title: Text(context.l10n.modelFollowMain),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () =>
+                          Navigator.pop(context, (provider: 'auto', model: '')),
+                    ),
+                  for (final provider in providers)
+                    ExpansionTile(
+                      initiallyExpanded:
+                          provider.slug == _currentProvider ||
+                          providers.length == 1,
+                      leading: const Icon(Icons.hub_outlined),
+                      title: Text(provider.name),
+                      subtitle: provider.name == provider.slug
+                          ? null
+                          : Text(provider.slug),
+                      children: [
+                        for (final model in provider.models)
+                          ListTile(
+                            minTileHeight: 52,
+                            contentPadding: const EdgeInsets.only(
+                              left: 56,
+                              right: 20,
+                            ),
+                            title: Text(model),
+                            trailing:
+                                provider.slug == _currentProvider &&
+                                    model == _currentModel
+                                ? Icon(
+                                    Icons.check,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  )
+                                : null,
+                            onTap: () => Navigator.pop(context, (
+                              provider: provider.slug,
+                              model: model,
+                            )),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1102,19 +1121,25 @@ class _ConfigScreenState extends State<ConfigScreen>
     final fields = <Widget>[];
     if (configHasPath(_config, 'display.personality')) {
       fields.add(
-        _textField(
+        _mobileTextSetting(
           path: 'display.personality',
           label: context.l10n.configPersonalityDisplay,
         ),
       );
     } else if (configHasPath(_config, 'personality')) {
       fields.add(
-        _textField(path: 'personality', label: context.l10n.configPersonality),
+        _mobileTextSetting(
+          path: 'personality',
+          label: context.l10n.configPersonality,
+        ),
       );
     }
     if (configHasPath(_config, 'timezone')) {
       fields.add(
-        _textField(path: 'timezone', label: context.l10n.configTimezone),
+        _mobileTextSetting(
+          path: 'timezone',
+          label: context.l10n.configTimezone,
+        ),
       );
     }
     if (configHasPath(_config, 'display.show_reasoning')) {
@@ -1133,7 +1158,7 @@ class _ConfigScreenState extends State<ConfigScreen>
     );
     if (configHasPath(_config, 'approvals.mode')) {
       fields.add(
-        _dropdownTile(
+        _mobileChoiceSetting(
           path: 'approvals.mode',
           title: context.l10n.configApprovalMode,
           options: const ['manual', 'smart', 'off'],
@@ -1156,12 +1181,22 @@ class _ConfigScreenState extends State<ConfigScreen>
       );
     }
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
-        for (final field in fields) ...[
-          HermesGlassCard(child: field),
-          const SizedBox(height: 12),
-        ],
+        _sectionTitle(Theme.of(context), context.l10n.configTabChat),
+        const SizedBox(height: 8),
+        HermesGlassCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (var index = 0; index < fields.length; index++) ...[
+                fields[index],
+                if (index != fields.length - 1)
+                  const Divider(height: 1, indent: 16),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1788,6 +1823,8 @@ class _ConfigScreenState extends State<ConfigScreen>
   Widget _switchTile({required String path, required String title}) {
     final value = configValueAt(_config, path) == true;
     return SwitchListTile(
+      key: ValueKey('setting-row-$path'),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       title: Text(title),
       value: value,
       onChanged: _saving ? null : (v) => _patchPath(path, v),
@@ -1816,8 +1853,8 @@ class _ConfigScreenState extends State<ConfigScreen>
       ],
       onChanged: _saving
           ? null
-          : (v) {
-              if (v != null) _patchPath(path, v);
+          : (value) {
+              if (value != null) _patchPath(path, value);
             },
     );
   }
@@ -1833,8 +1870,114 @@ class _ConfigScreenState extends State<ConfigScreen>
         helperText: context.l10n.configPressEnterToSave,
       ),
       enabled: !_saving,
-      onFieldSubmitted: (v) => _patchPath(path, v),
+      onFieldSubmitted: (value) => _patchPath(path, value),
     );
+  }
+
+  Widget _mobileTextSetting({required String path, required String label}) {
+    final current = configValueAt(_config, path)?.toString() ?? '';
+    return ListTile(
+      key: ValueKey('setting-row-$path'),
+      minTileHeight: 62,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      title: Text(label),
+      subtitle: current.isEmpty
+          ? null
+          : Text(current, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: _saving ? null : () => _editTextSetting(path, label, current),
+    );
+  }
+
+  Widget _mobileChoiceSetting({
+    required String path,
+    required String title,
+    required List<String> options,
+  }) {
+    final raw = configValueAt(_config, path)?.toString();
+    final items = [...options];
+    if (raw != null && raw.isNotEmpty && !items.contains(raw)) items.add(raw);
+    return ListTile(
+      key: ValueKey('setting-row-$path'),
+      minTileHeight: 58,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      title: Text(title),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: Text(
+              raw ?? '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Theme.of(context).textTertiary),
+            ),
+          ),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: _saving
+          ? null
+          : () async {
+              final selected = await showModalBottomSheet<String>(
+                context: context,
+                showDragHandle: true,
+                useSafeArea: true,
+                builder: (context) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      title: Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    for (final option in items)
+                      ListTile(
+                        minTileHeight: 54,
+                        title: Text(option),
+                        trailing: option == raw
+                            ? Icon(
+                                Icons.check,
+                                color: Theme.of(context).colorScheme.primary,
+                              )
+                            : null,
+                        onTap: () => Navigator.pop(context, option),
+                      ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              );
+              if (selected != null && selected != raw && mounted) {
+                await _patchPath(path, selected);
+              }
+            },
+    );
+  }
+
+  Future<void> _editTextSetting(
+    String path,
+    String label,
+    String current,
+  ) async {
+    final value = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _MobileTextSettingEditor(
+        path: path,
+        label: label,
+        initialValue: current,
+      ),
+    );
+    if (value != null && value != current && mounted) {
+      await _patchPath(path, value);
+    }
   }
 
   Widget _numberField({required String path, required String label}) {
@@ -1951,6 +2094,90 @@ class _ConfigScreenState extends State<ConfigScreen>
         fontWeight: FontWeight.w700,
         color: theme.textPrimary,
         letterSpacing: 0,
+      ),
+    );
+  }
+}
+
+class _MobileTextSettingEditor extends StatefulWidget {
+  const _MobileTextSettingEditor({
+    required this.path,
+    required this.label,
+    required this.initialValue,
+  });
+
+  final String path;
+  final String label;
+  final String initialValue;
+
+  @override
+  State<_MobileTextSettingEditor> createState() =>
+      _MobileTextSettingEditorState();
+}
+
+class _MobileTextSettingEditorState extends State<_MobileTextSettingEditor> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() => Navigator.pop(context, _controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        16 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(context.l10n.commonCancel),
+              ),
+              Expanded(
+                child: Text(
+                  widget.label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton(
+                onPressed: _save,
+                child: Text(context.l10n.commonSave),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: ValueKey('setting-editor-${widget.path}'),
+            controller: _controller,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(
+              labelText: widget.label,
+              border: const OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+        ],
       ),
     );
   }

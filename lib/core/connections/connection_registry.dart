@@ -295,19 +295,34 @@ class ConnectionRuntime {
     _reconnectTimer = null;
     _reconnectAttempt = 0;
     if (refreshSocket) {
-      phase = RuntimePhase.reconnecting;
-      onStateChanged?.call(this);
-      final staleConnect = _connectFlight;
-      await gateway.disconnect();
-      if (staleConnect != null) {
-        try {
-          await staleConnect;
-        } catch (_) {
-          // The old handshake was intentionally cancelled above.
-        }
-      }
+      await disconnectForReconnect();
     }
     await reconnectNow();
+  }
+
+  /// Stops retries and fully closes this runtime's socket without disposing
+  /// its routing state. A registry-wide reset uses this as phase one so no
+  /// backend starts reconnecting while another backend is still connected.
+  Future<void> disconnectForReconnect() async {
+    _foreground = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempt = 0;
+    phase = RuntimePhase.reconnecting;
+    onStateChanged?.call(this);
+    final staleConnect = _connectFlight;
+    await gateway.disconnect();
+    if (staleConnect != null) {
+      try {
+        await staleConnect;
+      } catch (_) {
+        // The old handshake was intentionally cancelled above.
+      }
+      // Some transports cannot cancel an in-flight handshake immediately.
+      // If it completed after the first disconnect, close that late socket as
+      // well before the registry advances to its reconnect phase.
+      await gateway.disconnect();
+    }
   }
 
   Future<void> dispose() async {
@@ -326,6 +341,7 @@ class ConnectionRegistry {
   final StreamController<RoutedGatewayEvent> _events =
       StreamController<RoutedGatewayEvent>.broadcast();
   final Map<ConnectionId, StreamSubscription<RoutedGatewayEvent>> _subs = {};
+  Future<void>? _reconnectAllFlight;
 
   ConnectionId? activeId;
 
@@ -365,6 +381,27 @@ class ConnectionRegistry {
     await _subs.remove(id)?.cancel();
     if (runtime != null) await runtime.dispose();
     if (activeId == id) activeId = _runtimes.keys.firstOrNull;
+  }
+
+  /// Performs a strict two-phase reset of every registered connection:
+  /// first every socket is closed, then (and only then) all runtimes reconnect.
+  /// Concurrent callers share the same reset to avoid duplicate handshakes.
+  Future<void> reconnectAllAfterDisconnect() {
+    final flight = _reconnectAllFlight;
+    if (flight != null) return flight;
+    final next = _reconnectAllAfterDisconnect();
+    _reconnectAllFlight = next;
+    return next.whenComplete(() {
+      if (identical(_reconnectAllFlight, next)) _reconnectAllFlight = null;
+    });
+  }
+
+  Future<void> _reconnectAllAfterDisconnect() async {
+    final runtimes = _runtimes.values.toList(growable: false);
+    await Future.wait(
+      runtimes.map((runtime) => runtime.disconnectForReconnect()),
+    );
+    await Future.wait(runtimes.map((runtime) => runtime.reconnectNow()));
   }
 
   Future<void> dispose() async {

@@ -3404,10 +3404,24 @@ class ApiClient {
   }
 
   // ----------------------------------------------------------- messaging
+  Map<String, String>? _messagingProfileQuery(String? profile) {
+    final value = profile?.trim();
+    if (value == null ||
+        value.isEmpty ||
+        value.toLowerCase() == 'default' ||
+        value.toLowerCase() == 'current') {
+      return null;
+    }
+    return {'profile': value};
+  }
+
+  String? _messagingProfileValue(String? profile) =>
+      _messagingProfileQuery(profile)?['profile'];
+
   Future<List<MessagingPlatform>> messagingPlatforms({String? profile}) async {
     final data = await get(
       '/api/v1/messaging/platforms',
-      query: profile == null ? null : {'profile': profile},
+      query: _messagingProfileQuery(profile),
     );
     final list = (data as Map)['platforms'] as List? ?? [];
     return list
@@ -3432,7 +3446,7 @@ class ApiClient {
     return _asMap(
       await put(
         '/api/v1/messaging/platforms/${_seg(platform)}',
-        query: profile == null ? null : {'profile': profile},
+        query: _messagingProfileQuery(profile),
         body: body,
       ),
     );
@@ -3445,7 +3459,7 @@ class ApiClient {
     return _asMap(
       await post(
         '/api/v1/messaging/platforms/${_seg(platform)}/test',
-        query: profile == null ? null : {'profile': profile},
+        query: _messagingProfileQuery(profile),
         allowExplicitFailure: true,
       ),
     );
@@ -3453,10 +3467,7 @@ class ApiClient {
 
   Future<MessagingPairings> messagingPairings({String? profile}) async {
     final data = _asMap(
-      await get(
-        '/api/v1/pairing',
-        query: profile == null ? null : {'profile': profile},
-      ),
+      await get('/api/v1/pairing', query: _messagingProfileQuery(profile)),
     );
     return MessagingPairings.fromJson(data);
   }
@@ -3469,7 +3480,7 @@ class ApiClient {
       final data = _asMap(
         await get(
           '/api/v1/messaging/platforms',
-          query: profile == null ? null : {'profile': profile},
+          query: _messagingProfileQuery(profile),
         ),
       );
       for (final raw in data['platforms'] as List? ?? const []) {
@@ -3482,7 +3493,7 @@ class ApiClient {
     }
     final data = await get(
       '/api/v1/messaging/${_seg(platform)}/config',
-      query: profile == null ? null : {'profile': profile},
+      query: _messagingProfileQuery(profile),
     );
     return _asMap(data);
   }
@@ -3509,7 +3520,7 @@ class ApiClient {
       directGateway
           ? '/api/v1/pairing'
           : '/api/v1/messaging/${_seg(platform)}/pending',
-      query: profile == null ? null : {'profile': profile},
+      query: _messagingProfileQuery(profile),
     );
     final list =
         (data as Map)['pending'] as List? ?? (data['pairings'] as List?) ?? [];
@@ -3537,7 +3548,7 @@ class ApiClient {
       body: {
         'platform': platform,
         'request_id': pairingId,
-        'profile': ?profile,
+        'profile': ?_messagingProfileValue(profile),
       },
     );
   }
@@ -3549,7 +3560,11 @@ class ApiClient {
   }) async {
     await post(
       '/api/v1/pairing/revoke',
-      body: {'platform': platform, 'user_id': userId, 'profile': ?profile},
+      body: {
+        'platform': platform,
+        'user_id': userId,
+        'profile': ?_messagingProfileValue(profile),
+      },
     );
   }
 

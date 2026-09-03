@@ -7,7 +7,10 @@ import 'package:hermes_mobile/core/models.dart';
 import 'package:hermes_mobile/core/settings_store.dart';
 import 'package:hermes_mobile/core/stores/chat_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
+import 'package:hermes_mobile/core/stores/appearance_store.dart';
+import 'package:hermes_mobile/core/stores/locale_store.dart';
 import 'package:hermes_mobile/core/stores/notification_store.dart';
+import 'package:hermes_mobile/core/stores/plugin_contribution_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_appearance_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
@@ -147,6 +150,11 @@ void main() {
     await tester.pumpWidget(
       MultiProvider(
         providers: [
+          ChangeNotifierProvider(create: (_) => AppearanceStore()),
+          ChangeNotifierProvider(create: (_) => LocaleStore()),
+          ChangeNotifierProvider(
+            create: (_) => PluginContributionStore(connection),
+          ),
           ChangeNotifierProvider<SessionStore>.value(value: store),
           ChangeNotifierProvider<SessionAppearanceStore>.value(
             value: SessionAppearanceStore(),
@@ -159,12 +167,72 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('home-reconnect')), findsOneWidget);
-    expect(find.byTooltip('重新连接到服务器'), findsOneWidget);
+    expect(find.byIcon(Icons.cloud_off), findsOneWidget);
+    expect(find.byTooltip('后端未连接 · 重新连接到服务器'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('home-reconnect')));
     await tester.pumpAndSettle();
 
     expect(connection.reconnectCount, 1);
     expect(find.text('已连接'), findsOneWidget);
+
+    final settingsAvatar = find.byKey(const ValueKey('home-settings-avatar'));
+    expect(settingsAvatar, findsOneWidget);
+    await tester.tap(settingsAvatar);
+    await tester.pumpAndSettle();
+    expect(find.text('模型与对话'), findsOneWidget);
+  });
+
+  testWidgets('home reconnect action reflects the live connection phase', (
+    tester,
+  ) async {
+    final connection = _ReconnectConnection()
+      ..settings = const ConnectionSettings(
+        serverUrl: 'http://home.invalid',
+        apiKey: 'test',
+      )
+      ..api = _HomeApi([])
+      ..phase = ConnectionPhase.connected;
+    final store = SessionStore(
+      connection: connection,
+      chat: ChatStore(),
+      requests: RequestStore(),
+    );
+    final notifications = NotificationStore(connection: connection);
+    addTearDown(() {
+      notifications.dispose();
+      store.dispose();
+      connection.dispose();
+    });
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<SessionStore>.value(value: store),
+          ChangeNotifierProvider<SessionAppearanceStore>.value(
+            value: SessionAppearanceStore(),
+          ),
+          ChangeNotifierProvider<NotificationStore>.value(value: notifications),
+        ],
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.cloud_done_outlined), findsOneWidget);
+    expect(find.byTooltip('已连接 · 重新连接到服务器'), findsOneWidget);
+
+    connection.phase = ConnectionPhase.reconnecting;
+    connection.notifyListeners();
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(find.byTooltip('连接中…'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const ValueKey('home-reconnect')))
+          .onPressed,
+      isNull,
+    );
   });
 
   testWidgets('quick tools render first and persist editable order', (

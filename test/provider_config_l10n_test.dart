@@ -106,6 +106,66 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'phone provider settings use full-row sheets and grouped actions',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final connection = ConnectionStore()..api = _ProviderConfigApi();
+      addTearDown(connection.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<ConnectionStore>.value(value: connection),
+              ChangeNotifierProvider(create: (_) => ProfileScopeStore()),
+            ],
+            child: const ProviderConfigScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('provider-mobile-list')),
+        findsOneWidget,
+      );
+      expect(find.byType(DropdownButtonFormField), findsNothing);
+      expect(
+        find.byKey(const ValueKey('provider-connection-row')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('provider-profile-row')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('provider-profile-row')));
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(find.text('Profile'), findsWidgets);
+      await tester.tap(find.text('default').last);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('provider-env-OPENAI_API_KEY')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('provider-env-OPENAI_API_KEY')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(find.text('Edit'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('failed endpoint validation never saves the endpoint', (
     tester,
   ) async {

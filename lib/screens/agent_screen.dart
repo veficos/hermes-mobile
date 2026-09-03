@@ -21,6 +21,7 @@ import 'bot_routines_screen.dart';
 import 'profiles_screen.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_logo.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
@@ -1114,7 +1115,7 @@ class _AgentScreenState extends State<AgentScreen>
               children: [
                 Row(
                   children: [
-                    HermesAvatar(label: 'A', size: 40),
+                    const HermesAgentAvatar(size: 40),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(

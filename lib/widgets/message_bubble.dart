@@ -1786,7 +1786,7 @@ String? _connectionLabel(BuildContext context) {
   }
 }
 
-/// Assistant 角色头（WebUI spec §3 `.msg-role`）：Hermes 翼标头像 + 当前连接
+/// Assistant 角色头（WebUI spec §3 `.msg-role`）：Hermes 头像 + 当前连接
 /// 备注（prototype `.grow-sub` parity：12px/text3，紧挨头像右侧一行）。
 class _RoleHeader extends StatelessWidget {
   const _RoleHeader();
@@ -1803,16 +1803,10 @@ class _RoleHeader extends StatelessWidget {
         children: [
           Semantics(
             label: context.l10n.messageHermesAvatar,
-            child: Container(
+            child: HermesAgentAvatar(
               key: const ValueKey('assistant-avatar-icon'),
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: palette.accentBg,
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: HermesLogo(size: 22, color: palette.accent),
+              size: 30,
+              backgroundColor: palette.accentBg,
             ),
           ),
           if (connectionLabel != null && connectionLabel.isNotEmpty) ...[

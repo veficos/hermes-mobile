@@ -714,51 +714,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final isXl = width >= HermesBreakpoints.desktop;
     final isTablet = width >= HermesBreakpoints.navigation && !isXl;
 
-    // Reconnect banner (spec §149): Offline → Connecting → Connected.
-    final reconnecting = connection.phase == ConnectionPhase.reconnecting;
-    final connecting = connection.phase == ConnectionPhase.connecting;
-
-    final body = Column(
-      children: [
-        if (reconnecting || connecting)
-          Material(
-            color: reconnecting
-                ? Theme.of(context).colorScheme.errorContainer
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      reconnecting
-                          ? context.l10n.shellReconnecting
-                          : context.l10n.connectConnecting,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => unawaited(
-                      connection
-                          .reconnectAfterResume(refreshSocket: true)
-                          .catchError((_) {}),
-                    ),
-                    child: Text(context.l10n.shellReconnectNow),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        Expanded(
-          child: _LazyIndexedStack(index: _index, builders: _tabBuilders),
-        ),
-      ],
-    );
+    final body = _LazyIndexedStack(index: _index, builders: _tabBuilders);
 
     if (isXl) {
       // XL 档：类 IDE 三栏工作台（design-system §7.2）。

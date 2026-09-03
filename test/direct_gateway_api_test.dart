@@ -637,6 +637,65 @@ void main() {
     },
   );
 
+  test('default messaging profile uses the ambient Hermes root', () async {
+    final requests = <http.Request>[];
+    final client = _client((request) async {
+      requests.add(request);
+      if (request.url.path == '/api/messaging/platforms') {
+        return _json({
+          'platforms': [
+            {
+              'id': 'weixin',
+              'name': 'Weixin / WeChat',
+              'enabled': true,
+              'configured': true,
+              'state': 'connected',
+            },
+          ],
+        });
+      }
+      if (request.url.path == '/api/pairing') {
+        return _json({'pending': <dynamic>[], 'approved': <dynamic>[]});
+      }
+      return _json({'ok': true});
+    });
+    addTearDown(client.close);
+
+    final platforms = await client.messagingPlatforms(profile: 'default');
+    await client.updateMessagingPlatform(
+      'weixin',
+      enabled: true,
+      profile: 'default',
+    );
+    await client.testMessagingPlatform('weixin', profile: 'current');
+    await client.messagingPairings(profile: 'default');
+    await client.messagingApprovePairing(
+      'weixin',
+      'request-1',
+      profile: 'default',
+    );
+    await client.messagingRevokePairing('weixin', 'user-1', profile: 'current');
+
+    expect(platforms.single.enabled, isTrue);
+    expect(platforms.single.canHandoff, isTrue);
+    expect(
+      requests.take(4),
+      everyElement(
+        predicate<http.Request>(
+          (request) => !request.url.queryParameters.containsKey('profile'),
+        ),
+      ),
+    );
+    expect(jsonDecode(requests[4].body), {
+      'platform': 'weixin',
+      'request_id': 'request-1',
+    });
+    expect(jsonDecode(requests[5].body), {
+      'platform': 'weixin',
+      'user_id': 'user-1',
+    });
+  });
+
   test(
     'direct project and stored-session operations use gateway RPC',
     () async {

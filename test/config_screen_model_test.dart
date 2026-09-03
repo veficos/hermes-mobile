@@ -15,6 +15,7 @@ class _ModelConfigApi extends ApiClient {
     : super(baseUrl: 'http://model-settings.invalid', apiKey: 'test');
 
   final assignments = <Map<String, dynamic>>[];
+  final configPatches = <Map<String, dynamic>>[];
   Map<String, dynamic>? savedMoa;
 
   @override
@@ -45,7 +46,16 @@ class _ModelConfigApi extends ApiClient {
       );
 
   @override
-  Future<Map<String, dynamic>> getConfig({String? profile}) async => {};
+  Future<Map<String, dynamic>> getConfig({String? profile}) async => {
+    'display': {
+      'personality': 'Helpful',
+      'show_reasoning': true,
+      'message_reactions': true,
+    },
+    'timezone': 'Asia/Shanghai',
+    'approvals': {'mode': 'smart'},
+    'yolo': false,
+  };
 
   @override
   Future<Map<String, dynamic>> auxiliaryModels({String? profile}) async => {
@@ -100,6 +110,11 @@ class _ModelConfigApi extends ApiClient {
   }
 
   @override
+  Future<void> putConfig(Map<String, dynamic> patch, {String? profile}) async {
+    configPatches.add(patch);
+  }
+
+  @override
   Future<Map<String, dynamic>> saveMoaModels(
     Map<String, dynamic> config, {
     String? profile,
@@ -138,6 +153,81 @@ Future<_ModelConfigApi> _pump(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('main model uses one tap-friendly provider and model picker', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = await _pump(tester);
+
+    expect(
+      find.byKey(const ValueKey('main-model-setting-row')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('main-model-setting-row')),
+        matching: find.byType(DropdownButtonFormField<String>),
+      ),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('main-model-setting-row')));
+    await tester.pumpAndSettle();
+    expect(find.text('选择模型'), findsOneWidget);
+    expect(find.text('Nous'), findsWidgets);
+    expect(find.text('OpenRouter'), findsOneWidget);
+
+    await tester.tap(find.text('OpenRouter'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('anthropic/claude-sonnet-4'));
+    await tester.pumpAndSettle();
+
+    expect(api.assignments.single, {
+      'scope': 'main',
+      'provider': 'openrouter',
+      'model': 'anthropic/claude-sonnet-4',
+    });
+    expect(find.text('anthropic/claude-sonnet-4'), findsOneWidget);
+  });
+
+  testWidgets('chat text setting opens a mobile editor with explicit save', (
+    tester,
+  ) async {
+    final api = await _pump(tester);
+
+    await tester.tap(find.text('对话'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('setting-row-display.personality')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('setting-row-display.personality')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('setting-editor-display.personality')),
+      findsOneWidget,
+    );
+    expect(find.text('取消'), findsOneWidget);
+    expect(find.text('保存'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('setting-editor-display.personality')),
+      'Concise',
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(
+      api.configPatches.single['display'],
+      containsPair('personality', 'Concise'),
+    );
+  });
+
   testWidgets('shows recommended, auxiliary, and editable MoA sections', (
     tester,
   ) async {

@@ -110,6 +110,7 @@ flutter:
   generate: true
   assets:
     - LICENSE
+    - assets/hermes-logo.png
     - assets/vendor/mermaid/
   fonts:
     - family: HermesJetBrainsMono

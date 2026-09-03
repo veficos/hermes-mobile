@@ -4220,6 +4220,33 @@ def build_domain_router(
             raise HTTPException(status_code=502, detail=str(exc))
 
     # ----------------------------------------------------------- messaging
+    def _messaging_profile_query(profile: str | None) -> dict[str, str] | None:
+        """Build a Hermes messaging query without a redundant root profile.
+
+        Hermes calls its installation-wide ``~/.hermes`` configuration the
+        ``default`` profile. Passing ``profile=default`` is *not* equivalent
+        to omitting the parameter: the upstream API enters profile-isolated
+        mode and can no longer see credentials loaded from the root
+        environment (notably WEIXIN_*), reporting enabled channels as
+        disabled. Mobile profile discovery still exposes ``default`` as the
+        active profile, so normalize it at the bridge boundary.
+        """
+        value = (profile or "").strip()
+        if not value or value.lower() in {"default", "current"}:
+            return None
+        return {"profile": value}
+
+    def _messaging_profile_body(payload: dict) -> dict:
+        """Apply the same root-profile normalization to JSON bodies."""
+        body = dict(payload)
+        profile = body.get("profile")
+        if isinstance(profile, str) and profile.strip().lower() in {
+            "default",
+            "current",
+        }:
+            body.pop("profile", None)
+        return body
+
     @router.get("/messaging/platforms")
     async def messaging_platforms(profile: str | None = Query(None)) -> Any:
         be = require_backend()
@@ -4227,7 +4254,7 @@ def build_domain_router(
             be,
             "GET",
             "/api/messaging/platforms",
-            query={"profile": profile} if profile else None,
+            query=_messaging_profile_query(profile),
         )
 
     @router.put("/messaging/platforms/{platform}")
@@ -4240,7 +4267,7 @@ def build_domain_router(
             require_backend(),
             "PUT",
             f"/api/messaging/platforms/{platform}",
-            query={"profile": profile} if profile else None,
+            query=_messaging_profile_query(profile),
             body=payload,
         )
 
@@ -4252,7 +4279,7 @@ def build_domain_router(
             require_backend(),
             "POST",
             f"/api/messaging/platforms/{platform}/test",
-            query={"profile": profile} if profile else None,
+            query=_messaging_profile_query(profile),
         )
 
     @router.get("/pairing")
@@ -4261,19 +4288,25 @@ def build_domain_router(
             require_backend(),
             "GET",
             "/api/pairing",
-            query={"profile": profile} if profile else None,
+            query=_messaging_profile_query(profile),
         )
 
     @router.post("/pairing/approve")
     async def messaging_approve_pairing(payload: dict = Body(...)) -> Any:
         return await _backend_json(
-            require_backend(), "POST", "/api/pairing/approve", body=payload
+            require_backend(),
+            "POST",
+            "/api/pairing/approve",
+            body=_messaging_profile_body(payload),
         )
 
     @router.post("/pairing/revoke")
     async def messaging_revoke_pairing(payload: dict = Body(...)) -> Any:
         return await _backend_json(
-            require_backend(), "POST", "/api/pairing/revoke", body=payload
+            require_backend(),
+            "POST",
+            "/api/pairing/revoke",
+            body=_messaging_profile_body(payload),
         )
 
     @router.post("/gateway/restart")
@@ -4289,7 +4322,7 @@ def build_domain_router(
             be,
             "GET",
             "/api/messaging/platforms",
-            query={"profile": profile} if profile else None,
+            query=_messaging_profile_query(profile),
         )
         item = next(
             (
@@ -4316,7 +4349,7 @@ def build_domain_router(
             be,
             "PUT",
             f"/api/messaging/platforms/{platform}",
-            query={"profile": profile} if profile else None,
+            query=_messaging_profile_query(profile),
             body=payload,
         )
 
@@ -4336,7 +4369,7 @@ def build_domain_router(
             be,
             "PUT",
             f"/api/messaging/platforms/{platform}",
-            query={"profile": profile} if profile else None,
+            query=_messaging_profile_query(profile),
             body=body,
         )
 
@@ -4349,7 +4382,7 @@ def build_domain_router(
             be,
             "GET",
             "/api/pairing",
-            query={"profile": profile} if profile else None,
+            query=_messaging_profile_query(profile),
         )
         return {
             "pending": [
@@ -4371,11 +4404,13 @@ def build_domain_router(
             be,
             "POST",
             "/api/pairing/approve",
-            body={
-                "platform": platform,
-                "request_id": pairing_id,
-                **({"profile": profile} if profile else {}),
-            },
+            body=_messaging_profile_body(
+                {
+                    "platform": platform,
+                    "request_id": pairing_id,
+                    **({"profile": profile} if profile else {}),
+                }
+            ),
         )
 
     # ------------------------------------------------------------ webhooks

@@ -334,13 +334,19 @@ class ConnectionStore extends ChangeNotifier {
 
   /// Restarts an exhausted reconnect cycle when the app returns to the
   /// foreground. [refreshSocket] also replaces a socket that may look alive
-  /// locally after the operating system suspended its network path.
+  /// locally after the operating system suspended its network path. A forced
+  /// refresh uses a two-phase reset: all registered sockets are closed before
+  /// any of them is allowed to reconnect.
   Future<void> reconnectAfterResume({bool refreshSocket = false}) async {
     if (!isConfigured) return;
     final runtime = registry.active;
     if (runtime == null) return;
     try {
-      await runtime.reconnectAfterResume(refreshSocket: refreshSocket);
+      if (refreshSocket) {
+        await registry.reconnectAllAfterDisconnect();
+      } else {
+        await runtime.reconnectAfterResume();
+      }
       _syncActiveFacade();
       unawaited(refreshCapabilities());
     } catch (e) {

@@ -14,6 +14,7 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 
@@ -420,9 +421,10 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final compact = MediaQuery.sizeOf(context).width < HermesBreakpoints.phone;
     final content = Column(
       children: [
-        _scopeBar(),
+        _scopeBar(compact: compact),
         if (_saving) const LinearProgressIndicator(minHeight: 2),
         if (_categories.isNotEmpty)
           SizedBox(
@@ -443,7 +445,7 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
               ],
             ),
           ),
-        Expanded(child: _body()),
+        Expanded(child: _body(compact: compact)),
       ],
     );
     if (widget.embedded) return content;
@@ -471,7 +473,7 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
     ),
   ];
 
-  Widget _scopeBar() {
+  Widget _scopeBar({required bool compact}) {
     final l10n = context.l10n;
     final runtimes = _connection.registry.runtimes.toList();
     final connectionPicker = DropdownButtonFormField<ConnectionId>(
@@ -545,26 +547,42 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
                   ..._actions(),
                 ],
               ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth < 560) {
-                  return Column(
-                    children: [
-                      connectionPicker,
-                      const SizedBox(height: 8),
-                      profilePicker,
-                    ],
-                  );
-                }
-                return Row(
+            if (compact)
+              ExpansionTile(
+                key: const ValueKey('schema-config-scope'),
+                tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+                childrenPadding: const EdgeInsets.only(bottom: 8),
+                leading: const Icon(Icons.layers_outlined),
+                title: Text(
+                  l10n.configAppliesToProfile,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: connectionPicker),
-                    const SizedBox(width: 12),
-                    Expanded(child: profilePicker),
+                    Text(
+                      _profile ?? l10n.configDefaultProcessProfile,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(l10n.configConnectionLabel),
                   ],
-                );
-              },
-            ),
+                ),
+                children: [
+                  connectionPicker,
+                  const SizedBox(height: 8),
+                  profilePicker,
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(child: connectionPicker),
+                  const SizedBox(width: 12),
+                  Expanded(child: profilePicker),
+                ],
+              ),
             const SizedBox(height: 8),
             TextField(
               decoration: InputDecoration(
@@ -580,7 +598,7 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
     );
   }
 
-  Widget _body() {
+  Widget _body({required bool compact}) {
     final l10n = context.l10n;
     if (_loading) return HermesLoadingState(label: l10n.configLoading);
     if (_error != null) {
@@ -607,18 +625,27 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
       return HermesEmptyState(icon: Icons.tune, title: l10n.configNoMatches);
     }
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       children: [
         for (final entry in entries)
-          _field(entry.key, (entry.value as Map).cast<String, dynamic>()),
+          _field(
+            entry.key,
+            (entry.value as Map).cast<String, dynamic>(),
+            compact: compact,
+          ),
       ],
     );
   }
 
-  Widget _field(String path, Map<String, dynamic> schema) {
+  Widget _field(
+    String path,
+    Map<String, dynamic> schema, {
+    required bool compact,
+  }) {
     final type = schema['type']?.toString() ?? 'string';
     final value = configValueAt(_config, path);
     final description = schema['description']?.toString() ?? path;
+    if (compact) return _compactField(path, schema, type, value, description);
     Widget control;
     if (type == 'boolean') {
       control = Switch(
@@ -715,6 +742,188 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
     );
   }
 
+  Widget _compactField(
+    String path,
+    Map<String, dynamic> schema,
+    String type,
+    dynamic value,
+    String description,
+  ) {
+    final hasOverride = configHasPath(_config, path);
+    final valueLabel = _compactValueLabel(type, value, schema);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: HermesGlassCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            ListTile(
+              key: ValueKey('schema-setting-$path'),
+              minTileHeight: 66,
+              contentPadding: const EdgeInsets.fromLTRB(16, 6, 10, 6),
+              title: Text(
+                description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: HermesType.code.copyWith(
+                  color: HermesPalette.of(context).text3,
+                  fontSize: 11,
+                ),
+              ),
+              trailing: type == 'boolean'
+                  ? Switch(
+                      value: value == true,
+                      onChanged: _saving
+                          ? null
+                          : (next) => _savePatch(path, next),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 112),
+                          child: Text(
+                            valueLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              color: HermesPalette.of(context).text3,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(Icons.chevron_right),
+                      ],
+                    ),
+              onTap: type == 'boolean' || _saving
+                  ? null
+                  : () => _editCompactField(path, schema, type, value),
+            ),
+            if (hasOverride) ...[
+              const Divider(height: 1, indent: 16),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: TextButton.icon(
+                  onPressed: _saving ? null : () => _deleteField(path),
+                  icon: const Icon(Icons.restart_alt, size: 17),
+                  label: Text(context.l10n.configUseDefault),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _compactValueLabel(
+    String type,
+    dynamic value,
+    Map<String, dynamic> schema,
+  ) {
+    if (value == null || value.toString().isEmpty) {
+      return context.l10n.configUseDefault;
+    }
+    if (type == 'list') {
+      return value is List ? '${value.length}' : _displayValue(value);
+    }
+    if (type == 'object') {
+      return value is Map ? '${value.length}' : _displayValue(value);
+    }
+    return _displayValue(value);
+  }
+
+  Future<void> _editCompactField(
+    String path,
+    Map<String, dynamic> schema,
+    String type,
+    dynamic value,
+  ) async {
+    final description = schema['description']?.toString() ?? path;
+    if (type == 'select') {
+      final options = (schema['options'] as List? ?? const [])
+          .map((item) => '$item')
+          .toList();
+      final current = value?.toString() ?? '';
+      if (current.isNotEmpty && !options.contains(current)) {
+        options.insert(0, current);
+      }
+      final selected = await showModalBottomSheet<String>(
+        context: context,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          top: false,
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: 12),
+            children: [
+              ListTile(
+                title: Text(
+                  description,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(path, style: HermesType.code),
+              ),
+              if (schema['clearable'] == true)
+                _compactChoiceTile('', current, context.l10n.configUseDefault),
+              for (final option in options)
+                _compactChoiceTile(option, current, option),
+            ],
+          ),
+        ),
+      );
+      if (selected != null && selected != current && mounted) {
+        await _savePatch(path, selected);
+      }
+      return;
+    }
+
+    final raw = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _SchemaValueEditor(
+        path: path,
+        title: description,
+        initialValue: _displayValue(value),
+        multiline: type == 'object' || type == 'list',
+        numeric: type == 'number',
+      ),
+    );
+    if (raw == null || !mounted || raw == _displayValue(value)) return;
+    try {
+      await _savePatch(path, _parseValue(type, raw));
+    } catch (error) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.configInvalidFieldValue(path, '$error'),
+        );
+      }
+    }
+  }
+
+  Widget _compactChoiceTile(String value, String current, String label) {
+    return ListTile(
+      minTileHeight: 54,
+      title: Text(label),
+      trailing: value == current
+          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+          : null,
+      onTap: () => Navigator.pop(context, value),
+    );
+  }
+
   Future<void> _deleteField(String path) async {
     final api = _api;
     if (api == null || _saving) return;
@@ -781,5 +990,102 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
       return value;
     }
     return raw;
+  }
+}
+
+class _SchemaValueEditor extends StatefulWidget {
+  const _SchemaValueEditor({
+    required this.path,
+    required this.title,
+    required this.initialValue,
+    required this.multiline,
+    required this.numeric,
+  });
+
+  final String path;
+  final String title;
+  final String initialValue;
+  final bool multiline;
+  final bool numeric;
+
+  @override
+  State<_SchemaValueEditor> createState() => _SchemaValueEditorState();
+}
+
+class _SchemaValueEditorState extends State<_SchemaValueEditor> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() => Navigator.pop(context, _controller.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        16 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(context.l10n.commonCancel),
+              ),
+              Expanded(
+                child: Text(
+                  widget.title,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton(
+                onPressed: _save,
+                child: Text(context.l10n.commonSave),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: ValueKey('schema-setting-editor-${widget.path}'),
+            controller: _controller,
+            autofocus: true,
+            keyboardType: widget.numeric
+                ? const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  )
+                : TextInputType.text,
+            minLines: widget.multiline ? 5 : 1,
+            maxLines: widget.multiline ? 12 : 1,
+            textInputAction: widget.multiline
+                ? TextInputAction.newline
+                : TextInputAction.done,
+            decoration: InputDecoration(
+              labelText: widget.path,
+              border: const OutlineInputBorder(),
+            ),
+            onSubmitted: widget.multiline ? null : (_) => _save(),
+          ),
+        ],
+      ),
+    );
   }
 }

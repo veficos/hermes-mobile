@@ -151,4 +151,20 @@ void main() {
     tester.view.resetDevicePixelRatio();
     semantics.dispose();
   });
+
+  testWidgets('reconnecting no longer inserts a global top banner', (
+    tester,
+  ) async {
+    final stores = _ShellStores();
+    stores.connection.phase = ConnectionPhase.reconnecting;
+    addTearDown(stores.dispose);
+
+    await tester.pumpWidget(_app(stores, textScaler: TextScaler.noScaling));
+    await tester.pump();
+
+    final l10n = AppLocalizations.of(tester.element(find.byType(AppShell)));
+    expect(find.text(l10n.shellReconnecting), findsNothing);
+    expect(find.byKey(const ValueKey('home-reconnect')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+  });
 }

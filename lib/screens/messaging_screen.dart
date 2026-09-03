@@ -46,7 +46,17 @@ class _MessagingScreenState extends State<MessagingScreen>
 
   String? get _profile {
     final scope = _scopeStore;
-    return scope?.override ?? scope?.activeProfile;
+    final value = (scope?.override ?? scope?.activeProfile)?.trim();
+    // Hermes treats an explicit `profile=default` as an isolated profile
+    // read, which excludes root WEIXIN_* environment values. Other named
+    // profiles still need their explicit scope.
+    if (value == null ||
+        value.isEmpty ||
+        value.toLowerCase() == 'default' ||
+        value.toLowerCase() == 'current') {
+      return null;
+    }
+    return value;
   }
 
   @override

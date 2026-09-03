@@ -15,8 +15,8 @@ import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import 'about_screen.dart';
 import 'billing_screen.dart';
+import 'config_screen.dart';
 import 'config_center_screen.dart';
-import 'schema_config_screen.dart';
 import 'credentials_screen.dart';
 import 'messaging_screen.dart';
 import 'profiles_screen.dart';
@@ -59,8 +59,8 @@ class _SettingsHubScreenState extends State<SettingsHubScreen> {
             icon: Icons.tune_outlined,
             title: l10n.settingsModelTitle,
             subtitle: l10n.settingsModelDesc,
-            compactPage: const SchemaConfigScreen(),
-            widePage: const SchemaConfigScreen(embedded: true),
+            compactPage: const ConfigScreen(),
+            widePage: const ConfigScreen(embedded: true),
           ),
           _SettingsEntry(
             id: 'providers',

@@ -14,6 +14,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_logo.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
@@ -396,23 +397,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return MobilePageScaffold(
       title: 'Hermes',
+      leading: IconButton(
+        key: const ValueKey('home-settings-avatar'),
+        tooltip: context.l10n.featureSettings,
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const SettingsHubScreen())),
+        icon: const HermesAgentAvatar(size: 34),
+      ),
       actions: [
         ListenableBuilder(
           listenable: store.connection,
           builder: (context, _) {
             final connection = store.connection;
+            final phase = connection.phase;
             final busy =
-                _reconnecting || connection.phase == ConnectionPhase.connecting;
+                _reconnecting ||
+                phase == ConnectionPhase.connecting ||
+                phase == ConnectionPhase.reconnecting;
+            final connected = phase == ConnectionPhase.connected;
+            final status = switch (phase) {
+              ConnectionPhase.connected => context.l10n.commonConnected,
+              ConnectionPhase.connecting ||
+              ConnectionPhase.reconnecting => context.l10n.connectConnecting,
+              ConnectionPhase.disconnected ||
+              ConnectionPhase.exhausted => context.l10n.backendDisconnected,
+            };
+            final tooltip = busy
+                ? status
+                : '$status · ${context.l10n.paletteReconnectDesc}';
+            final colorScheme = Theme.of(context).colorScheme;
             return IconButton(
               key: const ValueKey('home-reconnect'),
-              tooltip: context.l10n.paletteReconnectDesc,
+              tooltip: tooltip,
               onPressed: connection.isConfigured && !busy ? _reconnect : null,
               icon: busy
                   ? const SizedBox.square(
                       dimension: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.sync),
+                  : Icon(
+                      connected ? Icons.cloud_done_outlined : Icons.cloud_off,
+                      color: connected
+                          ? colorScheme.primary
+                          : colorScheme.error,
+                    ),
             );
           },
         ),

@@ -19,11 +19,12 @@ class _MessagingApi extends ApiClient {
   int updates = 0;
   int restarts = 0;
   String? lastProfile;
+  String activeProfile = 'work';
 
   @override
-  Future<ProfilesPayload> listProfiles() async => const ProfilesPayload(
-    profiles: [ProfileInfo(name: 'work', isActive: true)],
-    active: 'work',
+  Future<ProfilesPayload> listProfiles() async => ProfilesPayload(
+    profiles: [ProfileInfo(name: activeProfile, isActive: true)],
+    active: activeProfile,
   );
 
   @override
@@ -105,6 +106,17 @@ Future<void> _pump(WidgetTester tester, _MessagingApi api) async {
 }
 
 void main() {
+  testWidgets(
+    'default profile reads messaging state from ambient Hermes root',
+    (tester) async {
+      final api = _MessagingApi()..activeProfile = 'default';
+      await _pump(tester, api);
+
+      expect(find.text('Telegram'), findsOneWidget);
+      expect(api.lastProfile, isNull);
+    },
+  );
+
   testWidgets('pairing failure does not hide configurable platforms', (
     tester,
   ) async {

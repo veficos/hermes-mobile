@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/chat_message.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations_zh.dart';
-import 'package:hermes_mobile/widgets/h/hermes_logo.dart';
 import 'package:hermes_mobile/widgets/message_bubble.dart';
 
 ChatMessage _assistant({
@@ -76,7 +75,7 @@ void main() {
       expect(find.text('这是一段回答。'), findsOneWidget);
     });
 
-    testWidgets('assistant 角色头只展示 HermesLogo 翼标头像', (tester) async {
+    testWidgets('assistant 角色头展示 Hermes Agent 图片头像', (tester) async {
       const model = 'hy3:free/model';
       await _pump(tester, _assistant(model: model));
 
@@ -88,8 +87,16 @@ void main() {
       expect(roleHeader, findsOneWidget);
       expect(avatar, findsOneWidget);
       expect(
-        find.descendant(of: avatar, matching: find.byType(HermesLogo)),
+        find.descendant(of: avatar, matching: find.byType(Image)),
         findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<Image>(
+              find.descendant(of: avatar, matching: find.byType(Image)),
+            )
+            .image,
+        isA<AssetImage>(),
       );
       expect(
         find.descendant(of: roleHeader, matching: find.text('Hermes')),

@@ -21,6 +21,7 @@ import '../../core/composer_tokens.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
 import '../../widgets/chat_enter_to_send.dart';
+import '../mobile/hermes_adaptive_menu.dart';
 
 // =====================================================================
 // Data models
@@ -165,6 +166,11 @@ class HermesComposer extends StatefulWidget {
   /// the send button (queue / voice / TTS / more menu live here).
   final List<Widget> footerActions;
 
+  /// Compact action rendered inside the input surface immediately before the
+  /// primary send button. This is intended for a closely related input action
+  /// such as voice dictation.
+  final Widget? beforeSendAction;
+
   /// Compact cumulative context-usage label (e.g. `12.3k ctx`) rendered at
   /// the composer card's top-right. Null when the session has no real usage
   /// data — the indicator is not rendered at all (no fake numbers).
@@ -204,6 +210,7 @@ class HermesComposer extends StatefulWidget {
     this.attachments = const [],
     this.onAttachmentsChanged,
     this.footerActions = const [],
+    this.beforeSendAction,
     this.ctxUsageLabel,
   });
 
@@ -415,7 +422,7 @@ class _HermesComposerState extends State<HermesComposer> {
                 ),
               ),
             // ── Main composer input surface (edit box): mention chips,
-            // the text field and the send button only. ──
+            // the text field and its voice / send actions only. ──
             AnimatedContainer(
               duration: MediaQuery.disableAnimationsOf(context)
                   ? Duration.zero
@@ -555,6 +562,16 @@ class _HermesComposerState extends State<HermesComposer> {
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
+                              // `isCollapsed` hands vertical positioning
+                              // fully to `textAlignVertical` + this padding.
+                              // Without it, InputDecorator's own (label/
+                              // border-oriented) layout algorithm still
+                              // governs the text/cursor position even with
+                              // textAlignVertical set, which reads as the
+                              // text sitting at the bottom of the field
+                              // while the send button beside it is truly
+                              // centered in the row.
+                              isCollapsed: true,
                               contentPadding: const EdgeInsets.fromLTRB(
                                 16,
                                 9,
@@ -565,8 +582,12 @@ class _HermesComposerState extends State<HermesComposer> {
                           ),
                         ),
                       ),
+                      if (widget.beforeSendAction != null) ...[
+                        widget.beforeSendAction!,
+                        const SizedBox(width: 2),
+                      ],
                       Padding(
-                        padding: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.only(right: 8),
                         child: sendButton,
                       ),
                     ],
@@ -681,7 +702,7 @@ class _HermesComposerState extends State<HermesComposer> {
           selected: _emojiOpen,
         ),
       if (widget.onUndo != null || widget.onRedo != null)
-        PopupMenuButton<String>(
+        HermesAdaptiveMenuButton<String>(
           tooltip: context.l10n.composerEditorActions,
           icon: const Icon(Icons.more_horiz, size: 20),
           onSelected: (value) {
@@ -747,7 +768,7 @@ class _HermesComposerState extends State<HermesComposer> {
           : context.l10n.composerEnterNewline,
     ];
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
@@ -1068,9 +1089,11 @@ class _SendButtonState extends State<_SendButton> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final active = widget.enabled || widget.busy;
-    // design-system.md §6.6：34px accent 实底圆形发送钮 + 白箭头；busy +
-    // draft → steer（罗盘）；busy + 无 draft → stop（error 实底）；
-    // disabled → 35% 透明度（§6.1）。
+    // A compact 32px accent button lines up with the 24px composer text
+    // line (9px top content padding centers it against a single line)
+    // while retaining a clear circular primary action. Busy + draft →
+    // steer（罗盘）；busy + 无 draft → stop（error 实底）；disabled →
+    // 35% 透明度（§6.1）。
     final bg = widget.busy && !widget.busyWillSteer
         ? hermesSemantic(context, HermesSemantic.red, HermesSemanticDark.red)
         : widget.accent;
@@ -1097,9 +1120,9 @@ class _SendButtonState extends State<_SendButton> {
               onTap: active ? widget.onTap : null,
               customBorder: const CircleBorder(),
               child: SizedBox(
-                width: 48,
-                height: 48,
-                child: Icon(icon, size: 20, color: Colors.white),
+                width: 32,
+                height: 32,
+                child: Icon(icon, size: 16, color: Colors.white),
               ),
             ),
           ),

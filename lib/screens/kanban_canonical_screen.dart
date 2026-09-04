@@ -9,8 +9,9 @@ import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/kanban_board_sheet.dart';
 import '../widgets/kanban_new_task_sheet.dart';
-import '../widgets/kanban_task_detail_sheet.dart';
+import 'kanban_task_detail_screen.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 
 class KanbanCanonicalScreen extends StatefulWidget {
@@ -230,7 +231,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                       }),
                       icon: Icon(_searching ? Icons.close : Icons.search),
                     ),
-                    PopupMenuButton<String>(
+                    HermesAdaptiveMenuButton<String>(
                       tooltip: context.l10n.taskOptions,
                       icon: const Icon(Icons.tune, size: 20),
                       onSelected: (value) {
@@ -651,10 +652,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   Future<void> _detail(BuildContext c, KanbanTask t, KanbanStore s) async {
     final d = await s.loadDetail(t.id);
     if (!c.mounted || d == null) return;
-    showModalBottomSheet(
-      context: c,
-      isScrollControlled: true,
-      builder: (_) => KanbanTaskDetailSheet(initial: d, store: s),
+    Navigator.of(c).push(
+      MaterialPageRoute<void>(
+        builder: (_) => KanbanTaskDetailScreen(initial: d, store: s),
+      ),
     );
   }
 

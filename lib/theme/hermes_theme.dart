@@ -172,6 +172,19 @@ ThemeData buildHermesTheme({
         side: BorderSide(color: border, width: borderWidth),
       ),
     ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: palette.elevated,
+      surfaceTintColor: Colors.transparent,
+      modalBackgroundColor: palette.elevated,
+      modalBarrierColor: Colors.black.withValues(alpha: .38),
+      elevation: 0,
+      modalElevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        side: BorderSide(color: border, width: borderWidth),
+      ),
+      showDragHandle: false,
+    ),
     // 弹出菜单（PopupMenuButton/showMenu）：默认 Material3 会用一套跟随
     // seed color 走的浅色调 tonal surface，跟卡片/对话框实际用的 palette
     // 背景不是同一套色，边角也偏小（4dp）——在四套主题下都会显得脱节。
@@ -179,6 +192,8 @@ ThemeData buildHermesTheme({
     popupMenuTheme: PopupMenuThemeData(
       color: palette.elevated,
       surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      menuPadding: const EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(HermesRadius.dialog),
         side: BorderSide(color: border, width: borderWidth),
@@ -190,6 +205,36 @@ ThemeData buildHermesTheme({
               ? palette.text4
               : textPrimary,
           fontSize: 14,
+        ),
+      ),
+    ),
+    menuTheme: MenuThemeData(
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(palette.elevated),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        elevation: const WidgetStatePropertyAll(8),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(vertical: 6),
+        ),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(HermesRadius.dialog),
+            side: BorderSide(color: border, width: borderWidth),
+          ),
+        ),
+      ),
+    ),
+    dropdownMenuTheme: DropdownMenuThemeData(
+      textStyle: TextStyle(color: textPrimary, fontSize: 14),
+      menuStyle: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(palette.elevated),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        elevation: const WidgetStatePropertyAll(8),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(HermesRadius.dialog),
+            side: BorderSide(color: border, width: borderWidth),
+          ),
         ),
       ),
     ),

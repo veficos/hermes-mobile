@@ -22,6 +22,7 @@ import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/profile_scope_selector.dart';
 import 'mcp_config_editor_screen.dart';
 import 'mcp_logs_screen.dart';
@@ -1303,7 +1304,7 @@ class _McpScreenState extends State<McpScreen>
                       icon: const Icon(Icons.wifi_tethering, size: 20),
                       onPressed: () => _test(server),
                     ),
-                  PopupMenuButton<String>(
+                  HermesAdaptiveMenuButton<String>(
                     enabled: _busyName.isEmpty,
                     onSelected: (value) {
                       if (value == 'delete') _deleteServer(server);

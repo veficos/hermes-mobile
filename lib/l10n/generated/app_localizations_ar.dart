@@ -5823,6 +5823,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String memoryInvalidNumber(Object field) {
+    return '$field is not a valid number';
+  }
+
+  @override
   String get memoryProviderSaved => 'تم حفظ إعدادات المزود';
 
   @override
@@ -5872,6 +5877,37 @@ class AppLocalizationsAr extends AppLocalizations {
   String get memoryKeepSecretHint => 'اتركه فارغًا للاحتفاظ بالقيمة الحالية';
 
   @override
+  String get memoryProviderSetup => 'Provider runtime';
+
+  @override
+  String get memoryProviderSetupDescription =>
+      'This provider needs dependencies installed in Hermes Server before it can run.';
+
+  @override
+  String get memoryPythonDependencies => 'Python dependencies';
+
+  @override
+  String get memoryRequiredEnvironment => 'Required environment values';
+
+  @override
+  String get memoryInstallDependencies => 'Install provider dependencies';
+
+  @override
+  String get memoryInstallingDependencies => 'Installing...';
+
+  @override
+  String get memorySetupFinished => 'Provider dependencies installed';
+
+  @override
+  String get memorySetupFailed =>
+      'Some provider dependencies failed to install. Review the results.';
+
+  @override
+  String memorySetupError(Object error) {
+    return 'Could not install provider dependencies: $error';
+  }
+
+  @override
   String agentOpenBotFailed(Object error) {
     return 'تعذر فتح محادثة Bot: $error';
   }
@@ -5884,6 +5920,20 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get agentGroupName => 'اسم المحادثة الجماعية';
+
+  @override
+  String get agentSelectMembers => 'Select members';
+
+  @override
+  String agentGroupMemberCount(Object count, Object max) {
+    return '$count/$max selected';
+  }
+
+  @override
+  String get agentSearchBots => 'Search bots';
+
+  @override
+  String get agentSearchNoMatches => 'No matching bots';
 
   @override
   String agentGroupSaveFailed(Object error) {
@@ -5975,6 +6025,23 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get agentNoData => 'لا توجد بيانات';
+
+  @override
+  String get agentBotDirectoryTitle => 'Bot Center';
+
+  @override
+  String agentBotDirectorySummary(int bots, int groups) {
+    return '$bots bots · $groups groups';
+  }
+
+  @override
+  String get agentStopped => 'Stopped';
+
+  @override
+  String get agentGroupChatsSection => 'Group chats';
+
+  @override
+  String get agentIndividualBotsSection => 'Bots';
 
   @override
   String get agentManageBots => 'إدارة أو إنشاء Bots';
@@ -7799,6 +7866,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get kanbanViewLog => 'عرض السجل';
 
   @override
+  String kanbanCreatedAt(Object time) {
+    return 'Created $time';
+  }
+
+  @override
+  String get kanbanTaskIdCopied => 'Task ID copied';
+
+  @override
   String get kanbanEstimate => 'تقدير';
 
   @override
@@ -9135,6 +9210,33 @@ class AppLocalizationsAr extends AppLocalizations {
   String kanbanTaskCreatedLinkFailed(String error) {
     return 'تم إنشاء المهمة، لكن تعذرت إضافة رابط المهمة الأصل: $error';
   }
+
+  @override
+  String get kanbanTaskContentSection => 'Task details';
+
+  @override
+  String get kanbanTaskArrangementSection => 'Assignment';
+
+  @override
+  String get kanbanTaskRuntimeSection => 'Runtime options';
+
+  @override
+  String get kanbanTaskRuntimeDescription =>
+      'Optional workspace, model, and task relationship settings';
+
+  @override
+  String get kanbanCreateTaskDescription =>
+      'Describe the work to complete, then choose its status and owner.';
+
+  @override
+  String get kanbanTaskTitleHint => 'Enter a clear, concise task name';
+
+  @override
+  String get kanbanTaskTitleRequired => 'Enter a task title';
+
+  @override
+  String get kanbanTaskDescriptionHint =>
+      'Add goals, acceptance criteria, or implementation notes';
 
   @override
   String get kanbanTaskStatus => 'الحالة';

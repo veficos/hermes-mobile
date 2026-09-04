@@ -10,6 +10,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import 'project_detail_screen.dart';
 
 class ProjectScreen extends StatefulWidget {
@@ -175,7 +176,7 @@ class _ProjectScreenState extends State<ProjectScreen>
       title: name,
       subtitle: subtitle.isEmpty ? context.l10n.projectWorkspace : subtitle,
       onTap: () => _openDetail(context, project),
-      trailing: PopupMenuButton<String>(
+      trailing: HermesAdaptiveMenuButton<String>(
         icon: const Icon(Icons.more_vert, size: 20),
         onSelected: (action) {
           switch (action) {

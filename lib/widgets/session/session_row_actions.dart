@@ -324,8 +324,14 @@ class SessionRowActions extends StatelessWidget {
         iconColor ??
         (isDark ? HermesText.darkTertiary : HermesText.lightTertiary);
     return InkWell(
-      onTap: () {
+      onTap: () async {
+        // Wait until the bottom-sheet route and its modal barrier have fully
+        // left the overlay before mutating the session list. Pinning can move
+        // the tapped row to another section immediately; doing that during
+        // the dismiss animation could orphan the grey barrier on phone UI.
+        final route = ModalRoute.of(context);
         Navigator.of(context).pop();
+        if (route != null) await route.completed;
         onTap();
       },
       child: Padding(
@@ -520,7 +526,6 @@ class SessionRowActions extends StatelessWidget {
     final sessionStore = context.read<SessionStore>();
     try {
       await sessionStore.setPinned(session.id, !session.pinned);
-      await onRefreshed?.call();
       if (context.mounted) {
         messenger.showSnackBar(
           SnackBar(

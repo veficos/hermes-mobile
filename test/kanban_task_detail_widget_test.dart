@@ -4,7 +4,7 @@ import 'package:hermes_mobile/kanban/api.dart';
 import 'package:hermes_mobile/kanban/models.dart';
 import 'package:hermes_mobile/kanban/store.dart';
 import 'package:hermes_mobile/core/api_client.dart';
-import 'package:hermes_mobile/widgets/kanban_task_detail_sheet.dart';
+import 'package:hermes_mobile/screens/kanban_task_detail_screen.dart';
 
 void main() {
   testWidgets('detail sheet renders mobile sections', (tester) async {
@@ -26,7 +26,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: KanbanTaskDetailSheet(initial: detail, store: store),
+          body: KanbanTaskDetailScreen(initial: detail, store: store),
         ),
       ),
     );
@@ -53,7 +53,7 @@ void main() {
         data: const MediaQueryData(viewInsets: EdgeInsets.only(bottom: 300)),
         child: MaterialApp(
           home: Scaffold(
-            body: KanbanTaskDetailSheet(initial: detail, store: store),
+            body: KanbanTaskDetailScreen(initial: detail, store: store),
           ),
         ),
       ),
@@ -71,17 +71,31 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: KanbanTaskDetailSheet(initial: detail, store: store),
+          body: KanbanTaskDetailScreen(initial: detail, store: store),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
+    // The home-channels section sits at the bottom of a now much taller
+    // page (proper section cards instead of a flat ListTile stack) — it's
+    // genuinely below the fold in the test's fixed viewport, so scroll it
+    // into view before asserting (find.text defaults to skipOffstage:true).
+    await tester.scrollUntilVisible(
+      find.text('无法加载 Home channel'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('无法加载 Home channel'), findsOneWidget);
     expect(find.textContaining('home unavailable'), findsOneWidget);
 
     await tester.tap(find.byTooltip('重试'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('telegram'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('telegram'), findsOneWidget);
     expect(find.text('chat-1'), findsOneWidget);
     store.dispose();
@@ -117,7 +131,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: KanbanTaskDetailSheet(initial: detail, store: store),
+          body: KanbanTaskDetailScreen(initial: detail, store: store),
         ),
       ),
     );

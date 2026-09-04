@@ -145,7 +145,9 @@ class _MemoryScreenState extends State<MemoryScreen>
     }
   }
 
-  Future<void> _configureProvider(String name) async {
+  Future<void> _configureProvider(Map<String, dynamic> provider) async {
+    final name = (provider['name'] ?? '').toString();
+    if (name.isEmpty) return;
     final connection = context.read<ConnectionStore>();
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
@@ -154,8 +156,12 @@ class _MemoryScreenState extends State<MemoryScreen>
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) =>
-          _MemoryProviderSheet(api: api, provider: name, profile: _profile),
+      builder: (_) => _MemoryProviderSheet(
+        api: api,
+        provider: name,
+        providerInfo: provider,
+        profile: _profile,
+      ),
     );
     if (changed == true &&
         mounted &&
@@ -480,7 +486,7 @@ class _MemoryScreenState extends State<MemoryScreen>
       tone: selected ? HermesSemantic.green : HermesSemantic.gray,
       title: name,
       subtitle: description,
-      onTap: name.isEmpty ? null : () => _configureProvider(name),
+      onTap: name.isEmpty ? null : () => _configureProvider(provider),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -496,7 +502,7 @@ class _MemoryScreenState extends State<MemoryScreen>
             ),
           IconButton(
             tooltip: context.l10n.memoryConfigureProvider(name),
-            onPressed: name.isEmpty ? null : () => _configureProvider(name),
+            onPressed: name.isEmpty ? null : () => _configureProvider(provider),
             icon: const Icon(Icons.tune, size: 19),
           ),
           if (!selected)
@@ -621,11 +627,13 @@ class _MemoryScreenState extends State<MemoryScreen>
 class _MemoryProviderSheet extends StatefulWidget {
   final ApiClient api;
   final String provider;
+  final Map<String, dynamic> providerInfo;
   final String? profile;
 
   const _MemoryProviderSheet({
     required this.api,
     required this.provider,
+    required this.providerInfo,
     required this.profile,
   });
 
@@ -640,8 +648,11 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
   final Map<String, TextEditingController> _controllers = {};
   String? _configError;
   String? _oauthError;
-  bool _oauthSupported = true;
+  bool _oauthSupported = false;
   bool _saving = false;
+  bool _setupBusy = false;
+  List<Map<String, dynamic>>? _setupResults;
+  Map<String, dynamic>? _setupOverride;
   bool _pollInFlight = false;
   Timer? _poller;
   DateTime? _pollDeadline;
@@ -693,6 +704,9 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
       _config = null;
       _oauth = null;
       _saving = false;
+      _setupBusy = false;
+      _setupResults = null;
+      _setupOverride = null;
       _configError = context.l10n.backendDisconnected;
       _oauthError = null;
     });
@@ -761,10 +775,51 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
           .map((value) => value.cast<String, dynamic>())
           .toList();
 
+  Map<String, dynamic> get _formValues => {
+    for (final field in _fields)
+      if ((field['key']?.toString() ?? '').isNotEmpty)
+        field['key'].toString(): _fieldValue(field),
+  };
+
+  bool _isVisible(Map<String, dynamic> field) {
+    final when = field['when'];
+    if (when is! Map || when.isEmpty) return true;
+    final values = _formValues;
+    return when.entries.every(
+      (entry) => '${values[entry.key.toString()] ?? ''}' == '${entry.value}',
+    );
+  }
+
+  Object? _fieldValue(Map<String, dynamic> field) {
+    final key = field['key']?.toString() ?? '';
+    final raw = _controllers[key]?.text ?? '';
+    switch (field['kind']?.toString()) {
+      case 'bool':
+      case 'boolean':
+        return raw == 'true';
+      case 'integer':
+        return int.tryParse(raw.trim()) ?? raw.trim();
+      case 'number':
+        return num.tryParse(raw.trim()) ?? raw.trim();
+      case 'json':
+        if (raw.trim().isEmpty) return '';
+        try {
+          return jsonDecode(raw);
+        } catch (_) {
+          // Keep partially edited JSON renderable. [_save] performs the
+          // authoritative validation before anything reaches the server.
+          return raw;
+        }
+      default:
+        return raw;
+    }
+  }
+
   Future<void> _save() async {
     if (!_ownsTarget()) return;
-    final values = <String, String>{};
+    final values = <String, Object?>{};
     for (final field in _fields) {
+      if (!_isVisible(field)) continue;
       final key = field['key']?.toString() ?? '';
       final value = _controllers[key]?.text ?? '';
       if (field['kind'] == 'secret' && value.trim().isEmpty) continue;
@@ -780,7 +835,17 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
           return;
         }
       }
-      values[key] = value;
+      if ((field['kind'] == 'integer' || field['kind'] == 'number') &&
+          value.trim().isNotEmpty &&
+          num.tryParse(value.trim()) == null) {
+        showHermesToast(
+          context,
+          message: context.l10n.memoryInvalidNumber('${field['label'] ?? key}'),
+          kind: HermesToastKind.error,
+        );
+        return;
+      }
+      values[key] = _fieldValue(field);
     }
     setState(() => _saving = true);
     try {
@@ -789,6 +854,7 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
         widget.provider,
         values,
         profile: widget.profile,
+        surface: _config?['_surface']?.toString(),
       );
       _requireTarget();
       if (!mounted) return;
@@ -799,7 +865,7 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
       );
       Navigator.pop(context, true);
     } catch (error) {
-      if (_ownsTarget()) {
+      if (mounted && _ownsTarget()) {
         showHermesToast(
           context,
           message: context.l10n.memoryProviderSaveFailed('$error'),
@@ -808,6 +874,67 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
       }
     } finally {
       if (_ownsTarget()) setState(() => _saving = false);
+    }
+  }
+
+  Map<String, dynamic> get _setup =>
+      _setupOverride ??
+      (widget.providerInfo['setup'] as Map?)?.cast<String, dynamic>() ??
+      (_config?['setup'] as Map?)?.cast<String, dynamic>() ??
+      const {};
+
+  bool get _hasSetupDetails =>
+      (_setup['pip_dependencies'] as List? ?? const []).isNotEmpty ||
+      (_setup['external_dependencies'] as List? ?? const []).isNotEmpty ||
+      (_setup['required_env'] as List? ?? const []).isNotEmpty;
+
+  bool get _needsSetup =>
+      _hasSetupDetails && _setup['dependencies_installed'] != true;
+
+  Future<void> _runSetup() async {
+    if (!_ownsTarget()) return;
+    setState(() {
+      _setupBusy = true;
+      _setupResults = null;
+    });
+    try {
+      _requireTarget();
+      final result = await widget.api.setupMemoryProvider(
+        widget.provider,
+        profile: widget.profile,
+      );
+      _requireTarget();
+      if (!mounted) return;
+      final rows = (result['results'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+      final status = result['status'];
+      setState(() {
+        _setupResults = rows;
+        if (status is Map && status['setup'] is Map) {
+          _setupOverride = (status['setup'] as Map).cast<String, dynamic>();
+        }
+      });
+      final failed = rows.any((row) => row['status'] == 'failed');
+      showHermesToast(
+        context,
+        message: failed
+            ? context.l10n.memorySetupFailed
+            : context.l10n.memorySetupFinished,
+        kind: failed ? HermesToastKind.error : HermesToastKind.success,
+      );
+      if (!failed) await _load();
+    } catch (error) {
+      if (mounted && _ownsTarget()) {
+        showHermesToast(
+          context,
+          message: context.l10n.memorySetupError('$error'),
+          kind: HermesToastKind.error,
+        );
+      }
+    } finally {
+      if (_ownsTarget()) setState(() => _setupBusy = false);
     }
   }
 
@@ -913,12 +1040,12 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
                           description: _configError,
                           onRetry: _load,
                         ),
+                      if (_needsSetup || _setupResults != null) _setupCard(),
+                      if (_needsSetup || _setupResults != null)
+                        const SizedBox(height: 16),
                       if (_oauthSupported) _oauthCard(),
                       if (_oauthSupported) const SizedBox(height: 16),
-                      for (final field in _fields) ...[
-                        _fieldControl(field),
-                        const SizedBox(height: 14),
-                      ],
+                      ..._fieldGroups(),
                       if (_fields.isEmpty && _configError == null)
                         HermesEmptyState(
                           icon: Icons.tune,
@@ -1016,17 +1143,114 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
     );
   }
 
+  List<Widget> _fieldGroups() {
+    final visible = _fields.where(_isVisible).toList();
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final field in visible) {
+      (groups[field['group']?.toString() ?? ''] ??= []).add(field);
+    }
+    return [
+      for (final entry in groups.entries) ...[
+        if (entry.key.isNotEmpty) ...[
+          HermesSectionHeader(title: entry.key),
+          const SizedBox(height: 8),
+        ],
+        for (final field in entry.value) ...[
+          _fieldControl(field),
+          const SizedBox(height: 14),
+        ],
+      ],
+    ];
+  }
+
+  Widget _setupCard() {
+    final pip = (_setup['pip_dependencies'] as List? ?? const [])
+        .map((value) => value.toString())
+        .where((value) => value.isNotEmpty)
+        .toList();
+    final requiredEnv = (_setup['required_env'] as List? ?? const [])
+        .map((value) => value.toString())
+        .where((value) => value.isNotEmpty)
+        .toList();
+    final external = (_setup['external_dependencies'] as List? ?? const [])
+        .whereType<Map>();
+    return HermesGlassCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.l10n.memoryProviderSetup,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(context.l10n.memoryProviderSetupDescription),
+          if (pip.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text('${context.l10n.memoryPythonDependencies}: ${pip.join(', ')}'),
+          ],
+          for (final dependency in external) ...[
+            const SizedBox(height: 8),
+            SelectableText(
+              [dependency['name'], dependency['install']]
+                  .where((value) => (value?.toString() ?? '').isNotEmpty)
+                  .join(': '),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          if (requiredEnv.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${context.l10n.memoryRequiredEnvironment}: ${requiredEnv.join(', ')}',
+            ),
+          ],
+          if (_setupResults != null) ...[
+            const SizedBox(height: 10),
+            for (final result in _setupResults!)
+              Text(
+                '${result['name'] ?? result['kind'] ?? ''}: ${result['status'] ?? ''}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+          ],
+          if (_needsSetup) ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _setupBusy ? null : _runSetup,
+              icon: _setupBusy
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.download_outlined),
+              label: Text(
+                _setupBusy
+                    ? context.l10n.memoryInstallingDependencies
+                    : context.l10n.memoryInstallDependencies,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _fieldControl(Map<String, dynamic> field) {
     final key = field['key']?.toString() ?? '';
     final kind = field['kind']?.toString() ?? 'text';
     final label = field['label']?.toString() ?? key;
     final description = field['description']?.toString() ?? '';
+    final info = field['info']?.toString() ?? '';
+    final help = [
+      description,
+      info,
+    ].where((value) => value.isNotEmpty).join('\n');
+    final displayLabel = field['required'] == true ? '$label *' : label;
     final controller = _controllers.putIfAbsent(key, TextEditingController.new);
-    if (kind == 'bool') {
+    if (kind == 'bool' || kind == 'boolean') {
       return SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: Text(label),
-        subtitle: description.isEmpty ? null : Text(description),
+        title: Text(displayLabel),
+        subtitle: help.isEmpty ? null : Text(help),
         value: controller.text == 'true',
         onChanged: (value) => setState(() => controller.text = '$value'),
       );
@@ -1039,11 +1263,20 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
       final values = options
           .map((option) => option['value']?.toString() ?? '')
           .toSet();
+      final selectedDescription = options
+          .where((option) => option['value']?.toString() == controller.text)
+          .map((option) => option['description']?.toString() ?? '')
+          .where((value) => value.isNotEmpty)
+          .firstOrNull;
+      final selectHelp = [
+        help,
+        selectedDescription ?? '',
+      ].where((value) => value.isNotEmpty).join('\n');
       return DropdownButtonFormField<String>(
         initialValue: values.contains(controller.text) ? controller.text : null,
         decoration: InputDecoration(
-          labelText: label,
-          helperText: description.isEmpty ? null : description,
+          labelText: displayLabel,
+          helperText: selectHelp.isEmpty ? null : selectHelp,
         ),
         items: [
           for (final option in options)
@@ -1052,23 +1285,38 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
               child: Text(option['label']?.toString() ?? ''),
             ),
         ],
-        onChanged: (value) => controller.text = value ?? '',
+        onChanged: (value) => setState(() => controller.text = value ?? ''),
       );
     }
     return TextField(
       controller: controller,
       obscureText: kind == 'secret',
-      keyboardType: kind == 'number'
-          ? const TextInputType.numberWithOptions(decimal: true, signed: true)
+      keyboardType: kind == 'number' || kind == 'integer'
+          ? TextInputType.numberWithOptions(
+              decimal: kind == 'number',
+              signed: true,
+            )
           : TextInputType.text,
       minLines: kind == 'json' ? 3 : 1,
       maxLines: kind == 'json' ? 8 : 1,
       decoration: InputDecoration(
-        labelText: label,
-        helperText: description.isEmpty ? null : description,
+        labelText: displayLabel,
+        helperText: help.isEmpty ? null : help,
         hintText: kind == 'secret' && field['is_set'] == true
             ? context.l10n.memoryKeepSecretHint
             : field['placeholder']?.toString(),
+        suffixIcon: (field['url']?.toString() ?? '').isEmpty
+            ? null
+            : IconButton(
+                tooltip: context.l10n.memoryViewProviderDocs,
+                onPressed: () {
+                  final uri = Uri.tryParse(field['url'].toString());
+                  if (uri != null) {
+                    unawaited(launchExternalOrNotify(context, uri));
+                  }
+                },
+                icon: const Icon(Icons.open_in_new, size: 18),
+              ),
       ),
     );
   }

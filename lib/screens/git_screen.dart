@@ -17,6 +17,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 
 class GitScreen extends StatefulWidget {
   /// Optional repo root to open directly (e.g. from a Project detail);
@@ -1122,7 +1123,7 @@ class _GitScreenState extends State<GitScreen>
             onPressed: _busy ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
-          PopupMenuButton<String>(
+          HermesAdaptiveMenuButton<String>(
             tooltip: context.l10n.commonMore,
             enabled: !_busy && _path.isNotEmpty,
             onSelected: (v) {

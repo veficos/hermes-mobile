@@ -15,6 +15,9 @@ class _MutableSessionApi extends ApiClient {
     : super(baseUrl: 'http://session-state.invalid', apiKey: 'test');
 
   List<SessionRow> rows;
+  int listRequests = 0;
+  String? pinnedId;
+  bool? pinnedValue;
 
   @override
   Future<SessionPage> listSessionsPage({
@@ -22,12 +25,21 @@ class _MutableSessionApi extends ApiClient {
     int offset = 0,
     bool includeArchived = false,
     String? profile,
-  }) async => SessionPage(
-    sessions: rows,
-    total: rows.length,
-    offset: offset,
-    hasMore: false,
-  );
+  }) async {
+    listRequests++;
+    return SessionPage(
+      sessions: rows,
+      total: rows.length,
+      offset: offset,
+      hasMore: false,
+    );
+  }
+
+  @override
+  Future<void> pinSession(String id, bool pinned, {String? profile}) async {
+    pinnedId = id;
+    pinnedValue = pinned;
+  }
 }
 
 class _EventConnection extends ConnectionStore {
@@ -51,6 +63,46 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('pin keeps the loaded list and updates only the target row', () async {
+    final api = _MutableSessionApi([
+      SessionRow(id: 'pin-me', title: 'Pinned target'),
+      SessionRow(id: 'keep-me', title: 'Visible sibling'),
+    ]);
+    final connection = _EventConnection(api);
+    final requests = RequestStore();
+    final chat = ChatStore();
+    final store = SessionStore(
+      connection: connection,
+      chat: chat,
+      requests: requests,
+      persistLastSession: false,
+    );
+    addTearDown(() {
+      store.dispose();
+      requests.dispose();
+      chat.dispose();
+      connection.dispose();
+    });
+
+    await store.refreshList();
+    expect(api.listRequests, 1);
+
+    // Simulate a backend projection that has not caught up yet. Pinning must
+    // not fetch this transient empty snapshot over the visible list.
+    api.rows = [];
+    await store.setPinned('pin-me', true);
+
+    expect(api.pinnedId, 'pin-me');
+    expect(api.pinnedValue, isTrue);
+    expect(api.listRequests, 1);
+    expect(store.sessions, hasLength(2));
+    expect(
+      store.sessions!.firstWhere((row) => row.id == 'pin-me').pinned,
+      isTrue,
+    );
+    expect(store.sessions!.any((row) => row.id == 'keep-me'), isTrue);
+  });
 
   test(
     'gateway activity and interactive requests project onto list rows',

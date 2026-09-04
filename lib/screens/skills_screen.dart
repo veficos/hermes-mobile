@@ -18,6 +18,7 @@ import '../l10n/l10n.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/profile_scope_selector.dart';
 import 'skill_hub_screen.dart';
 
@@ -254,7 +255,7 @@ class _SkillsScreenState extends State<SkillsScreen>
             onPressed: _openHub,
             icon: const Icon(Icons.storefront_outlined),
           ),
-          PopupMenuButton<String>(
+          HermesAdaptiveMenuButton<String>(
             enabled: !_bulkBusy && skills != null && skills.isNotEmpty,
             onSelected: (v) => _toggleAll(v == 'enable'),
             itemBuilder: (_) => [

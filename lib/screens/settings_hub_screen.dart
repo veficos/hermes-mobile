@@ -443,6 +443,164 @@ class _AppearanceEmbeddedPage extends StatelessWidget {
 class _AppearanceContent extends StatelessWidget {
   const _AppearanceContent();
 
+  String _nativeLanguageLabel(BuildContext context, String tag) {
+    return switch (tag) {
+      'en' => 'English',
+      'zh' => '简体中文',
+      'zh_Hant' => '繁體中文',
+      'ja' => '日本語',
+      'ar' => 'العربية',
+      _ => context.l10n.languageSystem,
+    };
+  }
+
+  Future<void> _chooseLanguage(BuildContext context, LocaleStore locale) async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final l10n = sheetContext.l10n;
+        final options =
+            <
+              ({
+                String tag,
+                String? badge,
+                IconData? badgeIcon,
+                String native,
+                String localized,
+              })
+            >[
+              (
+                tag: 'system',
+                badge: null,
+                badgeIcon: Icons.smartphone_outlined,
+                native: l10n.languageSystem,
+                localized: '',
+              ),
+              (
+                tag: 'en',
+                badge: 'EN',
+                badgeIcon: null,
+                native: 'English',
+                localized: l10n.languageEnglish,
+              ),
+              (
+                tag: 'zh',
+                badge: '简',
+                badgeIcon: null,
+                native: '简体中文',
+                localized: l10n.languageSimplifiedChinese,
+              ),
+              (
+                tag: 'zh_Hant',
+                badge: '繁',
+                badgeIcon: null,
+                native: '繁體中文',
+                localized: l10n.languageTraditionalChinese,
+              ),
+              (
+                tag: 'ja',
+                badge: '日',
+                badgeIcon: null,
+                native: '日本語',
+                localized: l10n.languageJapanese,
+              ),
+              (
+                tag: 'ar',
+                badge: 'ع',
+                badgeIcon: null,
+                native: 'العربية',
+                localized: l10n.languageArabic,
+              ),
+            ];
+        final palette = HermesPalette.of(sheetContext);
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: palette.accentBg,
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Icon(
+                          Icons.translate_rounded,
+                          color: palette.accent,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.languageTitle,
+                              style: Theme.of(sheetContext).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              l10n.languageDescription,
+                              style: Theme.of(sheetContext).textTheme.bodySmall
+                                  ?.copyWith(color: palette.text3),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton.filledTonal(
+                        tooltip: l10n.commonClose,
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: HermesMobileGroup(
+                        children: [
+                          for (final option in options)
+                            _LanguageOptionTile(
+                              key: ValueKey('language-option-${option.tag}'),
+                              badge: option.badge,
+                              badgeIcon: option.badgeIcon,
+                              title: option.native,
+                              subtitle:
+                                  option.localized.isNotEmpty &&
+                                      option.localized != option.native
+                                  ? option.localized
+                                  : null,
+                              selected: option.tag == locale.tag,
+                              onTap: () =>
+                                  Navigator.of(sheetContext).pop(option.tag),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (selected == null || !context.mounted || selected == locale.tag) return;
+    await locale.setLocale(LocaleStore.localeFromTag(selected));
+  }
+
   @override
   Widget build(BuildContext context) {
     final appearance = context.watch<AppearanceStore>();
@@ -453,46 +611,24 @@ class _AppearanceContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(l10n.languageTitle),
-          subtitle: Text(l10n.languageDescription),
-          trailing: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: locale.tag,
-              onChanged: (tag) {
-                if (tag != null) {
-                  locale.setLocale(LocaleStore.localeFromTag(tag));
-                }
-              },
-              items: [
-                DropdownMenuItem(
-                  value: 'system',
-                  child: Text(l10n.languageSystem),
+        HermesMobileGroup(
+          children: [
+            HermesMobileRow(
+              key: const ValueKey('appearance-language-picker'),
+              icon: Icons.translate_rounded,
+              title: l10n.languageTitle,
+              subtitle: l10n.languageDescription,
+              onTap: () => _chooseLanguage(context, locale),
+              trailing: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 150),
+                child: _CurrentLanguagePill(
+                  label: _nativeLanguageLabel(context, locale.tag),
                 ),
-                DropdownMenuItem(
-                  value: 'en',
-                  child: Text(l10n.languageEnglish),
-                ),
-                DropdownMenuItem(
-                  value: 'zh',
-                  child: Text(l10n.languageSimplifiedChinese),
-                ),
-                DropdownMenuItem(
-                  value: 'zh_Hant',
-                  child: Text(l10n.languageTraditionalChinese),
-                ),
-                DropdownMenuItem(
-                  value: 'ja',
-                  child: Text(l10n.languageJapanese),
-                ),
-                DropdownMenuItem(value: 'ar', child: Text(l10n.languageArabic)),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
-        const Divider(),
-        const SizedBox(height: HermesSpacing.sm),
+        const SizedBox(height: HermesSpacing.lg),
         SegmentedButton<ThemeMode>(
           segments: [
             ButtonSegment(
@@ -573,6 +709,170 @@ class _AppearanceContent extends StatelessWidget {
           onChanged: appearance.setKeepAwake,
         ),
       ],
+    );
+  }
+}
+
+class _LanguageBadge extends StatelessWidget {
+  const _LanguageBadge({this.label, this.icon, required this.selected});
+
+  /// Script/region letter (EN, 简, 繁, 日, ع) for a real language. Mutually
+  /// exclusive with [icon] — the "follow system" option isn't a language
+  /// and reads as one more confusingly than any other single letter would,
+  /// so it gets an actual icon instead of a badge that looks like a stray
+  /// abbreviation among the others.
+  final String? label;
+  final IconData? icon;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    // Fixed square regardless of label length — HermesMobileRow's own
+    // leading icon badge is 31px, and without a fixed size here 'EN' (2
+    // Latin letters) rendered a visibly wider box than '简'/'繁'/'日'/'ع'
+    // (1 wide CJK/Arabic glyph), breaking the list's column alignment.
+    return SizedBox.square(
+      dimension: 31,
+      child: AnimatedContainer(
+        duration: HermesMotion.fast,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? palette.accent : palette.accentBg,
+          borderRadius: BorderRadius.circular(HermesMobileMetrics.iconRadius),
+        ),
+        child: icon != null
+            ? Icon(
+                icon,
+                size: 17,
+                color: selected ? Colors.white : palette.accent,
+              )
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: Text(
+                    label ?? '',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: selected ? Colors.white : palette.accent,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _CurrentLanguagePill extends StatelessWidget {
+  const _CurrentLanguagePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 7, 6),
+      decoration: BoxDecoration(
+        color: palette.accentBg,
+        borderRadius: BorderRadius.circular(HermesRadius.capsule),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: palette.accent,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Icon(Icons.expand_more_rounded, size: 17, color: palette.accent),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguageOptionTile extends StatelessWidget {
+  const _LanguageOptionTile({
+    super.key,
+    this.badge,
+    this.badgeIcon,
+    required this.title,
+    required this.selected,
+    required this.onTap,
+    this.subtitle,
+  });
+
+  final String? badge;
+  final IconData? badgeIcon;
+  final String title;
+  final String? subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: selected
+          ? colors.primaryContainer.withValues(alpha: .42)
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(14, 11, 12, 11),
+          child: Row(
+            children: [
+              _LanguageBadge(label: badge, icon: badgeIcon, selected: selected),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: palette.text3),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: selected ? colors.primary : palette.text4,
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import '../../core/stores/voice_store.dart';
 import '../../core/stores/wake_word_store.dart';
 import '../../l10n/l10n.dart';
+import '../mobile/hermes_adaptive_menu.dart';
 
 class HermesVoiceMenu extends StatelessWidget {
   final VoiceStore voice;
   final VoidCallback onDictate;
   final VoidCallback onToggleContinuous;
   final VoidCallback onToggleAutoSpeak;
+  final EdgeInsetsGeometry padding;
+  final BoxConstraints? constraints;
+  final double? iconSize;
 
   const HermesVoiceMenu({
     super.key,
@@ -16,6 +20,9 @@ class HermesVoiceMenu extends StatelessWidget {
     required this.onDictate,
     required this.onToggleContinuous,
     required this.onToggleAutoSpeak,
+    this.padding = const EdgeInsets.all(8),
+    this.constraints,
+    this.iconSize,
   });
 
   @override
@@ -34,8 +41,11 @@ class HermesVoiceMenu extends StatelessWidget {
         wake?.detection != null;
     final armed = !capturing && wake?.listening == true;
     final theme = Theme.of(context);
-    return PopupMenuButton<String>(
+    return HermesAdaptiveMenuButton<String>(
       tooltip: context.l10n.voiceMenu,
+      padding: padding,
+      constraints: constraints,
+      iconSize: iconSize,
       icon: Icon(
         capturing
             ? Icons.graphic_eq

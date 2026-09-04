@@ -56,6 +56,12 @@ def test_memory_provider_and_curator_routes_proxy_canonical_contracts():
             headers=AUTH,
         ).status_code == 200
         assert client.post(
+            "/api/v1/memory/providers/honcho/setup",
+            params={"profile": "work"},
+            json={"values": {}},
+            headers=AUTH,
+        ).status_code == 200
+        assert client.post(
             "/api/v1/memory/reset",
             params={"profile": "work"},
             json={"target": "user"},
@@ -100,9 +106,21 @@ def test_memory_provider_and_curator_routes_proxy_canonical_contracts():
         ),
         (
             "POST",
+            "/api/memory/providers/honcho/setup",
+            {"profile": "work"},
+            {"values": {}},
+        ),
+        (
+            "POST",
             "/api/memory/reset",
             {"profile": "work"},
             {"target": "user"},
+        ),
+        (
+            "GET",
+            "/api/memory/providers/honcho/config",
+            {"profile": "work"},
+            None,
         ),
         (
             "GET",
@@ -113,7 +131,7 @@ def test_memory_provider_and_curator_routes_proxy_canonical_contracts():
         (
             "PUT",
             "/api/memory/providers/honcho/config",
-            {"surface": "declared", "profile": "work"},
+            {"profile": "work"},
             {"values": {"apiKey": "secret"}},
         ),
         (

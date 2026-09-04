@@ -16,6 +16,7 @@ import '../../core/stores/file_tree_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
 import '../h/hermes_states.dart';
+import '../mobile/hermes_adaptive_menu.dart';
 
 class FileTreePanel extends StatefulWidget {
   /// 附加文件到 composer 的回调（Shift+Click 或菜单选择）
@@ -87,41 +88,63 @@ class _FileTreePanelState extends State<FileTreePanel>
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
       child: Row(
         children: [
-          Text(
-            context.l10n.workspacePaneFiles,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
+          Expanded(
+            child: Text(
+              context.l10n.workspacePaneFiles,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
-          const Spacer(),
-          IconButton(
-            tooltip: store.treeMode
-                ? context.l10n.fileTreeListView
-                : context.l10n.fileTreeTreeView,
-            icon: Icon(
-              store.treeMode ? Icons.view_list : Icons.account_tree_outlined,
-              size: 18,
+          SizedBox.square(
+            dimension: 36,
+            child: IconButton(
+              tooltip: context.l10n.commonRefresh,
+              icon: const Icon(Icons.refresh, size: 18),
+              onPressed: store.refresh,
+              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
             ),
-            onPressed: store.toggleTreeMode,
-            padding: const EdgeInsets.all(4),
-            constraints: const BoxConstraints(),
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: context.l10n.filesNewFolder,
-            icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-            onPressed: () => _showNewFolderDialog(context, store),
-            padding: const EdgeInsets.all(4),
-            constraints: const BoxConstraints(),
-          ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            icon: const Icon(Icons.refresh, size: 18),
-            onPressed: store.refresh,
-            padding: const EdgeInsets.all(4),
-            constraints: const BoxConstraints(),
+          HermesAdaptiveMenuButton<String>(
+            tooltip: context.l10n.commonMore,
+            icon: const Icon(Icons.more_horiz, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+            onSelected: (value) {
+              if (value == 'view') store.toggleTreeMode();
+              if (value == 'folder') _showNewFolderDialog(context, store);
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'view',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    store.treeMode
+                        ? Icons.view_list
+                        : Icons.account_tree_outlined,
+                  ),
+                  title: Text(
+                    store.treeMode
+                        ? context.l10n.fileTreeListView
+                        : context.l10n.fileTreeTreeView,
+                  ),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'folder',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.create_new_folder_outlined),
+                  title: Text(context.l10n.filesNewFolder),
+                ),
+              ),
+            ],
           ),
         ],
       ),

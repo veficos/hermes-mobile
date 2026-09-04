@@ -5698,6 +5698,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String memoryInvalidNumber(Object field) {
+    return '$field 不是有效数字';
+  }
+
+  @override
   String get memoryProviderSaved => '提供方配置已保存';
 
   @override
@@ -5747,6 +5752,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get memoryKeepSecretHint => '留空以保留当前值';
 
   @override
+  String get memoryProviderSetup => '提供方运行环境';
+
+  @override
+  String get memoryProviderSetupDescription =>
+      '此提供方需要先在 Hermes Server 上安装依赖。安装操作作用于服务端运行环境。';
+
+  @override
+  String get memoryPythonDependencies => 'Python 依赖';
+
+  @override
+  String get memoryRequiredEnvironment => '所需环境变量';
+
+  @override
+  String get memoryInstallDependencies => '安装提供方依赖';
+
+  @override
+  String get memoryInstallingDependencies => '正在安装…';
+
+  @override
+  String get memorySetupFinished => '提供方依赖安装完成';
+
+  @override
+  String get memorySetupFailed => '部分提供方依赖安装失败，请查看结果';
+
+  @override
+  String memorySetupError(Object error) {
+    return '安装提供方依赖失败：$error';
+  }
+
+  @override
   String agentOpenBotFailed(Object error) {
     return '无法打开 Bot Chat：$error';
   }
@@ -5759,6 +5794,20 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get agentGroupName => '群聊名称';
+
+  @override
+  String get agentSelectMembers => '选择成员';
+
+  @override
+  String agentGroupMemberCount(Object count, Object max) {
+    return '已选择 $count/$max 位';
+  }
+
+  @override
+  String get agentSearchBots => '搜索机器人';
+
+  @override
+  String get agentSearchNoMatches => '没有匹配的机器人';
 
   @override
   String agentGroupSaveFailed(Object error) {
@@ -5849,6 +5898,23 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get agentNoData => '暂无数据';
+
+  @override
+  String get agentBotDirectoryTitle => '机器人中心';
+
+  @override
+  String agentBotDirectorySummary(int bots, int groups) {
+    return '$bots 个机器人 · $groups 个群聊';
+  }
+
+  @override
+  String get agentStopped => '已停止';
+
+  @override
+  String get agentGroupChatsSection => '群聊';
+
+  @override
+  String get agentIndividualBotsSection => '机器人';
 
   @override
   String get agentManageBots => '管理 / 新建 Bot';
@@ -7649,6 +7715,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get kanbanViewLog => '查看日志';
 
   @override
+  String kanbanCreatedAt(Object time) {
+    return '创建于 $time';
+  }
+
+  @override
+  String get kanbanTaskIdCopied => '任务 ID 已复制';
+
+  @override
   String get kanbanEstimate => '估算';
 
   @override
@@ -8961,6 +9035,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String kanbanTaskCreatedLinkFailed(String error) {
     return '任务已创建，但添加父任务链接失败：$error';
   }
+
+  @override
+  String get kanbanTaskContentSection => '任务内容';
+
+  @override
+  String get kanbanTaskArrangementSection => '任务安排';
+
+  @override
+  String get kanbanTaskRuntimeSection => '运行配置';
+
+  @override
+  String get kanbanTaskRuntimeDescription => '工作区、模型和关联任务等可选设置';
+
+  @override
+  String get kanbanCreateTaskDescription => '描述需要完成的工作，并为任务设置合适的状态和负责人。';
+
+  @override
+  String get kanbanTaskTitleHint => '输入清晰、简短的任务名称';
+
+  @override
+  String get kanbanTaskTitleRequired => '请输入任务标题';
+
+  @override
+  String get kanbanTaskDescriptionHint => '补充目标、验收标准或实现要求';
 
   @override
   String get kanbanTaskStatus => '状态';

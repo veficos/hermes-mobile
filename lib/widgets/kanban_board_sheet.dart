@@ -3,6 +3,7 @@ import '../kanban/api.dart';
 import '../kanban/models.dart';
 import '../kanban/store.dart';
 import '../l10n/l10n.dart';
+import 'mobile/hermes_adaptive_menu.dart';
 
 Future<void> showKanbanBoardSheet(
   BuildContext context,
@@ -24,11 +25,34 @@ Future<void> showKanbanBoardSheet(
     return;
   }
   if (!context.mounted) return;
-  await showModalBottomSheet<void>(
+  final selectedSlug = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
     builder: (sheet) => _BoardSheet(store: store, api: api),
   );
+  if (selectedSlug == null || !context.mounted) return;
+
+  // The picker must be completely dismissed before switching boards. A board
+  // switch may wait for both HTTP data and an event-stream reconnect; keeping
+  // the modal route open during that work leaves a full-screen grey barrier
+  // over the Kanban page and makes the app appear frozen on slow networks.
+  try {
+    await store.selectBoard(selectedSlug, expectedApi: api);
+    if (!context.mounted) return;
+    if (store.error case final error?) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(context.l10n.kanbanOperationFailed(error))),
+      );
+    }
+  } catch (error) {
+    if (context.mounted) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(context.l10n.kanbanOperationFailed('$error'))),
+      );
+    }
+  }
 }
 
 class _BoardSheet extends StatefulWidget {
@@ -205,61 +229,50 @@ class _BoardSheetState extends State<_BoardSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        ListTile(
-          leading: const Icon(Icons.add),
-          title: Text(context.l10n.kanbanCreateBoard),
-          onTap: busy ? null : _create,
-        ),
-        for (final board in widget.store.boardList)
+  Widget build(BuildContext context) => FractionallySizedBox(
+    heightFactor: 0.72,
+    child: SafeArea(
+      top: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        children: [
           ListTile(
-            title: Text(board.label),
-            subtitle: Text(
-              board.projectName == null
-                  ? context.l10n.kanbanBoardTaskCount(board.total ?? 0)
-                  : context.l10n.kanbanBoardTaskCountProject(
-                      board.total ?? 0,
-                      board.projectName!,
-                    ),
-            ),
-            leading: board.current
-                ? const Icon(Icons.check_circle)
-                : const Icon(Icons.dashboard_outlined),
-            onTap: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              await widget.store.selectBoard(board.slug, expectedApi: _api);
-              if (!context.mounted) return;
-              if (widget.store.error != null) {
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      context.l10n.kanbanOperationFailed(widget.store.error!),
-                    ),
-                  ),
-                );
-                return;
-              }
-              Navigator.pop(context);
-            },
-            trailing: PopupMenuButton<String>(
-              onSelected: (v) => v == 'edit' ? _edit(board) : _delete(board),
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'edit',
-                  child: Text(context.l10n.kanbanRenameBoard),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  enabled: !board.current,
-                  child: Text(context.l10n.commonDelete),
-                ),
-              ],
-            ),
+            leading: const Icon(Icons.add),
+            title: Text(context.l10n.kanbanCreateBoard),
+            onTap: busy ? null : _create,
           ),
-      ],
+          for (final board in widget.store.boardList)
+            ListTile(
+              title: Text(board.label),
+              subtitle: Text(
+                board.projectName == null
+                    ? context.l10n.kanbanBoardTaskCount(board.total ?? 0)
+                    : context.l10n.kanbanBoardTaskCountProject(
+                        board.total ?? 0,
+                        board.projectName!,
+                      ),
+              ),
+              leading: board.current
+                  ? const Icon(Icons.check_circle)
+                  : const Icon(Icons.dashboard_outlined),
+              onTap: busy ? null : () => Navigator.pop(context, board.slug),
+              trailing: HermesAdaptiveMenuButton<String>(
+                onSelected: (v) => v == 'edit' ? _edit(board) : _delete(board),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Text(context.l10n.kanbanRenameBoard),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    enabled: !board.current,
+                    child: Text(context.l10n.commonDelete),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     ),
   );
 }

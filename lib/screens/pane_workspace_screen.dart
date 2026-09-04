@@ -21,6 +21,7 @@ import '../core/stores/terminal_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/plugin_contribution_views.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/right_sidebar/git_review_panel.dart';
 import '../widgets/right_sidebar/terminal_panel.dart';
@@ -40,7 +41,7 @@ class PaneWorkspaceScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(l10n.workspaceTitle),
         actions: [
-          PopupMenuButton<WorkspacePaneKind>(
+          HermesAdaptiveMenuButton<WorkspacePaneKind>(
             tooltip: l10n.workspaceAddPaneTooltip,
             icon: const Icon(Icons.add_box_outlined),
             onSelected: (kind) => _openCorePane(context, store, kind),
@@ -73,7 +74,7 @@ class PaneWorkspaceScreen extends StatelessWidget {
             ],
           ),
           if (!store.isEmpty)
-            PopupMenuButton<WorkspaceLayoutPreset>(
+            HermesAdaptiveMenuButton<WorkspaceLayoutPreset>(
               tooltip: l10n.workspaceApplyLayoutTooltip,
               icon: const Icon(Icons.dashboard_customize_outlined),
               onSelected: store.applyLayoutPreset,
@@ -398,7 +399,7 @@ class _PaneTab extends StatelessWidget {
                   style: Theme.of(context).textTheme.labelMedium,
                 ),
               ),
-              PopupMenuButton<PaneDropPosition>(
+              HermesAdaptiveMenuButton<PaneDropPosition>(
                 tooltip: context.l10n.workspaceLayoutTooltip,
                 padding: EdgeInsets.zero,
                 icon: const Icon(Icons.grid_view_outlined, size: 14),

@@ -1295,7 +1295,13 @@ class ChatStore extends ChangeNotifier {
       final sid = e.sessionId?.isNotEmpty == true
           ? e.sessionId
           : owner?.runtimeId;
-      if (sid != null && sid.isNotEmpty && current != null && sid != current) {
+      // See attachRoutedEvents: some requests stamp session_id with the
+      // durable id rather than the runtime id — accept either.
+      if (sid != null &&
+          sid.isNotEmpty &&
+          current != null &&
+          sid != current &&
+          sid != _durableSessionIdOf?.call()) {
         _backgroundAssembler(sid)._handleEvent(e);
         if (_streamEndEvents.contains(e.type)) _legacyStreamPin = null;
         return;
@@ -1343,8 +1349,21 @@ class ChatStore extends ChangeNotifier {
           ? event.sessionId
           : pinned?.runtimeId;
       final profile = event.profile ?? pinned?.profile ?? routed.route.profile;
+      // Some server-side request flows (approval.request in particular)
+      // stamp `session_id` with the durable/stored session id rather than
+      // the live runtime id everything else here uses — comparing only
+      // against `current` (the runtime id) then always misroutes those
+      // events to the background assembler, so an approval that arrives
+      // for the foreground session never renders inline and the "pop up"
+      // never happens. RequestStore's own scope matching already accepts
+      // either id (see _matchesScope); mirror that here.
+      final currentDurableId = _durableSessionIdOf?.call();
       final isForeground =
-          (sid == null || sid.isEmpty || current == null || sid == current) &&
+          (sid == null ||
+              sid.isEmpty ||
+              current == null ||
+              sid == current ||
+              sid == currentDurableId) &&
           (profile == null ||
               profile.isEmpty ||
               currentProfile == null ||

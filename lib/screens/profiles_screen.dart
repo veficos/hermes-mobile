@@ -25,6 +25,7 @@ import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 
 extension _OptionalProfileScope on BuildContext {
   ProfileScopeStore? get profileScopeOrNull {
@@ -674,7 +675,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
               onPressed: () => _setActive(p),
               child: Text(context.l10n.profilesActivate),
             ),
-          PopupMenuButton<String>(
+          HermesAdaptiveMenuButton<String>(
             onSelected: (v) {
               switch (v) {
                 case 'soul':

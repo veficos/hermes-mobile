@@ -1057,4 +1057,91 @@ void main() {
       expect(requests.current!.questions.single.question, '选择环境');
     });
   });
+
+  group('chat routed-event foreground scoping', () {
+    // The real app only ever wires ChatStore via attachRoutedEvents (see
+    // main.dart) — the plain attachEvents() path above is test-only and
+    // never hit this bug, which is exactly why it went unnoticed.
+    late StreamController<RoutedGatewayEvent> routed;
+    late ChatStore chat;
+    const route = OwnerRoute(
+      connectionId: ConnectionId('primary'),
+      profile: 'default',
+    );
+
+    setUp(() {
+      routed = StreamController<RoutedGatewayEvent>();
+      chat = ChatStore()
+        ..bindSessionSource(() => 'runtime-a')
+        ..bindDurableSessionSource(() => 'durable-a')
+        ..bindProfileSource(() => 'default')
+        ..bindOwnerRouteSource(() => route)
+        ..attachRoutedEvents(routed.stream);
+    });
+
+    tearDown(() async {
+      chat.dispose();
+      await routed.close();
+    });
+
+    Future<void> emitRouted(String type, Map<String, dynamic> payload, {String? sessionId}) async {
+      routed.add(
+        RoutedGatewayEvent(
+          route: route,
+          socketGeneration: 1,
+          event: GatewayEvent(
+            type: type,
+            payload: payload,
+            sessionId: sessionId,
+            profile: 'default',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    test(
+      'approval.request stamped with the durable session id still renders '
+      'inline for the open (foreground) session instead of being routed to '
+      'the background assembler',
+      () async {
+        await emitRouted('message.start', const {}, sessionId: 'runtime-a');
+        // Some server-side request flows stamp session_id with the durable/
+        // stored id rather than the live runtime id everything else here
+        // uses. Before the fix, comparing only against the runtime id
+        // misrouted this straight to the background assembler, so the
+        // approval card never appeared in the open chat at all.
+        await emitRouted(
+          'approval.request',
+          const {'request_id': 'a1', 'command': 'rm -rf /'},
+          sessionId: 'durable-a',
+        );
+
+        expect(chat.streamingMessage, isNotNull);
+        final interaction = chat.streamingMessage!.parts.singleWhere(
+          (part) => part.kind == 'interaction',
+        );
+        expect(interaction.interaction!['request_id'], 'a1');
+        expect(interaction.interaction!['event_type'], 'approval.request');
+      },
+    );
+
+    test(
+      'a genuinely different session\'s approval.request stays out of the '
+      'foreground transcript',
+      () async {
+        await emitRouted('message.start', const {}, sessionId: 'runtime-a');
+        await emitRouted(
+          'approval.request',
+          const {'request_id': 'a2', 'command': 'rm -rf /'},
+          sessionId: 'some-other-session',
+        );
+
+        final interactions =
+            chat.streamingMessage?.parts.where((p) => p.kind == 'interaction') ??
+            const [];
+        expect(interactions, isEmpty);
+      },
+    );
+  });
 }

@@ -14,6 +14,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 
 const _exampleProviderEndpoint = 'https://api.example.com/v1';
@@ -1326,7 +1327,7 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
                     subtitle: Text(
                       (row['base_url'] ?? row['url'] ?? '').toString(),
                     ),
-                    trailing: PopupMenuButton<String>(
+                    trailing: HermesAdaptiveMenuButton<String>(
                       onSelected: (action) async {
                         if (!ownsRenderedTarget()) return;
                         final id = '${row['id'] ?? ''}';

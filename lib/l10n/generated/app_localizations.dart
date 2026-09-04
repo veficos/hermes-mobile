@@ -10175,6 +10175,12 @@ abstract class AppLocalizations {
   /// **'{field} is not valid JSON'**
   String memoryInvalidJson(Object field);
 
+  /// No description provided for @memoryInvalidNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'{field} is not a valid number'**
+  String memoryInvalidNumber(Object field);
+
   /// No description provided for @memoryProviderSaved.
   ///
   /// In en, this message translates to:
@@ -10265,6 +10271,60 @@ abstract class AppLocalizations {
   /// **'Leave blank to keep the current value'**
   String get memoryKeepSecretHint;
 
+  /// No description provided for @memoryProviderSetup.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider runtime'**
+  String get memoryProviderSetup;
+
+  /// No description provided for @memoryProviderSetupDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'This provider needs dependencies installed in Hermes Server before it can run.'**
+  String get memoryProviderSetupDescription;
+
+  /// No description provided for @memoryPythonDependencies.
+  ///
+  /// In en, this message translates to:
+  /// **'Python dependencies'**
+  String get memoryPythonDependencies;
+
+  /// No description provided for @memoryRequiredEnvironment.
+  ///
+  /// In en, this message translates to:
+  /// **'Required environment values'**
+  String get memoryRequiredEnvironment;
+
+  /// No description provided for @memoryInstallDependencies.
+  ///
+  /// In en, this message translates to:
+  /// **'Install provider dependencies'**
+  String get memoryInstallDependencies;
+
+  /// No description provided for @memoryInstallingDependencies.
+  ///
+  /// In en, this message translates to:
+  /// **'Installing...'**
+  String get memoryInstallingDependencies;
+
+  /// No description provided for @memorySetupFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider dependencies installed'**
+  String get memorySetupFinished;
+
+  /// No description provided for @memorySetupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Some provider dependencies failed to install. Review the results.'**
+  String get memorySetupFailed;
+
+  /// No description provided for @memorySetupError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not install provider dependencies: {error}'**
+  String memorySetupError(Object error);
+
   /// No description provided for @agentOpenBotFailed.
   ///
   /// In en, this message translates to:
@@ -10288,6 +10348,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Group chat name'**
   String get agentGroupName;
+
+  /// No description provided for @agentSelectMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'Select members'**
+  String get agentSelectMembers;
+
+  /// No description provided for @agentGroupMemberCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count}/{max} selected'**
+  String agentGroupMemberCount(Object count, Object max);
+
+  /// No description provided for @agentSearchBots.
+  ///
+  /// In en, this message translates to:
+  /// **'Search bots'**
+  String get agentSearchBots;
+
+  /// No description provided for @agentSearchNoMatches.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching bots'**
+  String get agentSearchNoMatches;
 
   /// No description provided for @agentGroupSaveFailed.
   ///
@@ -10432,6 +10516,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No data'**
   String get agentNoData;
+
+  /// No description provided for @agentBotDirectoryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bot Center'**
+  String get agentBotDirectoryTitle;
+
+  /// No description provided for @agentBotDirectorySummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{bots} bots · {groups} groups'**
+  String agentBotDirectorySummary(int bots, int groups);
+
+  /// No description provided for @agentStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped'**
+  String get agentStopped;
+
+  /// No description provided for @agentGroupChatsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Group chats'**
+  String get agentGroupChatsSection;
+
+  /// No description provided for @agentIndividualBotsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Bots'**
+  String get agentIndividualBotsSection;
 
   /// No description provided for @agentManageBots.
   ///
@@ -13547,6 +13661,18 @@ abstract class AppLocalizations {
   /// **'View log'**
   String get kanbanViewLog;
 
+  /// No description provided for @kanbanCreatedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Created {time}'**
+  String kanbanCreatedAt(Object time);
+
+  /// No description provided for @kanbanTaskIdCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Task ID copied'**
+  String get kanbanTaskIdCopied;
+
   /// No description provided for @kanbanEstimate.
   ///
   /// In en, this message translates to:
@@ -15832,6 +15958,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Task created, but the parent link could not be added: {error}'**
   String kanbanTaskCreatedLinkFailed(String error);
+
+  /// No description provided for @kanbanTaskContentSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Task details'**
+  String get kanbanTaskContentSection;
+
+  /// No description provided for @kanbanTaskArrangementSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Assignment'**
+  String get kanbanTaskArrangementSection;
+
+  /// No description provided for @kanbanTaskRuntimeSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Runtime options'**
+  String get kanbanTaskRuntimeSection;
+
+  /// No description provided for @kanbanTaskRuntimeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional workspace, model, and task relationship settings'**
+  String get kanbanTaskRuntimeDescription;
+
+  /// No description provided for @kanbanCreateTaskDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe the work to complete, then choose its status and owner.'**
+  String get kanbanCreateTaskDescription;
+
+  /// No description provided for @kanbanTaskTitleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a clear, concise task name'**
+  String get kanbanTaskTitleHint;
+
+  /// No description provided for @kanbanTaskTitleRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a task title'**
+  String get kanbanTaskTitleRequired;
+
+  /// No description provided for @kanbanTaskDescriptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add goals, acceptance criteria, or implementation notes'**
+  String get kanbanTaskDescriptionHint;
 
   /// No description provided for @kanbanTaskStatus.
   ///

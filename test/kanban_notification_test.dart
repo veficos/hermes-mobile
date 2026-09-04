@@ -90,6 +90,58 @@ void main() {
     secondConnection.dispose();
   });
 
+  test(
+    'a live redelivery during startup does not undo persisted read state',
+    () async {
+      final firstConnection = _NotificationConnection();
+      final first = NotificationStore(connection: firstConnection);
+      await first.initialized;
+      firstConnection.emit(
+        'primary',
+        GatewayEvent(
+          type: 'background.complete',
+          payload: const {},
+          sessionId: 'session-2',
+        ),
+      );
+      // Broadcast stream delivery is a microtask away from `emit`, not
+      // synchronous with it.
+      await Future<void>.delayed(Duration.zero);
+      expect(first.items, hasLength(1));
+      first.markRead(first.items.single.id);
+      await first.flushPersistence();
+      first.dispose();
+      firstConnection.dispose();
+
+      // The gateway subscription in the constructor starts listening
+      // before the persisted read state has finished loading from disk —
+      // simulate the backend re-delivering the same notification (e.g. a
+      // still-pending approval, or any duplicate broadcast) landing in
+      // that exact window.
+      final secondConnection = _NotificationConnection();
+      final second = NotificationStore(connection: secondConnection);
+      secondConnection.emit(
+        'primary',
+        GatewayEvent(
+          type: 'background.complete',
+          payload: const {},
+          sessionId: 'session-2',
+        ),
+      );
+      // `initialized` only guarantees the disk read finished — the
+      // redelivered live event queued just above may still be sitting one
+      // more microtask away regardless of which of the two actually landed
+      // first, so both orderings need an explicit flush before asserting.
+      await second.initialized;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(second.items, hasLength(1));
+      expect(second.items.single.read, isTrue);
+      second.dispose();
+      secondConnection.dispose();
+    },
+  );
+
   test('notification target supports structured and legacy payloads', () {
     const target = NotificationTarget(
       notificationId: 'approval:1',

@@ -2784,29 +2784,80 @@ def build_domain_router(
     async def memory_provider_config(
         provider: str, profile: str | None = Query(None)
     ) -> Any:
-        query = {"surface": "declared"}
-        if profile:
-            query["profile"] = profile
-        return await _backend_json(
-            require_backend(),
+        # Hermes currently has two compatible schema surfaces. Provider-owned
+        # schemas expose local/self-hosted modes for e.g. Hindsight and Mem0;
+        # declared schemas expose Honcho's full advanced configuration. Select
+        # the richer result and mark it so PUT targets the same storage path.
+        be = require_backend()
+        base_query = {"profile": profile} if profile else None
+        native = await _backend_json(
+            be,
             "GET",
             f"/api/memory/providers/{provider}/config",
-            query=query,
+            query=base_query,
         )
+        declared_query = {"surface": "declared"}
+        if profile:
+            declared_query["profile"] = profile
+        try:
+            declared = await _backend_json(
+                be,
+                "GET",
+                f"/api/memory/providers/{provider}/config",
+                query=declared_query,
+            )
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            declared = None
+
+        def field_count(value: Any) -> int:
+            fields = value.get("fields") if isinstance(value, dict) else None
+            return len(fields) if isinstance(fields, list) else 0
+
+        use_declared = field_count(declared) > field_count(native)
+        selected = declared if use_declared else native
+        if isinstance(selected, dict):
+            selected = dict(selected)
+            selected["_surface"] = "declared" if use_declared else "provider"
+            # Setup metadata lives on the provider-owned response.
+            if use_declared and isinstance(native, dict) and "setup" in native:
+                selected["setup"] = native["setup"]
+        return selected
 
     @router.put("/memory/providers/{provider}/config")
     async def memory_save_provider_config(
         provider: str,
         payload: dict = Body(...),
         profile: str | None = Query(None),
+        surface: str | None = Query(None),
     ) -> Any:
-        query = {"surface": "declared"}
-        if profile:
-            query["profile"] = profile
+        query = {"profile": profile} if profile else None
+        if surface == "declared":
+            query = dict(query or {})
+            query["surface"] = "declared"
         return await _backend_json(
             require_backend(),
             "PUT",
             f"/api/memory/providers/{provider}/config",
+            query=query,
+            body={"values": payload.get("values", {})},
+        )
+
+    @router.post("/memory/providers/{provider}/setup")
+    async def memory_setup_provider(
+        provider: str,
+        payload: dict = Body(default={}),
+        profile: str | None = Query(None),
+    ) -> Any:
+        # Dependency installation is host-wide. Keep the profile in the
+        # request for forward compatibility, but do not persist form values
+        # here: the scoped config PUT remains the single source of truth.
+        query = {"profile": profile} if profile else None
+        return await _backend_json(
+            require_backend(),
+            "POST",
+            f"/api/memory/providers/{provider}/setup",
             query=query,
             body={"values": payload.get("values", {})},
         )

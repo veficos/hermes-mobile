@@ -47,6 +47,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('language picker uses a mobile sheet and updates selection', (
+    tester,
+  ) async {
+    final localeStore = await _pumpSettings(tester, locale: const Locale('en'));
+
+    await tester.tap(find.text('Appearance'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('appearance-language-picker')), findsOne);
+    expect(find.byType(DropdownButton<String>), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('appearance-language-picker')));
+    await tester.pumpAndSettle();
+    for (final tag in ['system', 'en', 'zh', 'zh_Hant', 'ja', 'ar']) {
+      expect(find.byKey(ValueKey('language-option-$tag')), findsOneWidget);
+    }
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('language-option-zh')));
+    await tester.pumpAndSettle();
+    expect(localeStore.tag, 'zh');
+    expect(find.byKey(const ValueKey('language-option-zh')), findsNothing);
+    expect(find.text('简体中文'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('system settings render English without Chinese fallbacks', (
     tester,
   ) async {
@@ -179,7 +204,7 @@ Future<void> _pumpLocalizedScreen(
   }
 }
 
-Future<void> _pumpSettings(
+Future<LocaleStore> _pumpSettings(
   WidgetTester tester, {
   required Locale locale,
   TextScaler textScaler = TextScaler.noScaling,
@@ -192,26 +217,27 @@ Future<void> _pumpSettings(
   final localeStore = LocaleStore();
   await localeStore.setLocale(locale);
   await tester.pumpWidget(
-    MaterialApp(
-      locale: locale,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AppearanceStore()),
+        ChangeNotifierProvider.value(value: localeStore),
       ],
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: MediaQuery(
-        data: MediaQueryData(textScaler: textScaler),
-        child: MultiProvider(
-          providers: [
-            ChangeNotifierProvider(create: (_) => AppearanceStore()),
-            ChangeNotifierProvider.value(value: localeStore),
-          ],
+      child: MaterialApp(
+        locale: locale,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: MediaQuery(
+          data: MediaQueryData(textScaler: textScaler),
           child: const SettingsHubScreen(),
         ),
       ),
     ),
   );
   await tester.pumpAndSettle();
+  return localeStore;
 }

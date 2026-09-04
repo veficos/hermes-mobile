@@ -2107,11 +2107,24 @@ class ApiClient {
 
   Future<Map<String, dynamic>> saveMemoryProviderConfig(
     String provider,
-    Map<String, String> values, {
+    Map<String, Object?> values, {
     String? profile,
+    String? surface,
   }) async => _asMap(
     await put(
       '/api/v1/memory/providers/${_seg(provider)}/config',
+      body: {'values': values},
+      query: {'profile': ?profile, 'surface': ?surface},
+    ),
+  );
+
+  Future<Map<String, dynamic>> setupMemoryProvider(
+    String provider, {
+    Map<String, Object?> values = const {},
+    String? profile,
+  }) async => _asMap(
+    await post(
+      '/api/v1/memory/providers/${_seg(provider)}/setup',
       body: {'values': values},
       query: {'profile': ?profile},
     ),

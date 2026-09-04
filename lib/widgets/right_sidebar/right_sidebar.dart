@@ -20,6 +20,8 @@ import 'terminal_panel.dart';
 enum RightSidebarTab { files, terminal, git, artifacts, preview, logs }
 
 class RightSidebar extends StatefulWidget {
+  static const collapsedWidth = 56.0;
+
   /// 初始 Tab
   final RightSidebarTab initialTab;
 
@@ -29,11 +31,21 @@ class RightSidebar extends StatefulWidget {
   /// 文件附加到 composer 的回调
   final void Function(dynamic entry)? onAttachFile;
 
+  /// Whether this sidebar may collapse into a narrow icon rail. Drawers set
+  /// this to false because their visibility is already controlled by the
+  /// drawer gesture and a collapsed rail would still cover the chat.
+  final bool collapsible;
+
+  /// Notifies the parent layout so its width follows the visual state.
+  final ValueChanged<bool>? onCollapsedChanged;
+
   const RightSidebar({
     super.key,
     this.initialTab = RightSidebarTab.files,
     this.width = 360,
     this.onAttachFile,
+    this.collapsible = true,
+    this.onCollapsedChanged,
   });
 
   @override
@@ -186,39 +198,54 @@ class _RightSidebarState extends State<RightSidebar>
         _tabController.animateTo(idx);
       }
     }
-    _collapsed = prefs.getBool(_kCollapsedKey) ?? false;
-    if (mounted) setState(() {});
+    final persisted = prefs.getBool(_kCollapsedKey) ?? false;
+    _collapsed = widget.collapsible && persisted;
+    if (mounted) {
+      setState(() {});
+      widget.onCollapsedChanged?.call(_collapsed);
+    }
   }
 
   Future<void> _toggleCollapse() async {
+    if (!widget.collapsible) return;
     setState(() => _collapsed = !_collapsed);
+    widget.onCollapsedChanged?.call(_collapsed);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kCollapsedKey, _collapsed);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_collapsed) {
-      return _buildCollapsedRail(context);
-    }
-    return SizedBox(
-      width: widget.width,
-      child: Column(
-        children: [
-          _buildTabBar(context),
-          const Divider(height: 1, thickness: 1),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                for (var index = 0; index < _tabs.length; index++)
-                  _panelAt(index),
-              ],
+    return SafeArea(
+      left: false,
+      right: false,
+      bottom: false,
+      child: _collapsed
+          ? SizedBox(
+              key: const ValueKey('right-sidebar-collapsed'),
+              width: RightSidebar.collapsedWidth,
+              child: _buildCollapsedRail(context),
+            )
+          : SizedBox(
+              key: const ValueKey('right-sidebar-expanded'),
+              width: widget.width,
+              child: Column(
+                children: [
+                  _buildTabBar(context),
+                  const Divider(height: 1, thickness: 1),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: [
+                        for (var index = 0; index < _tabs.length; index++)
+                          _panelAt(index),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -251,13 +278,14 @@ class _RightSidebarState extends State<RightSidebar>
                   .toList(),
             ),
           ),
-          IconButton(
-            tooltip: context.l10n.commonCollapse,
-            icon: const Icon(Icons.chevron_right, size: 18),
-            onPressed: _toggleCollapse,
-            padding: const EdgeInsets.all(4),
-            constraints: const BoxConstraints(),
-          ),
+          if (widget.collapsible)
+            IconButton(
+              tooltip: context.l10n.commonCollapse,
+              icon: const Icon(Icons.chevron_right, size: 18),
+              onPressed: _toggleCollapse,
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints(),
+            ),
         ],
       ),
     );
@@ -286,6 +314,10 @@ class _RightSidebarState extends State<RightSidebar>
                 ),
                 onPressed: () {
                   setState(() => _collapsed = false);
+                  widget.onCollapsedChanged?.call(false);
+                  SharedPreferences.getInstance().then(
+                    (prefs) => prefs.setBool(_kCollapsedKey, false),
+                  );
                   _tabController.animateTo(idx);
                 },
               ),

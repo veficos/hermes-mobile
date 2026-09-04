@@ -17,6 +17,7 @@ import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_logo.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/session/session_card.dart';
 import '../widgets/session/session_list_meta.dart';
@@ -592,7 +593,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _profileMenu(SessionStore store) => PopupMenuButton<String>(
+  Widget _profileMenu(SessionStore store) => HermesAdaptiveMenuButton<String>(
     key: const ValueKey('home-profile-menu'),
     tooltip: context.l10n.homeSwitchProfile,
     initialValue: store.activeProfile,
@@ -809,7 +810,7 @@ class _HomeScreenState extends State<HomeScreen> {
     },
   );
 
-  Widget _moreTools(Iterable<String> ids) => PopupMenuButton<String>(
+  Widget _moreTools(Iterable<String> ids) => HermesAdaptiveMenuButton<String>(
     tooltip: context.l10n.homeMoreTools,
     onSelected: (id) {
       final tool = _toolSpecs[id]!;

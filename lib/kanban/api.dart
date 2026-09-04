@@ -76,10 +76,18 @@ class KanbanApi {
     query: _q(),
     body: {if (author != null && author.isNotEmpty) 'author': author},
   );
+  // Both estimate and decompose ask the agent's model to actually reason
+  // about the task (effort sizing / breaking it into subtasks) rather than
+  // just mutating state — the default 30s HTTP timeout (fine for the rest
+  // of this API's plain CRUD calls) is too tight for that round-trip and
+  // was surfacing as a generic "operation failed" error on tap. Matches the
+  // timeout already used for other single-shot model calls (audioSpeak /
+  // audioTranscribe).
   Future<dynamic> estimate(String id) => client.post(
     '/api/v1/kanban/tasks/${Uri.encodeComponent(id)}/estimate',
     query: _q(),
     body: const {},
+    timeout: const Duration(minutes: 2),
   );
   Future<dynamic> dispatch() =>
       client.post('/api/v1/kanban/dispatch', query: _q(), body: const {});
@@ -176,6 +184,7 @@ class KanbanApi {
     '/api/v1/kanban/tasks/${Uri.encodeComponent(id)}/decompose',
     query: _q(),
     body: const {},
+    timeout: const Duration(minutes: 2),
   );
   Future<Map<String, dynamic>> modelOptions() async =>
       (await client.get('/api/v1/kanban/model-options', query: _q()) as Map)

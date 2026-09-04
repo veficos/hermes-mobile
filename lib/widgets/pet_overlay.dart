@@ -341,6 +341,8 @@ class PetCenterScreen extends StatefulWidget {
 }
 
 class _PetCenterScreenState extends State<PetCenterScreen> {
+  String? _selectingSlug;
+
   @override
   void initState() {
     super.initState();
@@ -440,11 +442,78 @@ class _PetCenterScreenState extends State<PetCenterScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  // Primary pet actions stay above the collection so they
+                  // remain immediately reachable even with a large gallery.
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const PetGenerateScreen(),
+                              ),
+                            );
+                            if (context.mounted) await store.loadGallery();
+                          },
+                          icon: const Icon(Icons.auto_awesome),
+                          label: Text(context.l10n.petGenerateNew),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: OutlinedButton.icon(
+                          onPressed: store.info == null
+                              ? null
+                              : () async {
+                                  try {
+                                    await store.disable();
+                                  } catch (error) {
+                                    if (context.mounted) {
+                                      showHermesToast(
+                                        context,
+                                        message: context.l10n.petDisableFailed(
+                                          '$error',
+                                        ),
+                                        kind: HermesToastKind.error,
+                                      );
+                                    }
+                                  }
+                                },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: HermesSemantic.red,
+                          ),
+                          icon: const Icon(Icons.power_settings_new),
+                          label: Text(context.l10n.petDisable),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 24),
                   // Gallery
-                  Text(
-                    context.l10n.petGallery,
-                    style: HermesType.onSurface(HermesType.headline, theme),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          context.l10n.petGallery,
+                          style: HermesType.onSurface(
+                            HermesType.headline,
+                            theme,
+                          ),
+                        ),
+                      ),
+                      if (store.gallery.isNotEmpty)
+                        Text(
+                          '${store.gallery.length}',
+                          style: HermesType.onSurfaceVariant(
+                            HermesType.footnote,
+                            theme,
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   if (store.gallery.isEmpty)
@@ -460,107 +529,121 @@ class _PetCenterScreenState extends State<PetCenterScreen> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 180,
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
-                            childAspectRatio: 1,
+                            childAspectRatio: 0.9,
                           ),
                       itemCount: store.gallery.length,
                       itemBuilder: (ctx, i) {
                         final entry = store.gallery[i];
                         final isSelected = entry.slug == store.info?.slug;
-                        return GestureDetector(
-                          onTap: () async {
-                            try {
-                              await store.select(entry.slug);
-                            } catch (error) {
-                              if (context.mounted) {
-                                showHermesToast(
-                                  context,
-                                  message: context.l10n.petSelectFailed(
-                                    '$error',
-                                  ),
-                                  kind: HermesToastKind.error,
-                                );
-                              }
-                            }
-                          },
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(
-                                HermesRadius.card,
-                              ),
-                              border: Border.all(
-                                color: isSelected
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.outline.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                width: isSelected ? 2 : 1,
-                              ),
+                        final selecting = _selectingSlug == entry.slug;
+                        return Material(
+                          color: isSelected
+                              ? theme.colorScheme.primaryContainer.withValues(
+                                  alpha: 0.45,
+                                )
+                              : theme.colorScheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(
+                            HermesRadius.card,
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: _selectingSlug != null
+                                ? null
+                                : () async {
+                                    if (isSelected) return;
+                                    setState(() => _selectingSlug = entry.slug);
+                                    try {
+                                      await store.select(entry.slug);
+                                    } catch (error) {
+                                      if (context.mounted) {
+                                        showHermesToast(
+                                          context,
+                                          message: context.l10n.petSelectFailed(
+                                            '$error',
+                                          ),
+                                          kind: HermesToastKind.error,
+                                        );
+                                      }
+                                    } finally {
+                                      if (mounted) {
+                                        setState(() => _selectingSlug = null);
+                                      }
+                                    }
+                                  },
+                            borderRadius: BorderRadius.circular(
+                              HermesRadius.card,
                             ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _PetGalleryThumb(entry: entry, size: 28),
-                                const SizedBox(height: 4),
-                                Text(
-                                  entry.displayName ?? entry.slug,
-                                  style: HermesType.onSurfaceVariant(
-                                    HermesType.caption,
-                                    theme,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(
+                                  HermesRadius.card,
                                 ),
-                              ],
+                                border: Border.all(
+                                  color: isSelected
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.outlineVariant,
+                                  width: isSelected ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        Center(
+                                          child: _PetGalleryThumb(
+                                            entry: entry,
+                                            size: 54,
+                                          ),
+                                        ),
+                                        if (isSelected)
+                                          Positioned(
+                                            right: 0,
+                                            top: 0,
+                                            child: Icon(
+                                              Icons.check_circle,
+                                              size: 20,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                          ),
+                                        if (selecting)
+                                          const Center(
+                                            child: SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    entry.displayName ?? entry.slug,
+                                    style: HermesType.onSurface(
+                                      HermesType.callout,
+                                      theme,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         );
                       },
                     ),
-                  const SizedBox(height: 24),
-                  // Actions
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const PetGenerateScreen(),
-                          ),
-                        );
-                        if (context.mounted) await store.loadGallery();
-                      },
-                      icon: const Icon(Icons.auto_awesome),
-                      label: Text(context.l10n.petGenerateNew),
-                    ),
-                  ),
                   const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        try {
-                          await store.disable();
-                        } catch (error) {
-                          if (context.mounted) {
-                            showHermesToast(
-                              context,
-                              message: context.l10n.petDisableFailed('$error'),
-                              kind: HermesToastKind.error,
-                            );
-                          }
-                        }
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: HermesSemantic.red,
-                      ),
-                      icon: const Icon(Icons.power_settings_new),
-                      label: Text(context.l10n.petDisable),
-                    ),
-                  ),
                 ],
               ),
             ),

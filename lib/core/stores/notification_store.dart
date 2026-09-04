@@ -240,6 +240,16 @@ class NotificationStore extends ChangeNotifier {
       final idx = _items.indexWhere((n) => n.id == key);
       if (idx >= 0) {
         final existing = _items[idx];
+        // A redelivery of the same dedupe key with unchanged title/message
+        // is the backend resending something already shown (e.g. a still-
+        // pending approval, or any duplicate broadcast around a reconnect)
+        // — not new information, so it must not silently flip an
+        // already-read notification back to unread on every such replay.
+        // A genuine content update (the title or message actually changed,
+        // like a kanban notification's progress text) still resets both
+        // flags to draw attention to it again.
+        final isRedelivery =
+            existing.title == title && existing.message == message;
         _items.removeAt(idx);
         _items.insert(
           0,
@@ -257,8 +267,8 @@ class NotificationStore extends ChangeNotifier {
             requestId: requestId ?? existing.requestId,
             target: target ?? existing.target,
             time: DateTime.now(),
-            read: false,
-            systemShown: false,
+            read: isRedelivery ? existing.read : false,
+            systemShown: isRedelivery ? existing.systemShown : false,
           ),
         );
         notifyListeners();
@@ -343,13 +353,26 @@ class NotificationStore extends ChangeNotifier {
           .map((row) => NotificationItem.fromJson(row.cast<String, dynamic>()))
           .where((item) => item.id.isNotEmpty)
           .toList();
-      final liveIds = _items.map((item) => item.id).toSet();
       for (final item in loaded) {
-        if (liveIds.add(item.id)) _items.add(item);
+        // The gateway subscription starts in the constructor, before this
+        // disk read finishes — a notification the backend re-delivers
+        // during that window (e.g. a still-pending approval) already landed
+        // live as a fresh, unread item with the same dedupe key. Carry the
+        // persisted read/systemShown state forward onto it instead of
+        // dropping the persisted record outright, or every restart that
+        // races a redelivery would silently reset that item to unread.
+        final liveIdx = _items.indexWhere((existing) => existing.id == item.id);
+        if (liveIdx >= 0) {
+          final live = _items[liveIdx];
+          if (item.read) live.read = true;
+          if (item.systemShown) live.systemShown = true;
+          continue;
+        }
+        _items.add(item);
+        _seenKeys.add(item.id);
       }
       _items.sort((a, b) => b.time.compareTo(a.time));
       if (_items.length > 100) _items.removeRange(100, _items.length);
-      _seenKeys.addAll(_items.map((item) => item.id));
       notifyListeners();
     } catch (_) {
       // Corrupt local state must not prevent the notification stream starting.

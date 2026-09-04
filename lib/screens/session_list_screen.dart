@@ -25,6 +25,7 @@ import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/session/session_card.dart';
 import '../widgets/session/session_row_actions.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
@@ -77,6 +78,10 @@ class _SessionListScreenState extends State<SessionListScreen>
   static const _interactionQuietMs = 1500;
   static const _pollIntervalMs = HermesPolicy.sessionPollInterval;
   static const _minListRefreshMs = 3500;
+  // Matches Dismissible's own default `movementDuration` — see the
+  // swipe-to-pin `confirmDismiss` handler below for why this needs to be
+  // shared rather than left implicit.
+  static const _pinSwipeRestoreDuration = Duration(milliseconds: 200);
   // Unread state cache (mirrors the in-memory sidebar cache in sessions.js).
   final Map<String, bool> _unreadCache = {};
   int _unreadCacheKey = 0;
@@ -654,9 +659,17 @@ class _SessionListScreenState extends State<SessionListScreen>
             _reorderPinned(rowsForGroup, g, oldIndex, newIndex),
         itemBuilder: (context, i) {
           final row = visibleRows[i].row;
+          // SliverReorderableList requires a key on whatever itemBuilder
+          // returns directly — it was on the inner
+          // ReorderableDelayedDragStartListener instead, one layer inside
+          // this unkeyed Builder, so the list saw a null key on every item.
+          // assert()-gated, so this only throws in debug/test; in release
+          // builds it silently proceeds with broken element identity across
+          // the reorder/insert animation, which is what actually corrupts
+          // the sliver into a blank/grey area on-device.
           return Builder(
+            key: ValueKey('pinned-${row.id}'),
             builder: (context) => ReorderableDelayedDragStartListener(
-              key: ValueKey('pinned-${row.id}'),
               index: i,
               child: _row(context, row, group: g),
             ),
@@ -861,6 +874,19 @@ class _SessionListScreenState extends State<SessionListScreen>
       messenger.showSnackBar(
         SnackBar(content: Text(context.l10n.sessionOpenCopyFailed('$e'))),
       );
+    }
+  }
+
+  Future<void> _togglePinnedAfterSwipe(SessionRow row) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<SessionStore>().setPinned(row.id, !row.pinned);
+    } catch (error) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(context.l10n.sessionActionFailed('$error'))),
+        );
+      }
     }
   }
 
@@ -1288,7 +1314,7 @@ class _SessionListScreenState extends State<SessionListScreen>
                       );
                     },
                   ),
-                PopupMenuButton<String>(
+                HermesAdaptiveMenuButton<String>(
                   tooltip: context.l10n.commonMore,
                   icon: const Icon(Icons.more_vert),
                   onSelected: (value) {
@@ -2503,6 +2529,10 @@ class _SessionListScreenState extends State<SessionListScreen>
     return Dismissible(
       key: ValueKey('session-${s.id}'),
       direction: DismissDirection.horizontal,
+      // Named explicitly (matches the built-in default) so the delay below
+      // that waits out this same reverse animation can't silently drift out
+      // of sync with it.
+      movementDuration: _pinSwipeRestoreDuration,
       background: Container(
         color: HermesSemantic.blue.withValues(alpha: 0.8),
         alignment: Alignment.centerLeft,
@@ -2526,7 +2556,18 @@ class _SessionListScreenState extends State<SessionListScreen>
           }
           return false;
         }
-        await session.setPinned(s.id, !s.pinned);
+        // Let Dismissible finish restoring the row before pinning moves it to
+        // another sliver/group. Mutating the list while the row is still
+        // animating back to rest invalidates its element and leaves a grey,
+        // half-painted viewport behind — a single post-frame callback isn't
+        // long enough for that; it fires after the very next frame (~16ms),
+        // nowhere near the ~200ms `movementDuration` reverse animation
+        // actually takes to settle.
+        unawaited(
+          Future<void>.delayed(_pinSwipeRestoreDuration, () {
+            if (mounted) unawaited(_togglePinnedAfterSwipe(s));
+          }),
+        );
         return false;
       },
       child: HermesGlassCard(
@@ -2685,7 +2726,7 @@ class _SessionListScreenState extends State<SessionListScreen>
                               ),
                             ),
                           if (knownTags.isNotEmpty)
-                            PopupMenuButton<String>(
+                            HermesAdaptiveMenuButton<String>(
                               tooltip: sheetCtx.l10n.sessionFilterByTag,
                               onSelected: (value) =>
                                   setSheet(() => tag = value),

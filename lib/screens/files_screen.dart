@@ -18,6 +18,7 @@ import '../core/stores/file_tree_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import 'file_editor_screen.dart';
 import 'git_screen.dart';
 import 'new_session_screen.dart';
@@ -822,7 +823,7 @@ class _FilesScreenState extends State<FilesScreen>
                           : Icons.account_tree_outlined,
                     ),
                   ),
-                  PopupMenuButton<String>(
+                  HermesAdaptiveMenuButton<String>(
                     tooltip: context.l10n.commonMore,
                     onSelected: (action) {
                       switch (action) {

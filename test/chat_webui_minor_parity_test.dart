@@ -609,6 +609,8 @@ void main() {
       tester,
     ) async {
       final rig = _ChatRig();
+      tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+      addTearDown(() => tester.view.padding = FakeViewPadding.zero);
       await tester.pumpWidget(rig.app());
       await tester.pumpAndSettle();
 
@@ -620,6 +622,18 @@ void main() {
       // The RightSidebar files tab is now visible inside the drawer.
       expect(find.text('文件'), findsWidgets);
       expect(find.text('终端'), findsWidgets);
+      final drawer = find.byType(Drawer);
+      final sidebar = find.descendant(
+        of: drawer,
+        matching: find.byKey(const ValueKey('right-sidebar-expanded')),
+      );
+      final logicalTopInset =
+          tester.view.padding.top / tester.view.devicePixelRatio;
+      expect(
+        tester.getTopLeft(sidebar).dy,
+        greaterThanOrEqualTo(logicalTopInset),
+      );
+      expect(find.byTooltip('收起'), findsNothing);
 
       rig.connection.dispose();
     });
@@ -637,6 +651,27 @@ void main() {
       expect(find.byTooltip('工作区文件'), findsNothing);
       // Third column is docked.
       expect(find.text('文件'), findsWidgets);
+
+      final sidebarSlot = find.byKey(
+        const ValueKey('chat-workspace-sidebar-slot'),
+      );
+      expect(tester.getSize(sidebarSlot).width, 280);
+
+      await tester.tap(find.byTooltip('收起'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('right-sidebar-collapsed')),
+        findsOneWidget,
+      );
+      expect(tester.getSize(sidebarSlot).width, 56);
+
+      await tester.tap(find.byTooltip('展开'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('right-sidebar-expanded')),
+        findsOneWidget,
+      );
+      expect(tester.getSize(sidebarSlot).width, 280);
 
       rig.connection.dispose();
     });

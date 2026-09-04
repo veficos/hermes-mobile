@@ -10,6 +10,7 @@ export '../core/chat_scroll_coordinator.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:math' as math;
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart' as fs;
@@ -23,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/chat_message.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../core/clipboard.dart';
 import '../core/composer_input_history.dart';
 import '../core/composer_suggestions.dart';
@@ -161,6 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _wakeHandling = false;
   String? _autoSpokenReplyId;
   bool _desktopSidebarReady = false;
+  bool _rightSidebarCollapsed = false;
 
   // ── Inline message editing (WebUI .msg-edit-area parity): the bubble
   // under edit is swapped for an in-place textarea; confirm re-sends
@@ -3483,6 +3486,15 @@ class _ChatScreenState extends State<ChatScreen> {
       // A16: ambient provider quota chip — only with real backend data.
       quotaLabel: _quotaLabel,
       onQuotaTap: _quotaLabel == null ? null : _refreshQuotaChip,
+      beforeSendAction: HermesVoiceMenu(
+        voice: voice,
+        onDictate: _toggleRecording,
+        onToggleContinuous: _toggleContinuousVoice,
+        onToggleAutoSpeak: () => voice.toggleAutoSpeak(),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+        iconSize: 20,
+      ),
       leadingActions: session.readOnly
           ? const []
           : [
@@ -3497,7 +3509,7 @@ class _ChatScreenState extends State<ChatScreen> {
               // Merged attach entry: file / folder picker (the tray's
               // old "附加" menu is gone — these buttons are the only
               // add path).
-              PopupMenuButton<String>(
+              HermesAdaptiveMenuButton<String>(
                 tooltip: context.l10n.chatAttachFiles,
                 padding: EdgeInsets.zero,
                 onSelected: (v) {
@@ -3555,16 +3567,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   onTap: _showSavedPrompts,
                 ),
             ],
-      // Queue / voice / TTS / more moved from the old bottom bar into
-      // the composer card footer (settings & new-chat removed).
+      // Queue / context / more live in the tools row. Voice sits beside send
+      // inside the input surface; settings & new-chat remain removed.
       footerActions: [
         _footerQueueButton(count: session.queueCount, onTap: _showQueuePanel),
-        HermesVoiceMenu(
-          voice: voice,
-          onDictate: _toggleRecording,
-          onToggleContinuous: _toggleContinuousVoice,
-          onToggleAutoSpeak: () => voice.toggleAutoSpeak(),
-        ),
         Builder(
           builder: (anchorContext) => _footerIconButton(
             tooltip: _contextUsagePercent == null
@@ -3576,7 +3582,7 @@ class _ChatScreenState extends State<ChatScreen> {
             onTap: () => _showContextPopover(anchorContext),
           ),
         ),
-        PopupMenuButton<String>(
+        HermesAdaptiveMenuButton<String>(
           tooltip: context.l10n.commonMore,
           padding: EdgeInsets.zero,
           onSelected: (v) {
@@ -6684,7 +6690,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildSessionMoreMenu(SessionStore session) {
     final hasDurable = session.durableId != null;
     final supportsSharing = session.api?.supportsSessionSharing ?? false;
-    return PopupMenuButton<String>(
+    return HermesAdaptiveMenuButton<String>(
       tooltip: context.l10n.chatSessionMenu,
       icon: const Icon(Icons.more_vert),
       onSelected: (value) {
@@ -7087,6 +7093,11 @@ class _ChatScreenState extends State<ChatScreen> {
     // Auto-scroll is driven by [_ChatTranscriptPanel] transcript callbacks.
 
     final viewportWidth = MediaQuery.of(context).size.width;
+    final mediaQuery = MediaQuery.of(context);
+    final workspaceTopInset = math.max(
+      mediaQuery.padding.top,
+      mediaQuery.viewPadding.top,
+    );
     final screenWidth = widget.embedded
         ? viewportWidth.clamp(0, HermesBreakpoints.navigation - 1).toDouble()
         : viewportWidth;
@@ -7519,11 +7530,22 @@ class _ChatScreenState extends State<ChatScreen> {
               if (useThreePane) ...[
                 const VerticalDivider(width: 1),
                 SizedBox(
-                  width: sidebarWidth,
+                  key: const ValueKey('chat-workspace-sidebar-slot'),
+                  width: _rightSidebarCollapsed
+                      ? RightSidebar.collapsedWidth
+                      : sidebarWidth,
                   child: _desktopSidebarReady
-                      ? const RightSidebar(
+                      ? RightSidebar(
                           width: sidebarWidth,
                           initialTab: RightSidebarTab.files,
+                          onCollapsedChanged: (collapsed) {
+                            if (mounted &&
+                                collapsed != _rightSidebarCollapsed) {
+                              setState(
+                                () => _rightSidebarCollapsed = collapsed,
+                              );
+                            }
+                          },
                         )
                       : const Center(child: CircularProgressIndicator()),
                 ),
@@ -7532,11 +7554,15 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           endDrawer: useThreePane
               ? null
-              : const Drawer(
+              : Drawer(
                   width: 360,
-                  child: RightSidebar(
-                    width: 360,
-                    initialTab: RightSidebarTab.files,
+                  child: Padding(
+                    padding: EdgeInsets.only(top: workspaceTopInset),
+                    child: const RightSidebar(
+                      width: 360,
+                      initialTab: RightSidebarTab.files,
+                      collapsible: false,
+                    ),
                   ),
                 ),
         ),
@@ -7576,9 +7602,13 @@ class _ChatScreenState extends State<ChatScreen> {
                 : 360.0;
             return Drawer(
               width: width,
-              child: RightSidebar(
-                width: width,
-                initialTab: RightSidebarTab.files,
+              child: Padding(
+                padding: EdgeInsets.only(top: workspaceTopInset),
+                child: RightSidebar(
+                  width: width,
+                  initialTab: RightSidebarTab.files,
+                  collapsible: false,
+                ),
               ),
             );
           },

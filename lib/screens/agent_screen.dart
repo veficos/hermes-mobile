@@ -17,11 +17,13 @@ import 'bot_group_chat_screen.dart';
 import 'bot_routines_screen.dart';
 import 'profiles_screen.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/adaptive_form_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_logo.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../l10n/l10n.dart';
 
 class AgentScreen extends StatefulWidget {
@@ -38,6 +40,7 @@ class _AgentScreenState extends State<AgentScreen>
   bool _busy = false;
   int _loadGeneration = 0;
   Timer? _statusTimer;
+  final TextEditingController _botSearch = TextEditingController();
 
   @override
   void initState() {
@@ -75,6 +78,7 @@ class _AgentScreenState extends State<AgentScreen>
   void dispose() {
     disposeConnectionObserver();
     _statusTimer?.cancel();
+    _botSearch.dispose();
     super.dispose();
   }
 
@@ -100,78 +104,196 @@ class _AgentScreenState extends State<AgentScreen>
   Future<void> _editGroup(BotStore store, [BotGroup? existing]) async {
     final selected = <String>{...?existing?.memberKeys};
     final name = TextEditingController(text: existing?.name ?? '');
-    final ok = await showDialog<bool>(
+    final search = TextEditingController();
+    final phoneLayout =
+        MediaQuery.sizeOf(context).width < HermesBreakpoints.phone;
+    // Phones get a full-height, thumb-reachable bottom sheet (drag handle,
+    // large checkbox rows with leading avatars, a live selection counter);
+    // larger windows keep the compact dialog. Validation stays server-side
+    // (BotStore throws ArgumentError with a localized message) rather than
+    // gating the button, matching every other showAdaptiveFormDialog caller.
+    final ok = await showAdaptiveFormDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(
-            existing == null
-                ? context.l10n.agentNewGroup
-                : context.l10n.agentEditGroup,
-          ),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: name,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.agentGroupName,
-                  ),
+      title: existing == null
+          ? context.l10n.agentNewGroup
+          : context.l10n.agentEditGroup,
+      content: StatefulBuilder(
+        builder: (ctx, setFormState) {
+          final query = search.text.trim().toLowerCase();
+          final bots = query.isEmpty
+              ? store.bots
+              : store.bots
+                    .where(
+                      (bot) =>
+                          bot.displayName.toLowerCase().contains(query) ||
+                          bot.profile.toLowerCase().contains(query),
+                    )
+                    .toList(growable: false);
+          final atLimit = selected.length >= BotStore.maxGroupMembers;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: existing == null,
+                decoration: InputDecoration(
+                  labelText: context.l10n.agentGroupName,
                 ),
-                const SizedBox(height: 8),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      for (final bot in store.bots)
-                        CheckboxListTile(
-                          value: selected.contains(bot.key),
-                          title: Text(bot.displayName),
-                          subtitle: Text(
-                            '${bot.route.connectionId} · ${bot.profile}',
-                          ),
-                          onChanged:
-                              selected.length >= BotStore.maxGroupMembers &&
-                                  !selected.contains(bot.key)
-                              ? null
-                              : (on) => setDialogState(
-                                  () => on == true
-                                      ? selected.add(bot.key)
-                                      : selected.remove(bot.key),
-                                ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(ctx.l10n.commonCancel),
-            ),
-            FilledButton(
-              onPressed:
-                  selected.length >= 2 &&
-                      selected.length <= BotStore.maxGroupMembers &&
-                      name.text.trim().isNotEmpty
-                  ? () => Navigator.pop(ctx, true)
-                  : null,
-              child: Text(
-                existing == null
-                    ? context.l10n.commonCreate
-                    : context.l10n.commonSave,
               ),
-            ),
-          ],
-        ),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    ctx,
+                  ).colorScheme.primaryContainer.withValues(alpha: .45),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.groups_2_outlined,
+                      size: 20,
+                      color: Theme.of(ctx).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        context.l10n.agentSelectMembers,
+                        style: Theme.of(ctx).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: atLimit
+                            ? Theme.of(ctx).colorScheme.errorContainer
+                            : Theme.of(ctx).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(
+                          HermesRadius.capsule,
+                        ),
+                      ),
+                      child: Text(
+                        context.l10n.agentGroupMemberCount(
+                          selected.length,
+                          BotStore.maxGroupMembers,
+                        ),
+                        style: Theme.of(ctx).textTheme.labelMedium?.copyWith(
+                          color: atLimit
+                              ? Theme.of(ctx).colorScheme.onErrorContainer
+                              : Theme.of(ctx).colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  hintText: context.l10n.agentSearchBots,
+                  suffixIcon: query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: context.l10n.commonClose,
+                          onPressed: () {
+                            search.clear();
+                            setFormState(() {});
+                          },
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
+                  filled: true,
+                  isDense: true,
+                ),
+                onChanged: (_) => setFormState(() {}),
+              ),
+              const SizedBox(height: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: bots.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text(context.l10n.agentSearchNoMatches),
+                        ),
+                      )
+                    : ListView(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        children: [
+                          for (final bot in bots)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _BotMemberChoice(
+                                bot: bot,
+                                selected: selected.contains(bot.key),
+                                enabled: !atLimit || selected.contains(bot.key),
+                                onTap: () => setFormState(
+                                  () => selected.contains(bot.key)
+                                      ? selected.remove(bot.key)
+                                      : selected.add(bot.key),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ],
+          );
+        },
       ),
+      actions: phoneLayout
+          ? [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(context.l10n.commonCancel),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(
+                    existing == null
+                        ? context.l10n.commonCreate
+                        : context.l10n.commonSave,
+                  ),
+                ),
+              ),
+            ]
+          : [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(context.l10n.commonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(
+                  existing == null
+                      ? context.l10n.commonCreate
+                      : context.l10n.commonSave,
+                ),
+              ),
+            ],
     );
     final value = name.text;
-    WidgetsBinding.instance.addPostFrameCallback((_) => name.dispose());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      name.dispose();
+      search.dispose();
+    });
     if (ok == true) {
       final members = store.bots.where((b) => selected.contains(b.key));
       try {
@@ -267,6 +389,178 @@ class _AgentScreenState extends State<AgentScreen>
     }
   }
 
+  Future<void> _refreshAll() async {
+    if (_busy) return;
+    await Future.wait([_load(), context.read<BotStore>().refresh()]);
+  }
+
+  Future<void> _showGroupActions(BotStore store, BotGroup group) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ActionSheetHeader(
+              icon: Icons.groups_outlined,
+              tone: HermesSemantic.purple,
+              title: group.name,
+              subtitle: context.l10n.agentGroupSummary(
+                group.memberKeys.length,
+                store.isGroupBusy(group.id)
+                    ? context.l10n.agentRunningSuffix
+                    : '',
+              ),
+            ),
+            const SizedBox(height: 14),
+            HermesMobileGroup(
+              children: [
+                HermesMobileRow(
+                  icon: Icons.edit_outlined,
+                  title: context.l10n.agentEditGroup,
+                  onTap: () => Navigator.pop(sheetContext, 'edit'),
+                ),
+                HermesMobileRow(
+                  icon: Icons.delete_outline,
+                  tone: HermesSemantic.red,
+                  title: context.l10n.agentDeleteGroup,
+                  onTap: () => Navigator.pop(sheetContext, 'delete'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'edit') {
+      await _editGroup(store, group);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.l10n.agentDeleteGroupQuestion(group.name)),
+        content: Text(context.l10n.agentDeleteGroupWarning),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(ctx.l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(ctx.l10n.commonDelete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await store.removeGroup(group.id);
+    } catch (error) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.agentDeleteGroupFailed('$error'),
+          kind: HermesToastKind.error,
+        );
+      }
+    }
+  }
+
+  Future<void> _showBotActions(BotStore store, BotIdentity bot) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ActionSheetHeader(
+              avatar: HermesAvatar(
+                label: bot.displayName,
+                size: 48,
+                color: botAvatarColor(bot.metadata),
+              ),
+              icon: Icons.smart_toy_outlined,
+              title: bot.displayName,
+              subtitle: [
+                bot.profile,
+                bot.description,
+              ].where((text) => text.isNotEmpty).join(' · '),
+            ),
+            const SizedBox(height: 14),
+            HermesMobileGroup(
+              children: [
+                HermesMobileRow(
+                  icon: Icons.schedule_outlined,
+                  title: context.l10n.agentBotRoutinesMenuItem,
+                  onTap: () => Navigator.pop(sheetContext, 'routines'),
+                ),
+                HermesMobileRow(
+                  icon: Icons.copy_outlined,
+                  title: context.l10n.agentDuplicateBot,
+                  onTap: () => Navigator.pop(sheetContext, 'duplicate'),
+                ),
+                if (bot.profile.toLowerCase() != 'default')
+                  HermesMobileRow(
+                    icon: Icons.delete_outline,
+                    tone: HermesSemantic.red,
+                    title: context.l10n.agentDeleteBot,
+                    onTap: () => Navigator.pop(sheetContext, 'delete'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    try {
+      if (action == 'routines') {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(builder: (_) => BotRoutinesScreen(bot: bot)),
+        );
+      } else if (action == 'duplicate') {
+        await store.duplicateBot(bot);
+      } else if (action == 'delete') {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(context.l10n.agentDeleteBotQuestion(bot.displayName)),
+            content: Text(context.l10n.profilesDeleteWarning),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(ctx.l10n.commonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(ctx.l10n.commonDelete),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true && mounted) await store.deleteBot(bot);
+      }
+    } catch (error) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.agentBotOperationFailed('$error'),
+          kind: HermesToastKind.error,
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final status = _status;
@@ -276,7 +570,7 @@ class _AgentScreenState extends State<AgentScreen>
         actions: [
           IconButton(
             tooltip: context.l10n.commonRefresh,
-            onPressed: _busy ? null : _load,
+            onPressed: _busy ? null : _refreshAll,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -316,7 +610,7 @@ class _AgentScreenState extends State<AgentScreen>
         true;
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: _refreshAll,
       child: ListView(
         padding: const EdgeInsets.all(HermesSpacing.md),
         children: [
@@ -332,238 +626,330 @@ class _AgentScreenState extends State<AgentScreen>
             const SizedBox(height: HermesSpacing.sm),
           ],
           Consumer<BotStore>(
-            builder: (context, bots, _) => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: HermesSectionHeader(
-                        title: context.l10n.agentBotsTitle,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: context.l10n.agentManageBots,
-                      onPressed: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ProfilesScreen(),
-                          ),
-                        );
-                        if (context.mounted) await bots.refresh();
-                      },
-                      icon: const Icon(Icons.person_add_alt_outlined),
-                    ),
-                    IconButton(
-                      tooltip: context.l10n.agentNewGroup,
-                      onPressed: bots.bots.length >= 2
-                          ? () => _editGroup(bots)
-                          : null,
-                      icon: const Icon(Icons.group_add_outlined),
-                    ),
-                    IconButton(
-                      tooltip: context.l10n.agentRefreshRoster,
-                      onPressed: bots.loading ? null : bots.refresh,
-                      icon: const Icon(Icons.refresh),
-                    ),
-                  ],
-                ),
-                if (bots.loading && bots.bots.isEmpty)
-                  const LinearProgressIndicator(),
-                if (bots.error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: HermesSpacing.sm),
-                    child: HermesNoticeBar(
-                      message: bots.error!,
-                      color: HermesSemantic.red,
-                      icon: Icons.error_outline,
-                      onTap: bots.refresh,
-                    ),
-                  ),
-                if (!bots.loading &&
-                    bots.error == null &&
-                    bots.bots.isEmpty &&
-                    bots.groups.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: HermesSpacing.md),
-                    child: HermesEmptyState(
-                      icon: Icons.smart_toy_outlined,
-                      title: context.l10n.agentBotsEmptyTitle,
-                      description: context.l10n.agentBotsEmptyDescription,
-                    ),
-                  ),
-                for (final group in bots.groups)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.groups_outlined),
-                    ),
-                    title: Text(group.name),
-                    subtitle: Text(
-                      context.l10n.agentGroupSummary(
-                        group.memberKeys.length,
-                        bots.isGroupBusy(group.id)
-                            ? context.l10n.agentRunningSuffix
-                            : '',
-                      ),
-                    ),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => BotGroupChatScreen(
-                          group: group,
-                          onEdit: () => _editGroup(bots, group),
-                        ),
-                      ),
-                    ),
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (value) async {
-                        if (value == 'edit') _editGroup(bots, group);
-                        if (value == 'delete') {
-                          final confirmed = await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: Text(
-                                context.l10n.agentDeleteGroupQuestion(
-                                  group.name,
+            builder: (context, bots, _) {
+              final query = _botSearch.text.trim().toLowerCase();
+              final visibleGroups = query.isEmpty
+                  ? bots.groups
+                  : bots.groups
+                        .where(
+                          (group) => group.name.toLowerCase().contains(query),
+                        )
+                        .toList(growable: false);
+              final visibleBots = query.isEmpty
+                  ? bots.bots
+                  : bots.bots
+                        .where(
+                          (bot) =>
+                              bot.displayName.toLowerCase().contains(query) ||
+                              bot.profile.toLowerCase().contains(query) ||
+                              bot.description.toLowerCase().contains(query),
+                        )
+                        .toList(growable: false);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  HermesMobileCard(
+                    key: const ValueKey('bot-directory-overview'),
+                    padding: const EdgeInsets.all(16),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact =
+                            constraints.maxWidth < 320 ||
+                            MediaQuery.textScalerOf(context).scale(1) > 1.25;
+                        final avatar = Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const HermesAgentAvatar(size: 52),
+                            PositionedDirectional(
+                              end: -2,
+                              bottom: -2,
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: running
+                                      ? HermesSemantic.green
+                                      : HermesSemantic.gray,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: HermesPalette.of(context).surface,
+                                    width: 2.5,
+                                  ),
                                 ),
                               ),
-                              content: Text(
-                                context.l10n.agentDeleteGroupWarning,
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.of(ctx).pop(false),
-                                  child: Text(ctx.l10n.commonCancel),
-                                ),
-                                FilledButton(
-                                  onPressed: () => Navigator.of(ctx).pop(true),
-                                  child: Text(ctx.l10n.commonDelete),
-                                ),
-                              ],
                             ),
-                          );
-                          if (confirmed != true || !context.mounted) return;
-                          try {
-                            await bots.removeGroup(group.id);
-                          } catch (e) {
-                            if (context.mounted) {
-                              showHermesToast(
-                                context,
-                                message: context.l10n.agentDeleteGroupFailed(
-                                  '$e',
-                                ),
-                                kind: HermesToastKind.error,
-                              );
-                            }
-                          }
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: 'edit',
-                          child: Text(context.l10n.agentEditGroup),
-                        ),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Text(context.l10n.agentDeleteGroup),
-                        ),
-                      ],
-                    ),
-                  ),
-                for (final bot in bots.bots)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: HermesAvatar(
-                      label: bot.displayName,
-                      size: 36,
-                      color: botAvatarColor(bot.metadata),
-                    ),
-                    title: Text(bot.displayName),
-                    subtitle: Text(
-                      '${bot.route.connectionId} · ${bot.profile}${bot.description.isEmpty ? '' : ' · ${bot.description}'}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (value) async {
-                        try {
-                          if (value == 'routines') {
-                            await Navigator.of(context).push<void>(
-                              MaterialPageRoute(
-                                builder: (_) => BotRoutinesScreen(bot: bot),
+                          ],
+                        );
+                        final statusChip = HermesMobileStatusChip(
+                          label: running
+                              ? context.l10n.commonRunning
+                              : context.l10n.agentStopped,
+                          color: running
+                              ? HermesSemantic.green
+                              : HermesSemantic.gray,
+                        );
+                        final details = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.l10n.agentBotDirectoryTitle,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              context.l10n.agentBotDirectorySummary(
+                                bots.bots.length,
+                                bots.groups.length,
                               ),
-                            );
-                          }
-                          if (value == 'duplicate') {
-                            await bots.duplicateBot(bot);
-                          }
-                          if (value == 'delete') {
-                            if (!mounted) return;
-                            final confirmed = await showDialog<bool>(
-                              context: this.context,
-                              builder: (ctx) => AlertDialog(
-                                title: Text(
-                                  context.l10n.agentDeleteBotQuestion(
-                                    bot.displayName,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: HermesPalette.of(context).text3,
                                   ),
-                                ),
-                                content: Text(
-                                  context.l10n.profilesDeleteWarning,
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(ctx).pop(false),
-                                    child: Text(ctx.l10n.commonCancel),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () =>
-                                        Navigator.of(ctx).pop(true),
-                                    child: Text(ctx.l10n.commonDelete),
+                            ),
+                          ],
+                        );
+                        if (compact) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  avatar,
+                                  const SizedBox(width: 12),
+                                  const Spacer(),
+                                  Flexible(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: AlignmentDirectional.centerEnd,
+                                      child: statusChip,
+                                    ),
                                   ),
                                 ],
                               ),
-                            );
-                            if (confirmed != true || !context.mounted) return;
-                            await bots.deleteBot(bot);
-                          }
-                        } catch (error) {
-                          if (context.mounted) {
-                            showHermesToast(
-                              context,
-                              message: context.l10n.agentBotOperationFailed(
-                                '$error',
-                              ),
-                              kind: HermesToastKind.error,
-                            );
-                          }
+                              const SizedBox(height: 14),
+                              details,
+                            ],
+                          );
                         }
+                        return Row(
+                          children: [
+                            avatar,
+                            const SizedBox(width: 14),
+                            Expanded(child: details),
+                            const SizedBox(width: 10),
+                            statusChip,
+                          ],
+                        );
                       },
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: 'routines',
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.smart_toy_outlined),
-                            title: Text(context.l10n.agentBotRoutinesMenuItem),
-                          ),
+                    ),
+                  ),
+                  const SizedBox(height: HermesSpacing.md),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: HermesSectionHeader(
+                          title: context.l10n.agentBotsTitle,
                         ),
-                        PopupMenuItem(
-                          value: 'duplicate',
-                          child: Text(context.l10n.agentDuplicateBot),
+                      ),
+                      Text(
+                        '${bots.groups.length + bots.bots.length}',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: HermesSpacing.xs),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact =
+                          constraints.maxWidth < 360 ||
+                          MediaQuery.textScalerOf(context).scale(1) > 1.25;
+                      final manage = FilledButton.tonalIcon(
+                        onPressed: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ProfilesScreen(),
+                            ),
+                          );
+                          if (context.mounted) await bots.refresh();
+                        },
+                        icon: const Icon(
+                          Icons.person_add_alt_outlined,
+                          size: 18,
                         ),
-                        if (bot.profile.toLowerCase() != 'default')
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Text(context.l10n.agentDeleteBot),
+                        label: Text(context.l10n.agentManageBots),
+                      );
+                      final group = OutlinedButton.icon(
+                        onPressed: bots.bots.length >= 2
+                            ? () => _editGroup(bots)
+                            : null,
+                        icon: const Icon(Icons.group_add_outlined, size: 18),
+                        label: Text(context.l10n.agentNewGroup),
+                      );
+                      if (compact) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [manage, const SizedBox(height: 8), group],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: manage),
+                          const SizedBox(width: 8),
+                          Expanded(child: group),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: HermesSpacing.sm),
+                  TextField(
+                    key: const ValueKey('bot-directory-search'),
+                    controller: _botSearch,
+                    onChanged: (_) => setState(() {}),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: context.l10n.agentSearchBots,
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      suffixIcon: query.isEmpty
+                          ? IconButton(
+                              tooltip: context.l10n.agentRefreshRoster,
+                              onPressed: bots.loading ? null : bots.refresh,
+                              icon: bots.loading
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.refresh, size: 20),
+                            )
+                          : IconButton(
+                              tooltip: context.l10n.commonClose,
+                              onPressed: () {
+                                _botSearch.clear();
+                                setState(() {});
+                              },
+                              icon: const Icon(Icons.close, size: 18),
+                            ),
+                      filled: true,
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: HermesSpacing.sm),
+                  if (bots.loading && bots.bots.isEmpty)
+                    const LinearProgressIndicator(),
+                  if (bots.error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: HermesSpacing.sm),
+                      child: HermesNoticeBar(
+                        message: bots.error!,
+                        color: HermesSemantic.red,
+                        icon: Icons.error_outline,
+                        onTap: bots.refresh,
+                      ),
+                    ),
+                  if (!bots.loading &&
+                      bots.error == null &&
+                      bots.bots.isEmpty &&
+                      bots.groups.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: HermesSpacing.md,
+                      ),
+                      child: HermesEmptyState(
+                        icon: Icons.smart_toy_outlined,
+                        title: context.l10n.agentBotsEmptyTitle,
+                        description: context.l10n.agentBotsEmptyDescription,
+                      ),
+                    ),
+                  if (query.isNotEmpty &&
+                      visibleGroups.isEmpty &&
+                      visibleBots.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(context.l10n.agentSearchNoMatches),
+                      ),
+                    ),
+                  if (visibleGroups.isNotEmpty) ...[
+                    HermesMobileSectionLabel(
+                      title: context.l10n.agentGroupChatsSection,
+                      trailing: Text('${visibleGroups.length}'),
+                      top: 8,
+                    ),
+                    HermesMobileGroup(
+                      children: [
+                        for (final group in visibleGroups)
+                          HermesMobileRow(
+                            key: ValueKey('bot-group-${group.id}'),
+                            icon: Icons.groups_outlined,
+                            tone: HermesSemantic.purple,
+                            title: group.name,
+                            subtitle: context.l10n.agentGroupSummary(
+                              group.memberKeys.length,
+                              bots.isGroupBusy(group.id)
+                                  ? context.l10n.agentRunningSuffix
+                                  : '',
+                            ),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => BotGroupChatScreen(
+                                  group: group,
+                                  onEdit: () => _editGroup(bots, group),
+                                ),
+                              ),
+                            ),
+                            trailing: IconButton(
+                              tooltip: context.l10n.commonMore,
+                              onPressed: () => _showGroupActions(bots, group),
+                              icon: const Icon(Icons.more_horiz),
+                            ),
                           ),
                       ],
                     ),
-                    onTap: () => _openBot(bot),
-                  ),
-                const SizedBox(height: HermesSpacing.lg),
-              ],
-            ),
+                  ],
+                  if (visibleBots.isNotEmpty) ...[
+                    HermesMobileSectionLabel(
+                      title: context.l10n.agentIndividualBotsSection,
+                      trailing: Text('${visibleBots.length}'),
+                      top: visibleGroups.isEmpty ? 8 : 18,
+                    ),
+                    HermesMobileGroup(
+                      children: [
+                        for (final bot in visibleBots)
+                          HermesMobileRow(
+                            key: ValueKey('bot-${bot.key}'),
+                            icon: Icons.smart_toy_outlined,
+                            iconWidget: HermesAvatar(
+                              label: bot.displayName,
+                              size: 31,
+                              color: botAvatarColor(bot.metadata),
+                            ),
+                            title: bot.displayName,
+                            subtitle: [
+                              bot.profile,
+                              bot.description,
+                            ].where((text) => text.isNotEmpty).join(' · '),
+                            onTap: () => _openBot(bot),
+                            trailing: IconButton(
+                              tooltip: context.l10n.commonMore,
+                              onPressed: () => _showBotActions(bots, bot),
+                              icon: const Icon(Icons.more_horiz),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: HermesSpacing.lg),
+                ],
+              );
+            },
           ),
           // ── Status hero ──────────────────────────────────────────
           HermesGlassCard(
@@ -762,3 +1148,159 @@ class _AgentScreenState extends State<AgentScreen>
   }
 }
 
+class _BotMemberChoice extends StatelessWidget {
+  const _BotMemberChoice({
+    required this.bot,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final BotIdentity bot;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final palette = HermesPalette.of(context);
+    return AnimatedContainer(
+      duration: HermesMotion.fast,
+      decoration: BoxDecoration(
+        color: selected
+            ? colors.primaryContainer.withValues(alpha: .42)
+            : palette.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: selected ? colors.primary : palette.border,
+          width: selected ? 1.5 : 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 64),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 6, 8),
+              child: Row(
+                children: [
+                  HermesAvatar(
+                    label: bot.displayName,
+                    size: 40,
+                    color: botAvatarColor(bot.metadata),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          bot.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: enabled ? palette.text : palette.text4,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${bot.route.connectionId} · ${bot.profile}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: enabled ? palette.text3 : palette.text4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  IgnorePointer(
+                    child: Checkbox(
+                      value: selected,
+                      onChanged: enabled ? (_) {} : null,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionSheetHeader extends StatelessWidget {
+  const _ActionSheetHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.avatar,
+    this.tone,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget? avatar;
+  final Color? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    final resolvedTone = tone ?? palette.accent;
+    return Row(
+      children: [
+        avatar ??
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: resolvedTone.withValues(alpha: .16),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: resolvedTone, size: 23),
+            ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              if (subtitle.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.text3),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

@@ -138,6 +138,7 @@ void main() {
     tester,
   ) async {
     final store = _RecordingSessionStore();
+    var refreshes = 0;
     addTearDown(store.dispose);
     late BuildContext pageContext;
     await tester.pumpWidget(
@@ -160,6 +161,7 @@ void main() {
       SessionRowActions.show(
         pageContext,
         session: SessionRow(id: 'session-2', title: 'Store action'),
+        onRefreshed: () async => refreshes++,
       ),
     );
     await tester.pumpAndSettle();
@@ -167,8 +169,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is ModalBarrier && widget.color != null,
+      ),
+      findsNothing,
+    );
     expect(store.pinnedId, 'session-2');
     expect(store.pinnedValue, isTrue);
+    expect(refreshes, 0);
   });
 
   testWidgets('rename permits clearing a stored title like desktop', (

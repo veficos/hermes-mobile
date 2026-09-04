@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+
 import '../kanban/api.dart';
 import '../kanban/models.dart';
 import '../kanban/store.dart';
 import '../l10n/l10n.dart';
+import '../theme/hermes_tokens.dart';
+import 'mobile/hermes_mobile_surfaces.dart';
 
+/// Compatibility entry retained for existing callers. Task creation now opens
+/// a full page instead of a modal sheet.
 Future<void> showKanbanNewTaskSheet(
   BuildContext context,
   KanbanStore store,
@@ -18,45 +23,54 @@ Future<void> showKanbanNewTaskSheet(
     );
     return;
   }
-  final created = await showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    builder: (_) => _NewTaskSheet(store: store, api: api),
+  final created = await Navigator.of(context).push<bool>(
+    MaterialPageRoute(
+      builder: (_) => KanbanNewTaskScreen(store: store, api: api),
+    ),
   );
-  if (created == true) {
-    try {
-      await store.load(expectedApi: api);
-      store.requireApi(api);
-    } catch (error) {
-      if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.kanbanOperationFailed('$error'))),
-        );
-      }
+  if (created != true) return;
+  try {
+    await store.load(expectedApi: api);
+    store.requireApi(api);
+  } catch (error) {
+    if (context.mounted) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(context.l10n.kanbanOperationFailed('$error'))),
+      );
     }
   }
 }
 
-class _NewTaskSheet extends StatefulWidget {
+class KanbanNewTaskScreen extends StatefulWidget {
+  const KanbanNewTaskScreen({
+    super.key,
+    required this.store,
+    required this.api,
+  });
+
   final KanbanStore store;
   final KanbanApi api;
-  const _NewTaskSheet({required this.store, required this.api});
+
   @override
-  State<_NewTaskSheet> createState() => _NewTaskSheetState();
+  State<KanbanNewTaskScreen> createState() => _KanbanNewTaskScreenState();
 }
 
-class _NewTaskSheetState extends State<_NewTaskSheet> {
+class _KanbanNewTaskScreenState extends State<KanbanNewTaskScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final title = TextEditingController();
+  final body = TextEditingController();
+  final tenant = TextEditingController();
+  final parent = TextEditingController();
+  final workspace = TextEditingController();
+  final model = TextEditingController();
+  final provider = TextEditingController();
   late final KanbanApi _api;
-  final title = TextEditingController(),
-      body = TextEditingController(),
-      tenant = TextEditingController(),
-      parent = TextEditingController(),
-      workspace = TextEditingController(),
-      model = TextEditingController(),
-      provider = TextEditingController();
-  String status = 'triage', assignee = '', effort = '';
+  String status = 'triage';
+  String assignee = '';
+  String effort = '';
   int priority = 0;
   bool busy = false;
+  bool advancedExpanded = false;
 
   @override
   void initState() {
@@ -66,6 +80,18 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
     if (columns.isNotEmpty && !columns.any((column) => column.name == status)) {
       status = columns.first.name;
     }
+  }
+
+  @override
+  void dispose() {
+    title.dispose();
+    body.dispose();
+    tenant.dispose();
+    parent.dispose();
+    workspace.dispose();
+    model.dispose();
+    provider.dispose();
+    super.dispose();
   }
 
   String _statusLabel(BuildContext context, String value) => switch (value) {
@@ -87,20 +113,15 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
     'high' => context.l10n.kanbanEffortHigh,
     _ => context.l10n.commonDefault,
   };
-  @override
-  void dispose() {
-    title.dispose();
-    body.dispose();
-    tenant.dispose();
-    parent.dispose();
-    workspace.dispose();
-    model.dispose();
-    provider.dispose();
-    super.dispose();
-  }
+
+  String _priorityLabel(BuildContext context, int value) => switch (value) {
+    1 => context.l10n.taskPriorityHigh,
+    2 => context.l10n.taskPriorityUrgent,
+    _ => context.l10n.taskPriorityNormal,
+  };
 
   Future<void> _submit() async {
-    if (busy || title.text.trim().isEmpty) return;
+    if (busy || !_formKey.currentState!.validate()) return;
     final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     setState(() => busy = true);
@@ -124,21 +145,23 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
         if (id.isNotEmpty) {
           try {
             await widget.store.requireApi(_api).addLink(parent.text.trim(), id);
-          } catch (e) {
+          } catch (error) {
             if (!mounted) return;
-            Navigator.pop(context, true);
+            Navigator.of(context).pop(true);
             messenger.showSnackBar(
-              SnackBar(content: Text(l10n.kanbanTaskCreatedLinkFailed('$e'))),
+              SnackBar(
+                content: Text(l10n.kanbanTaskCreatedLinkFailed('$error')),
+              ),
             );
             return;
           }
         }
       }
-      if (mounted) Navigator.pop(context, true);
-    } catch (e) {
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
       if (mounted) {
         messenger.showSnackBar(
-          SnackBar(content: Text(l10n.kanbanOperationFailed('$e'))),
+          SnackBar(content: Text(l10n.kanbanOperationFailed('$error'))),
         );
       }
     } finally {
@@ -147,125 +170,292 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      16,
-      16,
-      16,
-      MediaQuery.viewInsetsOf(context).bottom + 16,
-    ),
-    child: ListView(
-      shrinkWrap: true,
-      children: [
-        TextField(
-          controller: title,
-          autofocus: true,
-          decoration: InputDecoration(labelText: context.l10n.commonTitle),
-        ),
-        TextField(
-          controller: body,
-          minLines: 2,
-          maxLines: 5,
-          decoration: InputDecoration(
-            labelText: context.l10n.kanbanDescription,
-          ),
-        ),
-        DropdownButtonFormField<String>(
-          initialValue: status,
-          decoration: InputDecoration(labelText: context.l10n.kanbanTaskStatus),
-          items: [
-            for (final c
-                in widget.store.boardData?.columns ?? const <KanbanColumn>[])
-              DropdownMenuItem(
-                value: c.name,
-                child: Text(_statusLabel(context, c.name)),
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final columns = widget.store.boardData?.columns ?? const <KanbanColumn>[];
+    final statuses = columns.isEmpty
+        ? <String>[status]
+        : columns.map((column) => column.name).toList(growable: false);
+    final assignees = widget.store.boardData?.assignees ?? const <String>[];
+    return Scaffold(
+      key: const ValueKey('kanban-new-task-screen'),
+      appBar: AppBar(title: Text(l10n.kanbanCreateTask)),
+      body: SafeArea(
+        bottom: false,
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+            children: [
+              const _IntroCard(),
+              const SizedBox(height: 18),
+              _SectionLabel(
+                icon: Icons.edit_note_rounded,
+                title: l10n.kanbanTaskContentSection,
               ),
-          ],
-          onChanged: (v) => setState(() => status = v ?? 'triage'),
-        ),
-        DropdownButtonFormField<int>(
-          initialValue: priority,
-          decoration: InputDecoration(labelText: context.l10n.kanbanPriority),
-          items: [
-            DropdownMenuItem(
-              value: 0,
-              child: Text(context.l10n.taskPriorityNormal),
-            ),
-            DropdownMenuItem(
-              value: 1,
-              child: Text(context.l10n.taskPriorityHigh),
-            ),
-            DropdownMenuItem(
-              value: 2,
-              child: Text(context.l10n.taskPriorityUrgent),
-            ),
-          ],
-          onChanged: (v) => setState(() => priority = v ?? 0),
-        ),
-        DropdownButtonFormField<String>(
-          initialValue: assignee,
-          decoration: InputDecoration(labelText: context.l10n.kanbanAssignee),
-          items: [
-            DropdownMenuItem(
-              value: '',
-              child: Text(context.l10n.taskUnassigned),
-            ),
-            for (final a
-                in widget.store.boardData?.assignees ?? const <String>[])
-              DropdownMenuItem(value: a, child: Text(a)),
-          ],
-          onChanged: (v) => setState(() => assignee = v ?? ''),
-        ),
-        TextField(
-          controller: tenant,
-          decoration: InputDecoration(labelText: context.l10n.kanbanTenant),
-        ),
-        TextField(
-          controller: parent,
-          decoration: InputDecoration(
-            labelText: context.l10n.kanbanParentTaskId,
-          ),
-        ),
-        TextField(
-          controller: workspace,
-          decoration: InputDecoration(
-            labelText: context.l10n.kanbanWorkspacePath,
-          ),
-        ),
-        TextField(
-          controller: model,
-          decoration: InputDecoration(
-            labelText: context.l10n.kanbanModelOverride,
-          ),
-        ),
-        TextField(
-          controller: provider,
-          decoration: InputDecoration(
-            labelText: context.l10n.kanbanProviderOverride,
-          ),
-        ),
-        DropdownButtonFormField<String>(
-          initialValue: effort,
-          decoration: InputDecoration(labelText: context.l10n.kanbanEffort),
-          items: [
-            for (final value in const ['', 'low', 'medium', 'high'])
-              DropdownMenuItem(
-                value: value,
-                child: Text(_effortLabel(context, value)),
+              const SizedBox(height: 8),
+              HermesMobileCard(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  children: [
+                    TextFormField(
+                      key: const ValueKey('kanban-new-task-title'),
+                      controller: title,
+                      autofocus: true,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: l10n.commonTitle,
+                        hintText: l10n.kanbanTaskTitleHint,
+                        prefixIcon: const Icon(Icons.title_rounded),
+                      ),
+                      validator: (value) => value?.trim().isEmpty == true
+                          ? l10n.kanbanTaskTitleRequired
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: body,
+                      minLines: 4,
+                      maxLines: 8,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        labelText: l10n.kanbanDescription,
+                        hintText: l10n.kanbanTaskDescriptionHint,
+                        alignLabelWithHint: true,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-          ],
-          onChanged: (v) => setState(() => effort = v ?? ''),
+              const SizedBox(height: 18),
+              _SectionLabel(
+                icon: Icons.tune_rounded,
+                title: l10n.kanbanTaskArrangementSection,
+              ),
+              const SizedBox(height: 8),
+              HermesMobileCard(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  children: [
+                    DropdownButtonFormField<String>(
+                      key: const ValueKey('kanban-new-task-status'),
+                      initialValue: status,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.kanbanTaskStatus,
+                        prefixIcon: const Icon(Icons.radio_button_checked),
+                      ),
+                      items: [
+                        for (final value in statuses)
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(_statusLabel(context, value)),
+                          ),
+                      ],
+                      onChanged: busy
+                          ? null
+                          : (value) => setState(() => status = value ?? status),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      initialValue: priority,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.kanbanPriority,
+                        prefixIcon: const Icon(Icons.flag_outlined),
+                      ),
+                      items: [
+                        for (final value in const [0, 1, 2])
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(_priorityLabel(context, value)),
+                          ),
+                      ],
+                      onChanged: busy
+                          ? null
+                          : (value) => setState(() => priority = value ?? 0),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: assignee,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.kanbanAssignee,
+                        prefixIcon: const Icon(Icons.person_outline_rounded),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: '',
+                          child: Text(l10n.taskUnassigned),
+                        ),
+                        for (final value in assignees)
+                          DropdownMenuItem(value: value, child: Text(value)),
+                      ],
+                      onChanged: busy
+                          ? null
+                          : (value) => setState(() => assignee = value ?? ''),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              HermesMobileCard(
+                padding: EdgeInsets.zero,
+                child: Material(
+                  color: Colors.transparent,
+                  child: ExpansionTile(
+                    key: const ValueKey('kanban-new-task-advanced'),
+                    initiallyExpanded: advancedExpanded,
+                    onExpansionChanged: (value) => advancedExpanded = value,
+                    leading: const Icon(Icons.settings_suggest_outlined),
+                    title: Text(l10n.kanbanTaskRuntimeSection),
+                    subtitle: Text(l10n.kanbanTaskRuntimeDescription),
+                    childrenPadding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
+                    children: [
+                      _field(tenant, l10n.kanbanTenant, Icons.domain_outlined),
+                      _field(
+                        parent,
+                        l10n.kanbanParentTaskId,
+                        Icons.account_tree_outlined,
+                      ),
+                      _field(
+                        workspace,
+                        l10n.kanbanWorkspacePath,
+                        Icons.folder_outlined,
+                      ),
+                      _field(
+                        model,
+                        l10n.kanbanModelOverride,
+                        Icons.psychology_outlined,
+                      ),
+                      _field(
+                        provider,
+                        l10n.kanbanProviderOverride,
+                        Icons.cloud_outlined,
+                      ),
+                      DropdownButtonFormField<String>(
+                        initialValue: effort,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: l10n.kanbanEffort,
+                          prefixIcon: const Icon(Icons.speed_rounded),
+                        ),
+                        items: [
+                          for (final value in const [
+                            '',
+                            'low',
+                            'medium',
+                            'high',
+                          ])
+                            DropdownMenuItem(
+                              value: value,
+                              child: Text(_effortLabel(context, value)),
+                            ),
+                        ],
+                        onChanged: busy
+                            ? null
+                            : (value) => setState(() => effort = value ?? ''),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
-        FilledButton(
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        child: FilledButton.icon(
+          key: const ValueKey('kanban-new-task-submit'),
           onPressed: busy ? null : _submit,
-          child: Text(
-            busy
-                ? context.l10n.kanbanCreatingTask
-                : context.l10n.kanbanCreateTask,
+          icon: busy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.add_task_rounded),
+          label: Text(busy ? l10n.kanbanCreatingTask : l10n.kanbanCreateTask),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+        ),
+      ),
+    );
+  }
+
+  Widget _field(TextEditingController controller, String label, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: controller,
+        enabled: !busy,
+        textInputAction: TextInputAction.next,
+        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+      ),
+    );
+  }
+}
+
+class _IntroCard extends StatelessWidget {
+  const _IntroCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: palette.accentBg,
+        borderRadius: BorderRadius.circular(HermesMobileMetrics.groupRadius),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: palette.accent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.add_task_rounded, color: Colors.white),
           ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              context.l10n.kanbanCreateTaskDescription,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: palette.text2,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 17, color: palette.accent),
+        const SizedBox(width: 7),
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ],
-    ),
-  );
+    );
+  }
 }

@@ -2463,8 +2463,12 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   Future<void> setPinned(String id, bool pinned) async {
     final api = _apiForStored(id);
     await api.pinSession(id, pinned, profile: _routeForStored(id).profile);
+    // Pinning only changes list presentation. Keep the loaded snapshot alive
+    // and move the row between groups locally; an immediate list fetch can
+    // race the backend's projection and replace the whole list with a
+    // transient empty response. Normal polling/live events will reconcile
+    // any later server-side changes.
     _replaceSessionRow(id, (row) => row.copyWith(pinned: pinned));
-    await refreshList(limit: _currentListWindow);
   }
 
   Future<SessionRow> branchStoredSession(String id, {int? keepCount}) async {

@@ -154,6 +154,21 @@ class _SessionBlock extends StatelessWidget {
     return count;
   }
 
+  List<_SubagentEntry> get _entries {
+    final entries = <_SubagentEntry>[];
+    void visit(SubagentNode node, int depth) {
+      entries.add(_SubagentEntry(node, depth));
+      for (final child in node.children) {
+        visit(child, depth + 1);
+      }
+    }
+
+    for (final node in nodes) {
+      visit(node, 0);
+    }
+    return entries;
+  }
+
   /// Aggregate token/cost/tool/file counts across every node in this
   /// session's tree — mirrors desktop's summary row (app/agents/index.tsx).
   ({
@@ -204,6 +219,13 @@ class _SessionBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final agg = _aggregate;
+    final entries = _entries;
+    final running = entries
+        .where((entry) => _isActiveStatus(entry.node.status))
+        .toList(growable: false);
+    final completed = entries
+        .where((entry) => !_isActiveStatus(entry.node.status))
+        .toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -258,24 +280,115 @@ class _SessionBlock extends StatelessWidget {
               cost: agg.cost,
             ),
           ),
-        HermesGlassCard(
-          radius: HermesRadius.largeCard,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 4,
-            vertical: HermesSpacing.xs,
-          ),
-          child: Column(
+        _TaskSection(
+          key: ValueKey('subagents-running-$sessionId'),
+          title: context.l10n.commonRunning,
+          icon: Icons.play_circle_outline,
+          color: HermesSemantic.green,
+          entries: running,
+          sessionId: sessionId,
+          owner: owner,
+        ),
+        const SizedBox(height: HermesSpacing.sm),
+        _TaskSection(
+          key: ValueKey('subagents-completed-$sessionId'),
+          title: context.l10n.commonCompleted,
+          icon: Icons.task_alt,
+          color: theme.colorScheme.primary,
+          entries: completed,
+          sessionId: sessionId,
+          owner: owner,
+        ),
+      ],
+    );
+  }
+}
+
+bool _isActiveStatus(String status) =>
+    status == 'running' || status == 'queued';
+
+class _SubagentEntry {
+  final SubagentNode node;
+  final int depth;
+
+  const _SubagentEntry(this.node, this.depth);
+}
+
+class _TaskSection extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final List<_SubagentEntry> entries;
+  final String sessionId;
+  final OwnerRoute owner;
+
+  const _TaskSection({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.entries,
+    required this.sessionId,
+    required this.owner,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 2, 4, 6),
+          child: Row(
             children: [
-              for (final node in nodes)
-                _SubagentTile(
-                  node: node,
-                  sessionId: sessionId,
-                  owner: owner,
-                  depth: 0,
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(HermesRadius.capsule),
+                ),
+                child: Text(
+                  '${entries.length}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
+        if (entries.isNotEmpty)
+          HermesGlassCard(
+            radius: HermesRadius.largeCard,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 4,
+              vertical: HermesSpacing.xs,
+            ),
+            child: Column(
+              children: [
+                for (final entry in entries)
+                  _SubagentTile(
+                    node: entry.node,
+                    sessionId: sessionId,
+                    owner: owner,
+                    depth: entry.depth,
+                    showChildren: false,
+                  ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -335,18 +448,20 @@ class _SubagentTile extends StatelessWidget {
   final String sessionId;
   final OwnerRoute owner;
   final int depth;
+  final bool showChildren;
 
   const _SubagentTile({
     required this.node,
     required this.sessionId,
     required this.owner,
     required this.depth,
+    this.showChildren = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasChildren = node.children.isNotEmpty;
+    final hasChildren = showChildren && node.children.isNotEmpty;
 
     void showActions() {
       final l10n = context.l10n;
@@ -356,36 +471,37 @@ class _SubagentTile extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(
-                  Icons.stop_circle_outlined,
-                  color: HermesSemantic.red,
+              if (_isActiveStatus(node.status))
+                ListTile(
+                  leading: const Icon(
+                    Icons.stop_circle_outlined,
+                    color: HermesSemantic.red,
+                  ),
+                  title: Text(l10n.subagentsInterrupt),
+                  onTap: () async {
+                    Navigator.of(ctx).pop();
+                    final messenger = ScaffoldMessenger.of(context);
+                    try {
+                      await context.read<SubagentStore>().interrupt(
+                        node.id,
+                        ownerRoute: owner,
+                      );
+                      if (context.mounted) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text(l10n.subagentsInterruptSent)),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(l10n.subagentsInterruptFailed('$e')),
+                          ),
+                        );
+                      }
+                    }
+                  },
                 ),
-                title: Text(l10n.subagentsInterrupt),
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  final messenger = ScaffoldMessenger.of(context);
-                  try {
-                    await context.read<SubagentStore>().interrupt(
-                      node.id,
-                      ownerRoute: owner,
-                    );
-                    if (context.mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text(l10n.subagentsInterruptSent)),
-                      );
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(l10n.subagentsInterruptFailed('$e')),
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
               ListTile(
                 leading: const Icon(Icons.chat_bubble_outline),
                 title: Text(l10n.subagentsOpenSession),

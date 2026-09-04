@@ -1002,7 +1002,10 @@ void main() {
     await client.memoryProviderConfig('honcho', profile: 'work');
     await client.saveMemoryProviderConfig('honcho', {
       'apiKey': 'secret',
+      'enabled': true,
+      'limit': 12,
     }, profile: 'work');
+    await client.setupMemoryProvider('honcho', profile: 'work');
     await client.startMemoryProviderOAuth('honcho', profile: 'work');
     await client.memoryProviderOAuthStatus('honcho', profile: 'work');
     await client.curatorStatus();
@@ -1015,20 +1018,22 @@ void main() {
       'POST /api/memory/reset',
       'GET /api/memory/providers/honcho/config',
       'PUT /api/memory/providers/honcho/config',
+      'POST /api/memory/providers/honcho/setup',
       'POST /api/memory/providers/honcho/oauth/start',
       'GET /api/memory/providers/honcho/oauth/status',
       'GET /api/curator',
       'PUT /api/curator/paused',
       'POST /api/curator/run',
     ]);
-    for (final request in requests.take(7)) {
+    for (final request in requests.take(8)) {
       expect(request.url.queryParameters['profile'], 'work');
     }
     expect(jsonDecode(requests[2].body), {'target': 'user'});
     expect(jsonDecode(requests[4].body), {
-      'values': {'apiKey': 'secret'},
+      'values': {'apiKey': 'secret', 'enabled': true, 'limit': 12},
     });
-    expect(jsonDecode(requests[8].body), {'paused': true});
+    expect(jsonDecode(requests[5].body), {'values': <String, dynamic>{}});
+    expect(jsonDecode(requests[9].body), {'paused': true});
   });
 
   test('direct Git review uses canonical ship and PR routes', () async {

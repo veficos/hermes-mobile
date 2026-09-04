@@ -15,6 +15,7 @@ import '../widgets/h/hermes_states.dart';
 import '../widgets/session/session_list_meta.dart';
 import '../widgets/session/session_rich_card.dart';
 import '../widgets/session/session_detail_panel.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import 'chat_screen.dart';
 import 'sessions_screen.dart';
 
@@ -612,7 +613,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                 }),
                 icon: Icon(expanded ? Icons.expand_less : Icons.expand_more),
               ),
-            PopupMenuButton<String>(
+            HermesAdaptiveMenuButton<String>(
               tooltip: context.l10n.historySessionActions,
               onSelected: (value) => _handleRowAction(row, value),
               itemBuilder: (_) => [
@@ -818,7 +819,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                       child: const Icon(Icons.expand_more, size: 19),
                     ),
                   ),
-                PopupMenuButton<String>(
+                HermesAdaptiveMenuButton<String>(
                   tooltip: context.l10n.historySessionActions,
                   padding: EdgeInsets.zero,
                   iconSize: 19,

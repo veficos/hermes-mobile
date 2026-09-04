@@ -14,6 +14,7 @@ import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 
 class _CredentialEntry {
   final String id;
@@ -524,7 +525,7 @@ class _CredentialsScreenState extends State<CredentialsScreen>
         ),
       ),
       trailing: c.configured
-          ? PopupMenuButton<String>(
+          ? HermesAdaptiveMenuButton<String>(
               tooltip: context.l10n.commonMore,
               icon: const Icon(Icons.more_vert),
               onSelected: (action) {

@@ -57,6 +57,22 @@ import UserNotifications
       channel.invokeMethod(method, arguments: payload)
     }
     pendingPushEvents.removeAll()
+
+    let clipboardChannel = FlutterMethodChannel(
+      name: "hermes.clipboard",
+      binaryMessenger: registrar.messenger()
+    )
+    clipboardChannel.setMethodCallHandler { call, result in
+      guard call.method == "readImage" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard let image = UIPasteboard.general.image, let data = image.pngData() else {
+        result(nil)
+        return
+      }
+      result(["bytes": FlutterStandardTypedData(bytes: data), "mime": "image/png", "filename": "clipboard.png"])
+    }
   }
 
   override func application(

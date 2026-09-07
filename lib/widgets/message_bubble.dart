@@ -1,21 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:gal/gal.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
 
 import '../core/chat_message.dart';
 import '../core/clipboard.dart';
-import '../core/http_status_exception.dart';
 import '../chat/content/code_block.dart';
-import '../chat/content/diff_view.dart';
 import '../chat/content/inline_content_renderer.dart';
 import '../chat/content/reference_chips.dart';
 import '../chat/content/resizable_markdown_table.dart';
@@ -29,13 +23,22 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import 'h/hermes_logo.dart';
 import 'h/hermes_plan.dart';
+import 'h/hermes_states.dart';
 import 'h/hermes_subagent.dart';
 import 'h/hermes_thinking.dart';
+import 'h/hermes_toast.dart';
 import 'h/hermes_tool.dart';
+import 'mobile/mobile_page_scaffold.dart';
 import 'web_preview.dart';
 import 'message_preview_attachments.dart';
-import '../screens/mcp_screen.dart';
 import '../screens/request_sheet.dart';
+import 'tool_cards/changed_files_tool_card.dart';
+import 'tool_cards/generated_image_tool_card.dart';
+import 'tool_cards/inline_diff_tool_card.dart';
+import 'tool_cards/mcp_setup_tool_card.dart';
+import 'tool_cards/terminal_tool_card.dart';
+import 'tool_cards/tool_payload.dart';
+import 'tool_cards/web_tool_card.dart';
 
 /// Renders a single chat message (user / assistant / interim) with markdown,
 /// reasoning, and tool-call parts（design-system.md §6.5）：
@@ -155,8 +158,10 @@ class _MessageBubbleState extends State<MessageBubble>
       await session!.reactToMessage(widget.message, adding ? '❤️' : null);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.messageReactionFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.messageReactionFailed('$error'),
         );
       }
     }
@@ -190,7 +195,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 onSelectTurnVersion: widget.onSelectTurnVersion,
                 onRestoreTurnVersion: widget.onRestoreTurnVersion,
                 agentReplySender: widget.agentReplySender,
-              ).render(context),
+              ),
             ),
           ),
           AnimatedBuilder(
@@ -279,7 +284,11 @@ class MessageRenderBoundary extends StatelessWidget {
   }
 }
 
-class _MessageBubbleBody {
+/// Body renderer for [MessageBubble]: a plain [StatelessWidget] whose build
+/// carries the full user/assistant/system layout. Kept private — callers go
+/// through [MessageBubble]; [MessageRenderBoundary] builds it via its
+/// builder callback.
+class _MessageBubbleBody extends StatelessWidget {
   final ChatMessage message;
   final bool showFooter;
   final bool showRoleHeader;
@@ -312,7 +321,8 @@ class _MessageBubbleBody {
     this.agentReplySender,
   });
 
-  Widget render(BuildContext context) {
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = HermesPalette.of(context);
     final isUser = message.role == 'user';
@@ -375,6 +385,47 @@ class _MessageBubbleBody {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          if (message.attachmentUploadState != null &&
+              message.attachmentUploadState != 'accepted')
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(switch (message.attachmentUploadState) {
+                    'failed' => context.l10n.messageBubbleAttachmentSendFailed,
+                    'reading' => context.l10n.chatReadingAttachments,
+                    'encoding' => context.l10n.chatPreparingAttachments,
+                    'submitting' => context.l10n.chatSendingEllipsis,
+                    _ => context.l10n.messageBubbleAttachmentUploading(
+                      message.attachmentUploadTotal == null ||
+                              message.attachmentUploadTotal == 0
+                          ? ''
+                          : '${((message.attachmentUploadSent ?? 0) / message.attachmentUploadTotal! * 100).round()}%',
+                    ),
+                  }, style: TextStyle(fontSize: 12, color: palette.text3)),
+                  if (message.attachmentUploadState == 'uploading')
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: SizedBox(
+                        width: 160,
+                        child: LinearProgressIndicator(
+                          minHeight: 3,
+                          value:
+                              message.attachmentUploadTotal == null ||
+                                  message.attachmentUploadTotal == 0
+                              ? null
+                              : ((message.attachmentUploadSent ?? 0) /
+                                        message.attachmentUploadTotal!)
+                                    .clamp(0.0, 1.0),
+                          color: palette.accent,
+                          backgroundColor: palette.border,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           Align(
             alignment: Alignment.centerRight,
             child: Container(
@@ -627,17 +678,18 @@ class _MessageReactions extends StatelessWidget {
       await context.read<SessionStore>().reactToMessage(message, emoji);
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.messageReactionFailed('$error'))),
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.messageReactionFailed('$error'),
       );
     }
   }
 
   Future<void> _pickEmoji(BuildContext context) async {
-    final emoji = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => const _EmojiPickerSheet(),
+    final emoji = await showMobileSheet<String>(
+      context,
+      (_) => const _EmojiPickerSheet(),
     );
     if (emoji != null && context.mounted) await _toggle(context, emoji);
   }
@@ -769,390 +821,6 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
   }
 }
 
-class _GeneratedImageToolCard extends StatelessWidget {
-  final Map<String, dynamic> data;
-
-  const _GeneratedImageToolCard({required this.data});
-
-  String? get _imageUrl {
-    // Historical/persisted tool calls only ever carry `result_text` (see
-    // ChatStore._historyToolData) — `result` alone only covers the
-    // still-live streaming path, so a past session's generated images never
-    // resolved a URL at all without this fallback.
-    dynamic result = data['result'] ?? data['result_text'];
-    if (result is String) {
-      try {
-        result = jsonDecode(result);
-      } catch (_) {
-        if (result.startsWith('http') || result.startsWith('data:image/')) {
-          return result;
-        }
-      }
-    }
-    if (result is Map) {
-      // `image` is what image_generate actually returns server-side; the
-      // other keys are kept for other providers/shapes.
-      return (result['image'] ??
-              result['image_url'] ??
-              result['url'] ??
-              result['data_url'])
-          ?.toString();
-    }
-    return null;
-  }
-
-  /// E1: size the frame from `aspect_ratio` BEFORE the image loads so the
-  /// placeholder and resolved image occupy the same box (no layout shift).
-  double get _aspectRatio {
-    final args = data['args'];
-    final raw =
-        (args is Map ? args['aspect_ratio'] ?? args['size'] : null)
-            ?.toString()
-            .toLowerCase()
-            .trim() ??
-        '';
-    return switch (raw) {
-      'square' || '1:1' => 1,
-      'portrait' || '9:16' || '2:3' || '3:4' => 3 / 4,
-      _ => 16 / 9,
-    };
-  }
-
-  // Every rebuild of this StatelessWidget (a streaming turn re-renders the
-  // whole timeline on each token) used to re-run `contentAsBytes()` — a full
-  // base64 decode — for every `data:` URI generated image still on screen,
-  // even ones the user never touched. Cached by the URI string itself (the
-  // content IS the url for a data: URI, so string equality is exact),
-  // capped so a very long session with many distinct generated images can't
-  // grow this unbounded.
-  static final Map<String, Uint8List> _dataUriCache = {};
-  static const _dataUriCacheLimit = 40;
-
-  ImageProvider _provider(String url) {
-    if (url.startsWith('data:')) {
-      var bytes = _dataUriCache[url];
-      if (bytes == null) {
-        bytes = UriData.fromUri(Uri.parse(url)).contentAsBytes();
-        if (_dataUriCache.length >= _dataUriCacheLimit) {
-          _dataUriCache.remove(_dataUriCache.keys.first);
-        }
-        _dataUriCache[url] = bytes;
-      }
-      return MemoryImage(bytes);
-    }
-    return NetworkImage(url);
-  }
-
-  ImageProvider _thumbnailProvider(String url) =>
-      ResizeImage.resizeIfNeeded(1600, 1600, _provider(url));
-
-  /// E1 / K1: save the generated image to the device gallery.
-  Future<void> _saveToGallery(BuildContext context, String url) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      Uint8List bytes;
-      if (url.startsWith('data:')) {
-        bytes = UriData.fromUri(Uri.parse(url)).contentAsBytes();
-      } else {
-        final res = await http.get(Uri.parse(url));
-        if (res.statusCode != 200) {
-          throw HttpStatusException(res.statusCode);
-        }
-        bytes = res.bodyBytes;
-      }
-      if (!await Gal.hasAccess()) await Gal.requestAccess();
-      await Gal.putImageBytes(
-        bytes,
-        name: 'hermes-${DateTime.now().millisecondsSinceEpoch}',
-      );
-      if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.imageSavedToGallery)),
-        );
-      }
-    } catch (error) {
-      if (context.mounted) {
-        final detail = error is HttpStatusException
-            ? context.l10n.httpStatusError(error.statusCode)
-            : '$error';
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.messageImageSaveFailed(detail))),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final url = _imageUrl;
-    final running = data['running'] == true;
-    final failed = data['is_error'] == true || data['error'] != null;
-    if (url == null || url.isEmpty) {
-      return Card(
-        key: ValueKey(
-          'image-generation-${data['tool_id'] ?? data['id'] ?? ''}',
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: AspectRatio(
-          aspectRatio: _aspectRatio,
-          child: running
-              ? _DiffusionShimmer(label: context.l10n.messageGeneratingImage)
-              : Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        failed
-                            ? Icons.broken_image_outlined
-                            : Icons.image_outlined,
-                        size: 36,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        failed
-                            ? context.l10n.messageImageGenerationFailed
-                            : context.l10n.messageWaitingForImage,
-                      ),
-                      if (data['summary']?.toString().isNotEmpty == true)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(data['summary'].toString()),
-                        ),
-                    ],
-                  ),
-                ),
-        ),
-      );
-    }
-    final provider = _provider(url);
-    final thumbnailProvider = _thumbnailProvider(url);
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ListTile(
-            dense: true,
-            leading: const Icon(Icons.auto_awesome_outlined),
-            title: Text(context.l10n.messageGeneratedImage),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: context.l10n.imageCopyLink,
-                  iconSize: 18,
-                  onPressed: () => copyTextOrNotify(
-                    context,
-                    url,
-                    successMessage: context.l10n.messageImageLinkCopied,
-                  ),
-                  icon: const Icon(Icons.link),
-                ),
-                IconButton(
-                  tooltip: context.l10n.imageSave,
-                  iconSize: 18,
-                  onPressed: () => _saveToGallery(context, url),
-                  icon: const Icon(Icons.save_alt),
-                ),
-                if (!url.startsWith('data:'))
-                  IconButton(
-                    tooltip: context.l10n.messageOpenInBrowser,
-                    iconSize: 18,
-                    onPressed: () => openChatLink(context, url),
-                    icon: const Icon(Icons.open_in_new),
-                  ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () => showDialog<void>(
-              context: context,
-              barrierColor: Colors.black.withValues(alpha: 0.92),
-              builder: (_) => Dialog.fullscreen(
-                backgroundColor: Colors.transparent,
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: InteractiveViewer(
-                        minScale: .5,
-                        maxScale: 5,
-                        child: Center(child: Image(image: provider)),
-                      ),
-                    ),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: IconButton.filledTonal(
-                        tooltip: context.l10n.commonClose,
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            child: AspectRatio(
-              aspectRatio: _aspectRatio,
-              child: Image(
-                image: thumbnailProvider,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SelectableText(url),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// E1: an animated shimmer stand-in while an image generates (desktop
-/// `DiffusionCanvas`).
-class _DiffusionShimmer extends StatefulWidget {
-  final String label;
-  const _DiffusionShimmer({required this.label});
-
-  @override
-  State<_DiffusionShimmer> createState() => _DiffusionShimmerState();
-}
-
-class _DiffusionShimmerState extends State<_DiffusionShimmer>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    if (MediaQuery.disableAnimationsOf(context)) {
-      return ColoredBox(
-        color: scheme.surfaceContainerHighest,
-        child: Center(child: Text(widget.label)),
-      );
-    }
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, _) {
-        final t = _c.value;
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment(-1 + 2 * t, -1),
-              end: Alignment(1 + 2 * t, 1),
-              colors: [
-                scheme.surfaceContainerHigh,
-                scheme.surfaceContainerHighest,
-                scheme.primary.withValues(alpha: 0.12),
-                scheme.surfaceContainerHighest,
-                scheme.surfaceContainerHigh,
-              ],
-              stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
-            ),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.auto_awesome,
-                  color: scheme.primary.withValues(alpha: 0.7),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  widget.label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _McpSetupToolCard extends StatelessWidget {
-  final Map<String, dynamic> data;
-
-  const _McpSetupToolCard({required this.data});
-
-  String get _server {
-    final args = data['args'];
-    if (args is Map) {
-      final s = (args['server'] ?? args['name'] ?? args['id'] ?? '').toString();
-      if (s.isNotEmpty) return s;
-    }
-    return (data['server'] ?? data['name'] ?? '').toString();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final failed = data['is_error'] == true || data['error'] != null;
-    final running = data['running'] == true;
-    final server = _server;
-    return Card(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: Icon(
-              failed ? Icons.extension_off_outlined : Icons.extension_outlined,
-            ),
-            title: Text(
-              server.isEmpty
-                  ? context.l10n.messageMcpSetup
-                  : context.l10n.messageMcpServer(server),
-            ),
-            subtitle: Text(
-              failed
-                  ? context.l10n.messageMcpSetupFailed
-                  : running
-                  ? context.l10n.messageMcpSetupWaiting
-                  : context.l10n.messageMcpSetupComplete,
-            ),
-            trailing: running
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(
-                    failed ? Icons.error_outline : Icons.check_circle_outline,
-                  ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 8, bottom: 4),
-              child: TextButton.icon(
-                icon: const Icon(Icons.settings_outlined, size: 15),
-                label: Text(context.l10n.messageOpenMcpSettings),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const McpScreen()),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Prototype/desktop parity dispatch: routes a tool-call payload to its
 /// dedicated rich card (diff, terminal, generated image, MCP setup, web
 /// search, delegated subagent) or the generic [HermesToolCard] fallback.
@@ -1162,10 +830,10 @@ class _McpSetupToolCard extends StatelessWidget {
 Widget buildToolCallCard(Map<String, dynamic> tool) {
   final name = (tool['name'] ?? tool['tool_name'] ?? '').toString();
   if (name == 'image_generate' || name == 'generate_image') {
-    return _GeneratedImageToolCard(data: tool);
+    return GeneratedImageToolCard(data: tool);
   }
   if (name == 'setup_mcp' || name == 'mcp_setup') {
-    return _McpSetupToolCard(data: tool);
+    return McpSetupToolCard(data: tool);
   }
   // D2: a reaction's UI is the emoji on the bubble — a "react_to_message"
   // tool row beside it is the agent narrating its own tapback.
@@ -1186,21 +854,21 @@ Widget buildToolCallCard(Map<String, dynamic> tool) {
         return _OutboundDeliveryNotice(
           target: target,
           pending: tool['running'] == true,
-          reply: _toolResultText(tool),
+          reply: toolResultText(tool),
         );
       }
     }
-    return _TerminalToolCard(data: tool);
+    return TerminalToolCard(data: tool);
   }
   if (name == 'changed_files' || name == 'git_diff' || name == 'apply_patch') {
-    if (_inlineDiff(tool).isNotEmpty) {
-      return _InlineDiffToolCard(data: tool);
+    if (inlineDiffText(tool).isNotEmpty) {
+      return InlineDiffToolCard(data: tool);
     }
-    return _ChangedFilesToolCard(data: tool);
+    return ChangedFilesToolCard(data: tool);
   }
   if (name == 'edit_file' || name == 'patch' || name == 'write_file') {
-    if (_inlineDiff(tool).isNotEmpty) {
-      return _InlineDiffToolCard(data: tool);
+    if (inlineDiffText(tool).isNotEmpty) {
+      return InlineDiffToolCard(data: tool);
     }
     // A6 (desktop parity): a settled, successful `write_file` *create*
     // with neither a diff nor any result body is a dead duplicate row
@@ -1210,14 +878,14 @@ Widget buildToolCallCard(Map<String, dynamic> tool) {
     if (name == 'write_file' &&
         !running &&
         !failed &&
-        _toolResultText(tool).trim().isEmpty) {
+        toolResultText(tool).trim().isEmpty) {
       return const SizedBox.shrink();
     }
   }
   if (name == 'web_search' ||
       name == 'browser_navigate' ||
       name == 'web_fetch') {
-    return _WebToolCard(data: tool);
+    return WebToolCard(data: tool);
   }
   if (name == 'delegate_task' || name == 'delegate') {
     final rows = DelegateRunModel.listFrom(tool);
@@ -1259,376 +927,6 @@ Widget buildToolCallCard(Map<String, dynamic> tool) {
     );
   }
   return HermesToolCard(data: tool);
-}
-
-String _toolResultText(Map<String, dynamic> data) {
-  final value = data['result_text'] ?? data['result'] ?? data['summary'] ?? '';
-  if (value is String) return value;
-  try {
-    return const JsonEncoder.withIndent('  ').convert(value);
-  } catch (_) {
-    return value.toString();
-  }
-}
-
-class _TerminalToolCard extends StatelessWidget {
-  final Map<String, dynamic> data;
-  const _TerminalToolCard({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final run = TerminalRunModel.from(data);
-    final palette = HermesPalette.of(context);
-    return ToolCardShell(
-      key: ValueKey('tool-card-${data['tool_id'] ?? data['id'] ?? 'terminal'}'),
-      icon: Icons.terminal,
-      title: 'terminal',
-      subtitle: run.command.isEmpty
-          ? null
-          : Text(
-              run.command,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 10.5, color: palette.text3),
-            ),
-      trailing: run.running
-          ? const SizedBox.square(
-              dimension: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : null,
-      failed: run.failed,
-      initiallyExpanded: false,
-      children: [
-        if (run.command.isNotEmpty) ...[
-          Text(
-            context.l10n.toolCommand,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 5),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(9),
-            decoration: toolCodeBoxDecoration(context),
-            child: SelectableText(
-              run.command,
-              style: HermesType.code.copyWith(
-                color: palette.text,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
-        if (run.exitCode != null || run.durationMs != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              [
-                if (run.exitCode != null)
-                  context.l10n.toolExitCode(run.exitCode!),
-                if (run.durationMs != null) '${run.durationMs}ms',
-              ].join(' · '),
-              style: TextStyle(fontSize: 11, color: palette.text3),
-            ),
-          ),
-        if (run.output.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Text(
-            context.l10n.toolOutput,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 5),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(9),
-            constraints: const BoxConstraints(maxHeight: 220),
-            decoration: toolCodeBoxDecoration(context),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                run.output,
-                style: HermesType.code.copyWith(
-                  color: palette.text,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _ChangedFilesToolCard extends StatelessWidget {
-  final Map<String, dynamic> data;
-  const _ChangedFilesToolCard({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final files = parseChangedFiles(data);
-    final palette = HermesPalette.of(context);
-    final good = hermesSemantic(
-      context,
-      HermesSemantic.green,
-      HermesSemanticDark.green,
-    );
-    final bad = hermesSemantic(
-      context,
-      HermesSemantic.red,
-      HermesSemanticDark.red,
-    );
-    return ToolCardShell(
-      icon: Icons.difference_outlined,
-      title: context.l10n.toolChangedFiles(files.length),
-      children: files.isEmpty
-          ? [SelectableText(_toolResultText(data))]
-          : [
-              for (final file in files)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.insert_drive_file_outlined,
-                        size: 15,
-                        color: palette.text3,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          file.path,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: HermesType.code.copyWith(
-                            color: palette.text,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '+${file.additions}',
-                        style: TextStyle(
-                          color: good,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '−${file.deletions}',
-                        style: TextStyle(
-                          color: bad,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-    );
-  }
-}
-
-String _inlineDiff(Map<String, dynamic> data) {
-  dynamic result = data['result'] ?? data['result_text'];
-  if (result is String) {
-    try {
-      result = jsonDecode(result);
-    } catch (_) {}
-  }
-  if (result is Map) {
-    return (result['inline_diff'] ?? result['diff'] ?? '').toString();
-  }
-  return '';
-}
-
-class _InlineDiffToolCard extends StatelessWidget {
-  final Map<String, dynamic> data;
-  const _InlineDiffToolCard({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final diff = _inlineDiff(data);
-    final args = data['args'] is Map ? data['args'] as Map : const {};
-    final rawPath = args['path'] ?? args['file'] ?? data['path'];
-    final path = rawPath?.toString() ?? context.l10n.messageFileChanges;
-    // Desktop `FileDiffPanel` parity: a `+N −M` hunk-stats line.
-    final stats = diffLineStats(diff);
-    final palette = HermesPalette.of(context);
-    final good = hermesSemantic(
-      context,
-      HermesSemantic.green,
-      HermesSemanticDark.green,
-    );
-    final bad = hermesSemantic(
-      context,
-      HermesSemantic.red,
-      HermesSemanticDark.red,
-    );
-    return ToolCardShell(
-      key: ValueKey('inline-diff-$path'),
-      icon: Icons.difference_outlined,
-      title: path,
-      subtitle: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            context.l10n.messageViewDiff,
-            style: TextStyle(fontSize: 10.5, color: palette.text3),
-          ),
-          if (stats.added > 0 || stats.removed > 0) ...[
-            const SizedBox(width: 8),
-            Text(
-              '+${stats.added}',
-              style: TextStyle(
-                color: good,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '−${stats.removed}',
-              style: TextStyle(
-                color: bad,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
-      ),
-      children: [
-        // Syntax-highlighted diff with tint + gutter accent + line numbers.
-        FileDiffView(
-          diff: diff,
-          path: rawPath == null ? null : path,
-          showLineNumbers: true,
-        ),
-      ],
-    );
-  }
-}
-
-class _WebToolCard extends StatelessWidget {
-  final Map<String, dynamic> data;
-  const _WebToolCard({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final results = parseWebResults(data);
-    final args = data['args'];
-    final url = (data['url'] ?? (args is Map ? args['url'] : null))?.toString();
-    final query =
-        (data['query'] ??
-                (args is Map ? args['query'] ?? args['search_term'] : null))
-            ?.toString();
-    final palette = HermesPalette.of(context);
-    if (results.isNotEmpty) {
-      return ToolCardShell(
-        key: ValueKey('tool-card-${data['tool_id'] ?? data['id'] ?? 'web'}'),
-        icon: Icons.travel_explore,
-        title: 'web_search',
-        subtitle: Text(
-          context.l10n.toolSearchResults(results.length),
-          style: TextStyle(fontSize: 10.5, color: palette.text3),
-        ),
-        children: [
-          if (query?.isNotEmpty == true) ...[
-            Text(
-              context.l10n.toolSearchQuery,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              query!,
-              style: HermesType.code.copyWith(
-                fontSize: 12,
-                color: palette.text,
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-          for (final result in results)
-            InkWell(
-              onTap: result.url.isEmpty
-                  ? null
-                  : () => openChatLink(context, result.url),
-              borderRadius: BorderRadius.circular(HermesRadius.smallCard),
-              child: Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.all(8),
-                decoration: toolCodeBoxDecoration(context),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      result.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: palette.text,
-                      ),
-                    ),
-                    if (result.url.isNotEmpty)
-                      Text(
-                        result.url,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: hermesSemantic(
-                            context,
-                            HermesSemantic.blue,
-                            HermesSemanticDark.blue,
-                          ),
-                        ),
-                      ),
-                    if (result.snippet.isNotEmpty)
-                      Text(
-                        result.snippet,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11, color: palette.text3),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      );
-    }
-    final title = query?.isNotEmpty == true
-        ? query!
-        : url?.isNotEmpty == true
-        ? url!
-        : context.l10n.messageWebFallback;
-    return ToolCardShell(
-      icon: Icons.travel_explore,
-      title: title,
-      trailing: url?.isNotEmpty == true
-          ? IconButton(
-              tooltip: context.l10n.messageOpenLink,
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
-              onPressed: () => openChatLink(context, url!),
-              icon: const Icon(Icons.open_in_new),
-            )
-          : null,
-      initiallyExpanded: false,
-      children: [
-        Text(
-          _toolResultText(data),
-          style: HermesType.code.copyWith(color: palette.text, fontSize: 12),
-        ),
-      ],
-    );
-  }
 }
 
 class _SlashStatusCard extends StatelessWidget {
@@ -1959,10 +1257,7 @@ class _ProcessNotificationCard extends StatelessWidget {
                         child: SingleChildScrollView(
                           child: SelectableText(
                             detail,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 10,
-                            ),
+                            style: HermesType.code.copyWith(fontSize: 10),
                           ),
                         ),
                       ),
@@ -2879,12 +2174,13 @@ class _MessageSpeakButtonState extends State<_MessageSpeakButton> {
       await _stop();
       return;
     }
-    final messenger = ScaffoldMessenger.of(context);
     final connection = context.read<ConnectionStore>();
     final api = connection.api;
     if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.messageSpeakDisconnected)),
+      showHermesToast(
+        context,
+        message: context.l10n.messageSpeakDisconnected,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -2908,8 +2204,10 @@ class _MessageSpeakButtonState extends State<_MessageSpeakButton> {
       if (!mounted || requestId != _requestId) return;
       setState(() => _state = _SpeakState.idle);
       if (!identical(api, connection.api)) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.messageSpeakFailed)),
+      showHermesToast(
+        context,
+        message: context.l10n.messageSpeakFailed,
+        kind: HermesToastKind.error,
       );
     }
   }

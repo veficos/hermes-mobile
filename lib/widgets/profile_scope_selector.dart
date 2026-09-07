@@ -96,6 +96,8 @@ class ProfileScopeDropdown extends StatelessWidget {
           Expanded(
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
+                dropdownColor: hermesDropdownColor(context),
+                borderRadius: hermesDropdownBorderRadius,
                 isDense: true,
                 isExpanded: true,
                 value: selected,

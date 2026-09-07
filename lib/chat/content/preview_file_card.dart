@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../core/preview_bridge.dart';
 import '../../core/stores/connection_store.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/h/hermes_states.dart';
+import '../../widgets/h/hermes_toast.dart';
 import '../../widgets/web_preview.dart';
 
 /// Card stand-in for a `::preview{file="…"}` directive. Desktop renders the
@@ -48,10 +50,11 @@ class _PreviewFileCardState extends State<PreviewFileCard> {
 
   Future<void> _open() async {
     final api = context.read<ConnectionStore>().api;
-    final messenger = ScaffoldMessenger.of(context);
     if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.backendDisconnected)),
+      showHermesToast(
+        context,
+        message: context.l10n.backendDisconnected,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -69,8 +72,10 @@ class _PreviewFileCardState extends State<PreviewFileCard> {
       });
     } catch (error) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.previewFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.previewFailed('$error'),
         );
       }
     } finally {

@@ -12,7 +12,10 @@ import '../../core/connection_reload_mixin.dart';
 import '../../core/stores/connection_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../h/hermes_confirm_dialog.dart';
 import '../h/hermes_glass.dart';
+import '../h/hermes_states.dart';
+import '../h/hermes_toast.dart';
 
 typedef ProjectSelected = void Function(Map<String, dynamic>? project);
 
@@ -491,7 +494,6 @@ class _ProjectDialogState extends State<ProjectDialog>
   Widget _editor(BuildContext context) {
     final isNew = _editingIndex == -1 || _editingIndex == null;
     final existing = isNew ? null : _projects[_editingIndex!];
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
 
     return Padding(
@@ -559,10 +561,9 @@ class _ProjectDialogState extends State<ProjectDialog>
                           final name = _nameCtrl.text.trim();
                           final path = _pathCtrl.text.trim();
                           if (name.isEmpty || path.isEmpty) {
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(l10n.projectRequiredFields),
-                              ),
+                            showHermesToast(
+                              context,
+                              message: l10n.projectRequiredFields,
                             );
                             return;
                           }
@@ -603,26 +604,25 @@ class _ProjectDialogState extends State<ProjectDialog>
                               });
                             }
                             await _load();
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             setState(() {
                               _editingIndex = null;
                               _saving = false;
                             });
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  isNew
-                                      ? l10n.projectCreated
-                                      : l10n.projectUpdated,
-                                ),
-                              ),
+                            showHermesToast(
+                              context,
+                              message: isNew
+                                  ? l10n.projectCreated
+                                  : l10n.projectUpdated,
+                              kind: HermesToastKind.success,
                             );
                           } catch (e) {
                             if (mounted) setState(() => _saving = false);
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(l10n.projectSaveFailed('$e')),
-                              ),
+                            if (!context.mounted) return;
+                            showHermesErrorSnackBar(
+                              context,
+                              e,
+                              fallback: l10n.projectSaveFailed('$e'),
                             );
                           }
                         },
@@ -646,32 +646,17 @@ class _ProjectDialogState extends State<ProjectDialog>
     final p = _projects[i];
     final l10n = context.l10n;
     final name = (p['name'] ?? l10n.projectUntitled).toString();
-    final messenger = ScaffoldMessenger.of(context);
     final connection = context.read<ConnectionStore>();
     final gateway = connectedGatewayOrNotify(context, connection);
     if (gateway == null) return;
-    final ok = await showDialog<bool>(
+    final ok = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.projectDeleteTitle),
-        content: Text(l10n.projectDeleteNamedDescription(name)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: l10n.projectDeleteTitle,
+      message: l10n.projectDeleteNamedDescription(name),
+      confirmLabel: l10n.commonDelete,
+      destructive: true,
     );
-    if (ok != true) return;
+    if (!ok) return;
     if (!mounted) return;
     try {
       final id = p['id']?.toString() ?? p['name']?.toString() ?? '';
@@ -687,12 +672,18 @@ class _ProjectDialogState extends State<ProjectDialog>
         widget.onSelected?.call(null);
       }
       await _load();
-      if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(l10n.projectDeleted)));
+      if (!context.mounted) return;
+      showHermesToast(
+        context,
+        message: l10n.projectDeleted,
+        kind: HermesToastKind.success,
+      );
     } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.projectDeleteFailed('$e'))),
+      if (!context.mounted) return;
+      showHermesErrorSnackBar(
+        context,
+        e,
+        fallback: l10n.projectDeleteFailed('$e'),
       );
     }
   }

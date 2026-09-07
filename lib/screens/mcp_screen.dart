@@ -11,13 +11,16 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 import '../core/mcp_import.dart';
+import '../core/mcp_oauth_flow.dart';
 import '../core/connection_reload_mixin.dart';
+import '../core/connections/connection_registry.dart';
 import '../core/mcp_tool_filter.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../core/stores/session_store.dart';
 import '../theme/hermes_tokens.dart';
 import '../l10n/l10n.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
@@ -28,7 +31,30 @@ import 'mcp_config_editor_screen.dart';
 import 'mcp_logs_screen.dart';
 
 class McpScreen extends StatefulWidget {
-  const McpScreen({super.key});
+  const McpScreen({
+    super.key,
+    this.initialServer,
+    this.beginRepair = false,
+    this.openAuthorization,
+    this.targetConnectionId,
+    this.fixedProfile,
+  });
+
+  final String? initialServer;
+  final bool beginRepair;
+  final Future<bool> Function(Uri url)? openAuthorization;
+
+  /// When set, this screen operates on that connection's MCP config instead
+  /// of whichever connection happens to be active — the "MCP servers" entry
+  /// point from a specific bot's roster row, which may belong to a
+  /// non-active gateway.
+  final ConnectionId? targetConnectionId;
+
+  /// When set alongside [targetConnectionId], the profile scope is pinned to
+  /// this bot and the profile-scope picker is hidden — the ambient
+  /// [ProfileScopeStore] tracks the *active* connection's profile list, so it
+  /// cannot be trusted to hold a non-active connection's profile name.
+  final String? fixedProfile;
 
   @override
   State<McpScreen> createState() => _McpScreenState();
@@ -47,6 +73,8 @@ class _McpScreenState extends State<McpScreen>
   final Map<String, Map<String, dynamic>> _probes = {};
   final Map<String, String> _probeFingerprints = {};
   Map<String, int>? _usage30d;
+  final Map<String, GlobalKey> _serverKeys = {};
+  bool _initialTargetHandled = false;
 
   ProfileScopeStore? _scopeStore;
   // Without this, a fast profile-scope switch (or the toolbar refresh
@@ -60,17 +88,23 @@ class _McpScreenState extends State<McpScreen>
   @override
   void initState() {
     super.initState();
-    final scopeStore = context.read<ProfileScopeStore>();
-    _scopeStore = scopeStore;
-    scopeStore.addListener(_onScopeChanged);
-    scopeStore.ensureLoaded();
+    if (widget.fixedProfile == null) {
+      final scopeStore = context.read<ProfileScopeStore>();
+      _scopeStore = scopeStore;
+      scopeStore.addListener(_onScopeChanged);
+      scopeStore.ensureLoaded();
+    }
     _load();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    observeConnection(context.read<ConnectionStore>(), _reloadForTarget);
+    observeConnection(
+      context.read<ConnectionStore>(),
+      _reloadForTarget,
+      targetConnectionId: widget.targetConnectionId,
+    );
   }
 
   @override
@@ -116,14 +150,32 @@ class _McpScreenState extends State<McpScreen>
   }
 
   String? get _profile {
+    final fixed = widget.fixedProfile;
+    if (fixed != null) return fixed;
     final scope = _scopeStore;
     return scope?.override ?? scope?.activeProfile;
+  }
+
+  /// Resolves the [ApiClient] this screen should act against: the active
+  /// connection by default, or [McpScreen.targetConnectionId]'s runtime when
+  /// set (which may be null if that connection was since removed).
+  ApiClient? _resolveApi(ConnectionStore connection) {
+    final targetId = widget.targetConnectionId;
+    if (targetId == null) return connection.api;
+    return connection.registry.runtime(targetId)?.api;
+  }
+
+  ApiClient? _connectedApiOrNotify(BuildContext ctx) {
+    final api = _resolveApi(ctx.read<ConnectionStore>());
+    if (api != null) return api;
+    showHermesToast(ctx, message: ctx.l10n.backendDisconnected);
+    return null;
   }
 
   bool _ownsTarget(ApiClient api, String? profile) {
     return mounted &&
         profile == _profile &&
-        identical(api, context.read<ConnectionStore>().api);
+        identical(api, _resolveApi(context.read<ConnectionStore>()));
   }
 
   void _requireTarget(ApiClient api, String? profile) {
@@ -261,7 +313,7 @@ class _McpScreenState extends State<McpScreen>
   }
 
   Future<void> _load() async {
-    final api = context.read<ConnectionStore>().api;
+    final api = _resolveApi(context.read<ConnectionStore>());
     if (api == null) {
       if (mounted) setState(() => _error = connectionOfflineErrorCode);
       return;
@@ -295,6 +347,7 @@ class _McpScreenState extends State<McpScreen>
           _catalog = catalog;
           _error = null;
         });
+        _scheduleInitialTarget();
         for (final server in servers) {
           final name = server['name'].toString();
           if (server['enabled'] == true && !_probes.containsKey(name)) {
@@ -316,6 +369,37 @@ class _McpScreenState extends State<McpScreen>
     } catch (_) {
       // Analytics unavailable — the overlay simply omits usage.
     }
+  }
+
+  void _scheduleInitialTarget() {
+    final target = widget.initialServer?.trim() ?? '';
+    if (_initialTargetHandled || target.isEmpty) return;
+    final configured = _servers
+        ?.where((server) => server['name']?.toString() == target)
+        .firstOrNull;
+    final catalog = _catalog
+        ?.where((entry) => entry['name']?.toString() == target)
+        .firstOrNull;
+    if (configured == null && catalog == null) return;
+    _initialTargetHandled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final targetContext = _serverKeys[target]?.currentContext;
+      if (targetContext != null) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: 0.18,
+        );
+      }
+      if (!mounted) return;
+      if (widget.beginRepair && configured != null) {
+        await _authenticate(configured);
+      } else if (configured == null && catalog != null) {
+        await _installCatalog(catalog);
+      }
+    });
   }
 
   String _serverFingerprint(Map<String, dynamic> server) => jsonEncode({
@@ -358,7 +442,7 @@ class _McpScreenState extends State<McpScreen>
   }
 
   Future<void> _toggle(Map<String, dynamic> server, bool enabled) async {
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
     final generation = _mutationGeneration;
@@ -391,7 +475,7 @@ class _McpScreenState extends State<McpScreen>
   }
 
   Future<void> _test(Map<String, dynamic> server) async {
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
     final generation = _mutationGeneration;
@@ -449,7 +533,14 @@ class _McpScreenState extends State<McpScreen>
   Future<bool> _reloadLive(ApiClient expectedApi, String? profile) async {
     final connection = context.read<ConnectionStore>();
     _requireTarget(expectedApi, profile);
-    final gateway = connection.gateway;
+    // Only pushed for the active connection today — the running-process hot
+    // reload RPC below is scoped by the active `SessionStore.runtimeId`,
+    // which has no defined meaning against a non-active connection's
+    // process. A cross-connection target just relies on the REST write
+    // being authoritative, same as when the active gateway is offline.
+    final gateway = widget.targetConnectionId == null
+        ? connection.gateway
+        : null;
     if (gateway == null || !gateway.isConnected) {
       return false;
     }
@@ -474,31 +565,18 @@ class _McpScreenState extends State<McpScreen>
   }
 
   Future<void> _batchImport(List<McpImportEntry> entries) async {
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.mcpImportDetected(entries.length)),
-        content: Text(
-          context.l10n.mcpImportAllQuestion(
-            entries.map((entry) => entry.name).join('\n'),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.mcpAddAll),
-          ),
-        ],
+      title: context.l10n.mcpImportDetected(entries.length),
+      message: context.l10n.mcpImportAllQuestion(
+        entries.map((entry) => entry.name).join('\n'),
       ),
+      confirmLabel: context.l10n.mcpAddAll,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     _requireTarget(api, profile);
     setState(() => _busyName = entries.first.name);
     try {
@@ -546,7 +624,7 @@ class _McpScreenState extends State<McpScreen>
   }
 
   Future<void> _createServer() async {
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
     final result = await Navigator.of(context).push<McpServerDraftResult>(
@@ -590,27 +668,17 @@ class _McpScreenState extends State<McpScreen>
 
   Future<void> _deleteServer(Map<String, dynamic> server) async {
     final name = (server['name'] ?? '').toString();
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.mcpDeleteQuestion(name)),
-        content: Text(context.l10n.mcpDeleteWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.mcpDeleteQuestion(name),
+      message: context.l10n.mcpDeleteWarning,
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     _requireTarget(api, profile);
     setState(() => _busyName = name);
     try {
@@ -638,7 +706,7 @@ class _McpScreenState extends State<McpScreen>
   /// display — round-tripping those back through `mcpReplaceServers` would
   /// permanently overwrite the real secret with the redacted placeholder).
   Future<void> _editServerJson(Map<String, dynamic> server) async {
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
     final name = (server['name'] ?? '').toString();
@@ -728,7 +796,7 @@ class _McpScreenState extends State<McpScreen>
   }
 
   Future<void> _editMcpDocument() async {
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
     setState(() => _busyName = 'mcp.json');
@@ -809,7 +877,7 @@ class _McpScreenState extends State<McpScreen>
   /// unredacted config the same way `_editServerJson` does, so a toggle can
   /// never clobber another field's real secret with a redacted placeholder.
   Future<void> _toggleTool(String serverName, String toolName) async {
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
     setState(() => _busyName = serverName);
@@ -845,7 +913,12 @@ class _McpScreenState extends State<McpScreen>
 
   void _viewLogs({String? serverName}) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => McpLogsScreen(serverName: serverName)),
+      MaterialPageRoute(
+        builder: (_) => McpLogsScreen(
+          serverName: serverName,
+          targetConnectionId: widget.targetConnectionId,
+        ),
+      ),
     );
   }
 
@@ -875,8 +948,7 @@ class _McpScreenState extends State<McpScreen>
 
   Future<void> _authenticate(Map<String, dynamic> server) async {
     final name = (server['name'] ?? '').toString();
-    final l10n = context.l10n;
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) return;
     final profile = _profile;
     final generation = _mutationGeneration;
@@ -887,75 +959,29 @@ class _McpScreenState extends State<McpScreen>
       _oauthProfile = profile;
     });
     try {
-      final started = await api.mcpStartAuth(name, profile: profile);
-      _requireTarget(api, profile);
-      if (started['status'] == 'error') {
-        throw StateError(
-          (started['error'] ?? l10n.mcpOAuthStartFailed).toString(),
-        );
-      }
-      final flowId = (started['flow_id'] ?? '').toString();
-      final authorizationUrl = (started['authorization_url'] ?? '').toString();
-      if (flowId.isEmpty || authorizationUrl.isEmpty) {
-        throw StateError(l10n.mcpOAuthMissingUrl);
-      }
-      setState(() => _oauthFlowId = flowId);
-      final opened = await launchUrl(
-        Uri.parse(authorizationUrl),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened) throw StateError(l10n.mcpBrowserOpenFailed);
-      _requireTarget(api, profile);
-      if (mounted) {
-        showHermesToast(
-          context,
-          message: context.l10n.mcpCompleteAuthorization(name),
-        );
-      }
-
-      var failures = 0;
-      Map<String, dynamic>? approved;
-      while (mounted) {
-        if (_oauthCancelled || generation != _mutationGeneration) return;
-        Map<String, dynamic> current;
-        try {
-          current = await api.mcpAuthFlow(flowId, profile: profile);
-          _requireTarget(api, profile);
-          failures = 0;
-        } catch (error) {
-          if (_oauthCancelled ||
-              generation != _mutationGeneration ||
-              !_ownsTarget(api, profile)) {
-            return;
-          }
-          failures++;
-          if (failures >= 3) rethrow;
-          await Future<void>.delayed(const Duration(seconds: 1));
-          if (_oauthCancelled ||
-              generation != _mutationGeneration ||
-              !_ownsTarget(api, profile)) {
-            return;
-          }
-          continue;
-        }
-        final status = current['status']?.toString();
-        if (status == 'approved') {
-          approved = current;
-          break;
-        }
-        if (status == 'error') {
-          throw StateError(
-            (current['error'] ?? l10n.mcpOAuthAuthorizationFailed).toString(),
-          );
-        }
-        await Future<void>.delayed(const Duration(seconds: 1));
-        if (_oauthCancelled ||
+      final approved = await const McpOAuthFlow().authorize(
+        api: api,
+        server: name,
+        profile: profile,
+        openAuthorization:
+            widget.openAuthorization ??
+            (url) => launchUrl(url, mode: LaunchMode.externalApplication),
+        cancelled: () =>
+            !mounted ||
+            _oauthCancelled ||
             generation != _mutationGeneration ||
-            !_ownsTarget(api, profile)) {
-          return;
-        }
-      }
-      if (!_ownsTarget(api, profile) || approved == null) return;
+            !_ownsTarget(api, profile),
+        onStarted: (flowId, _) {
+          if (mounted) {
+            setState(() => _oauthFlowId = flowId);
+            showHermesToast(
+              context,
+              message: context.l10n.mcpCompleteAuthorization(name),
+            );
+          }
+        },
+      );
+      if (!_ownsTarget(api, profile)) return;
       await _verifyCreatedServer(api, profile, name, const {'auth': 'oauth'});
       await _reloadLive(api, profile);
       await _load();
@@ -1001,7 +1027,7 @@ class _McpScreenState extends State<McpScreen>
       for (final spec in specs)
         spec['name'].toString(): TextEditingController(),
     };
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
+    final api = _connectedApiOrNotify(context);
     if (api == null) {
       for (final controller in controllers.values) {
         controller.dispose();
@@ -1175,7 +1201,7 @@ class _McpScreenState extends State<McpScreen>
       ),
       body: Column(
         children: [
-          const ProfileScopeDropdown(),
+          if (widget.fixedProfile == null) const ProfileScopeDropdown(),
           Expanded(child: _buildBody(context)),
         ],
       ),
@@ -1279,6 +1305,7 @@ class _McpScreenState extends State<McpScreen>
       );
     }
     return Padding(
+      key: _serverKeys.putIfAbsent(name, GlobalKey.new),
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: HermesGlassCard(
         radius: HermesRadius.card,
@@ -1434,6 +1461,7 @@ class _McpScreenState extends State<McpScreen>
     final enabled = entry['enabled'] == true;
     final busy = _busyName == name;
     return HermesMobileRow(
+      key: _serverKeys.putIfAbsent(name, GlobalKey.new),
       icon: transport == 'stdio' ? Icons.terminal_outlined : Icons.dns_outlined,
       title: name,
       subtitle: [

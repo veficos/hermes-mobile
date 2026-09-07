@@ -9,6 +9,8 @@ import '../core/settings_store.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import 'cloud_discovery_screen.dart';
 
@@ -116,9 +118,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       await _loadProfiles();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.commonOperationFailed)),
-        );
+        showHermesErrorSnackBar(context, e);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -429,7 +429,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         obscureText: !_sshKeyVisible,
         minLines: _sshKeyVisible ? 2 : 1,
         maxLines: _sshKeyVisible ? 5 : 1,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+        style: HermesType.code.copyWith(fontSize: 12),
         decoration: InputDecoration(
           labelText: context.l10n.connectPrivateKey,
           hintText: '-----BEGIN OPENSSH PRIVATE KEY-----',
@@ -548,8 +548,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (_profiles.isNotEmpty) ...[
-                    HermesMobileSectionLabel(
+                    HermesSectionHeader(
                       title: context.l10n.connectSavedBackends,
+                      padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
                     ),
                     HermesMobileGroup(
                       children: [
@@ -576,8 +577,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
                       ],
                     ),
                   ],
-                  HermesMobileSectionLabel(
+                  HermesSectionHeader(
                     title: context.l10n.connectConfiguration,
+                    padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
                   ),
                   HermesMobileCard(
                     child: Column(

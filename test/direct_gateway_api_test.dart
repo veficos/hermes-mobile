@@ -280,7 +280,11 @@ void main() {
       expect(await client.fsDefaultCwd(), '/workspace');
       await client.fsEntries('/workspace/src', root: '/workspace');
       expect(await client.fsReadText('/workspace/readme.txt'), 'hello');
-      await client.fsWriteText('/workspace/readme.txt', 'updated');
+      await client.fsWriteText(
+        '/workspace/readme.txt',
+        'updated',
+        profile: 'work',
+      );
       await client.fsDelete('/workspace/old', recursive: true);
 
       expect(requests[1].url.path, '/api/files');
@@ -288,6 +292,7 @@ void main() {
       expect(requests[3].url.path, '/api/files/upload');
       final upload = jsonDecode(requests[3].body) as Map;
       expect(upload['overwrite'], true);
+      expect(upload['profile'], 'work');
       expect(
         utf8.decode(
           base64Decode((upload['data_url'] as String).split(',').last),
@@ -1046,6 +1051,11 @@ void main() {
       if (request.url.path.endsWith('/review/diff')) {
         return _json({'diff': '@@ changed'});
       }
+      if (request.url.path.endsWith('/review/pr-comment')) {
+        return _json({
+          'comment': {'author': 'octo', 'path': 'lib/a.dart'},
+        });
+      }
       if (request.url.path.endsWith('/review/ship-info')) {
         return _json({
           'ghReady': true,
@@ -1068,6 +1078,13 @@ void main() {
       await client.gitReviewDiff('/repo', 'lib/a.dart', staged: true),
       '@@ changed',
     );
+    expect(
+      (await client.gitReviewPrComment(
+        '/repo',
+        'https://github.com/a/b/pull/1#discussion_r2',
+      ))?['author'],
+      'octo',
+    );
     expect((await client.gitShipInfo('/repo'))['ghReady'], isTrue);
     expect(
       (await client.gitPullRequests(
@@ -1081,13 +1098,14 @@ void main() {
     expect(requests.map((request) => request.url.path), [
       '/api/git/review/list',
       '/api/git/review/diff',
+      '/api/git/review/pr-comment',
       '/api/git/review/ship-info',
       '/api/git/review/pr-list',
       '/api/git/review/create-pr',
     ]);
     expect(requests[0].url.queryParameters['base'], 'main');
     expect(requests[1].url.queryParameters['staged'], 'true');
-    expect(jsonDecode(requests[3].body), {
+    expect(jsonDecode(requests[4].body), {
       'path': '/repo',
       'branches': ['feature'],
       'numbers': <int>[],

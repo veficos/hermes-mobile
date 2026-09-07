@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
+import '../../theme/hermes_tokens.dart';
 import 'inline_content.dart';
 
 /// Standalone display equation. Desktop KaTeX (`$$…$$`) parity. Falls back to
@@ -21,7 +22,7 @@ class MathBlockView extends StatelessWidget {
           textStyle: TextStyle(fontSize: 16, color: color),
           onErrorFallback: (_) => SelectableText(
             '\$\$$tex\$\$',
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+            style: HermesType.code,
           ),
         ),
       ),
@@ -54,7 +55,7 @@ class MathInlineRun extends StatelessWidget {
               textStyle: base,
               onErrorFallback: (_) => Text(
                 '\$${segment.value}\$',
-                style: base.copyWith(fontFamily: 'monospace'),
+                style: base.copyWith(fontFamilyFallback: HermesFonts.mono),
               ),
             ),
           )

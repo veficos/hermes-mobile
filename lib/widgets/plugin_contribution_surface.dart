@@ -10,6 +10,8 @@ import '../core/external_links.dart';
 import '../core/stores/plugin_contribution_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import 'h/hermes_states.dart';
+import 'mobile/mobile_page_scaffold.dart';
 import 'plugin_contribution_views.dart';
 
 Color? pluginToneColor(String? name) => switch (name) {
@@ -69,12 +71,10 @@ class PluginContributionSurface extends StatelessWidget {
                   await showPluginContributionView(context, store, item);
                 } catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          context.l10n.pluginActionFailed(title, '$e'),
-                        ),
-                      ),
+                    showHermesErrorSnackBar(
+                      context,
+                      e,
+                      fallback: context.l10n.pluginActionFailed(title, '$e'),
                     );
                   }
                 }
@@ -102,12 +102,10 @@ Future<void> showPluginActionResult(
 ) async {
   final result = PluginActionResult.fromJson(raw);
   if (!result.shouldPresent) return;
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
-    builder: (sheetContext) => DraggableScrollableSheet(
+  await showMobileSheet<void>(
+    context,
+    avoidViewInsets: false,
+    (sheetContext) => DraggableScrollableSheet(
       initialChildSize: 0.56,
       minChildSize: 0.3,
       maxChildSize: 0.92,

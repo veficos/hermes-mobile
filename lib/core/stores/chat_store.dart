@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../l10n/runtime_l10n.dart';
 
 import '../chat_message.dart';
+import '../artifact_registry.dart';
 import 'chat_handlers/event_family.dart';
 import '../gateway.dart';
 import '../connections/connection_registry.dart';
@@ -854,44 +855,71 @@ class ChatStore extends ChangeNotifier {
   // ---- artifact version registry (desktop `$artifactRegistry` parity) -------
   // Fenced html/svg/mermaid blocks are "artifacts"; the same kind reappearing
   // across a session accumulates versions. Keyed by kind, dedup'd by content.
-  final Map<String, List<String>> _artifacts = {};
+  final ArtifactRegistry _artifactRecords = ArtifactRegistry();
 
   /// Register [content] for artifact [kind] and return its 1-based version
   /// number. Idempotent — a replayed / re-rendered block keeps its number.
-  int registerArtifact(String kind, String content) {
-    final list = _artifacts.putIfAbsent(kind, () => <String>[]);
-    final at = list.indexOf(content);
-    if (at >= 0) return at + 1;
-    if (list.isNotEmpty) {
-      final lastIndex = list.length - 1;
-      final last = list[lastIndex];
-      // A streaming block re-registers on every token: as long as the new
-      // content is the previous registration growing (or shrinking, e.g. a
-      // retry) rather than genuinely different content, update the current
-      // version in place instead of minting a new one per token.
-      if (content.startsWith(last) || last.startsWith(content)) {
-        list[lastIndex] = content;
-        _bumpComposerSurface();
-        return lastIndex + 1;
-      }
-    }
-    list.add(content);
+  int registerArtifact(
+    String kind,
+    String content, {
+    String? language,
+    String? title,
+    String? identity,
+    bool? settled,
+  }) {
+    final sessionId =
+        _durableSessionIdOf?.call() ?? _sessionIdOf?.call() ?? 'current';
+    final record = _artifactRecords.upsert(
+      sessionId: sessionId,
+      kind: kind,
+      language: language ?? kind,
+      title: title ?? '',
+      identity: identity,
+      content: content,
+      settled: settled ?? !_busy,
+    );
     _bumpComposerSurface();
-    return list.length;
+    return record.versions.length;
   }
 
-  int artifactVersionCount(String kind) => _artifacts[kind]?.length ?? 0;
+  VersionedArtifact? _artifactForKind(String kind) {
+    final sessionId =
+        _durableSessionIdOf?.call() ?? _sessionIdOf?.call() ?? 'current';
+    final records = _artifactRecords.forSession(sessionId);
+    // Prefer an exact `kind` match; only fall back to matching on `language`
+    // when nothing matches by kind, so a language match never overrides an
+    // existing kind match when multiple artifacts share a language.
+    final byKind = records.where((item) => item.kind == kind).lastOrNull;
+    if (byKind != null) return byKind;
+    return records.where((item) => item.language == kind).lastOrNull;
+  }
+
+  int artifactVersionCount(String kind) =>
+      _artifactForKind(kind)?.versions.length ?? 0;
 
   /// Immutable artifact history for the current chat session. Consumers such
   /// as the preview rail can offer version switching without reaching into the
   /// renderer's mutable registry.
-  List<String> artifactVersions(String kind) =>
-      List<String>.unmodifiable(_artifacts[kind] ?? const []);
+  List<String> artifactVersions(String kind) => List.unmodifiable(
+    _artifactForKind(kind)?.versions.map((item) => item.content) ?? const [],
+  );
 
-  Map<String, List<String>> get artifactRegistry => Map.unmodifiable({
-    for (final entry in _artifacts.entries)
-      entry.key: List<String>.unmodifiable(entry.value),
-  });
+  Map<String, List<String>> get artifactRegistry {
+    final sessionId =
+        _durableSessionIdOf?.call() ?? _sessionIdOf?.call() ?? 'current';
+    return Map.unmodifiable({
+      for (final record in _artifactRecords.forSession(sessionId))
+        record.kind: List.unmodifiable(
+          record.versions.map((version) => version.content),
+        ),
+    });
+  }
+
+  List<VersionedArtifact> get versionedArtifacts {
+    final sessionId =
+        _durableSessionIdOf?.call() ?? _sessionIdOf?.call() ?? 'current';
+    return _artifactRecords.forSession(sessionId);
+  }
 
   /// The live (non-preview) user message for the turn currently previewed,
   /// needed to anchor the "restore this version" rewind.
@@ -1410,7 +1438,6 @@ class ChatStore extends ChangeNotifier {
     _messages.clear();
     _markTranscriptStructureChanged();
     _turnVersions.clear();
-    _artifacts.clear();
     _versionPreviewAnchor = null;
     _versionPreviewIndex = null;
     _newerTranscriptWindow.clear();
@@ -1428,6 +1455,12 @@ class ChatStore extends ChangeNotifier {
     _statusItems.clear();
     _notifications.clear();
     _providerStatus = null;
+    // Artifacts registered before a durable session id exists land in the
+    // 'current' bucket; clear it on every session switch/reset so a fresh
+    // session never inherits the previous one's artifact history.
+    _artifactRecords.clearSession(
+      _durableSessionIdOf?.call() ?? _sessionIdOf?.call() ?? 'current',
+    );
     if (notify) notifyListeners();
   }
 
@@ -2234,24 +2267,42 @@ class ChatStore extends ChangeNotifier {
   Future<void> submit(
     Future<Map<String, dynamic>> Function() sendPrompt, {
     required String text,
+    String? pendingMessageId,
   }) async {
     // A fresh turn leaves any historical-version preview behind.
     _versionPreviewAnchor = null;
     _versionPreviewIndex = null;
     // F1: mark busy BEFORE the submit so the interrupt button shows.
     final optimistic = _extractOptimisticAttachmentRefs(text);
-    _messages.add(
-      ChatMessage(
-        id: 'user-${DateTime.now().millisecondsSinceEpoch}',
-        role: 'user',
-        parts: optimistic.$1.isEmpty
-            ? const <ChatPart>[]
-            : [ChatPart.text(optimistic.$1)],
-        attachmentRefs: optimistic.$2,
-        pending: true,
-        timestamp: DateTime.now(),
-      ),
-    );
+    // Attachment sends stage their bubble (via stagePendingAttachmentMessage)
+    // before the network submission and hand back that message's id. Fold
+    // this submit into that exact bubble by id — matching by text alone is
+    // ambiguous when multiple attachment-only messages (empty fullText) are
+    // staged concurrently, since whichever is last would win regardless of
+    // which submit() call it actually belongs to.
+    final pendingIndex = pendingMessageId != null
+        ? _messages.indexWhere(
+            (m) => m.id == pendingMessageId && m.pending && m.role == 'user',
+          )
+        : _messages.lastIndexWhere((m) => m.pending && m.role == 'user');
+    final String resolvedPendingId;
+    if (pendingIndex < 0) {
+      resolvedPendingId = 'user-${DateTime.now().millisecondsSinceEpoch}';
+      _messages.add(
+        ChatMessage(
+          id: resolvedPendingId,
+          role: 'user',
+          parts: optimistic.$1.isEmpty
+              ? const <ChatPart>[]
+              : [ChatPart.text(optimistic.$1)],
+          attachmentRefs: optimistic.$2,
+          pending: true,
+          timestamp: DateTime.now(),
+        ),
+      );
+    } else {
+      resolvedPendingId = _messages[pendingIndex].id;
+    }
     _markTranscriptStructureChanged();
     _busy = true;
     _turnArmedAt = DateTime.now();
@@ -2260,24 +2311,69 @@ class ChatStore extends ChangeNotifier {
     notifyListeners();
     try {
       await sendPrompt();
-      // Commit the optimistic bubble once the turn is accepted.
-      for (var i = _messages.length - 1; i >= 0; i--) {
-        final m = _messages[i];
-        if (m.pending && m.role == 'user') {
-          _messages[i] = m.copyWith(pending: false);
-          _markMessagesChanged();
-          break;
-        }
+      // Commit the optimistic bubble once the turn is accepted — the exact
+      // bubble this submit() call resolved above, not just "whichever
+      // pending user message is last" (ambiguous with concurrent
+      // attachment-only stages).
+      final index = _messages.indexWhere(
+        (m) => m.id == resolvedPendingId && m.pending && m.role == 'user',
+      );
+      if (index >= 0) {
+        _messages[index] = _messages[index].copyWith(pending: false);
+        _markMessagesChanged();
       }
     } catch (e) {
       // The submit failed before the gateway accepted the turn — mark the
       // pending user bubble as failed and clear busy so the composer frees.
-      failPendingUserMessage(e.toString());
+      failPendingUserMessage(e.toString(), messageId: resolvedPendingId);
       rethrow;
     } finally {
       // _busy is also cleared by message.complete; keep them consistent.
       notifyListeners();
     }
+  }
+
+  String stagePendingAttachmentMessage(
+    String text,
+    List<String> refs,
+    int total,
+  ) {
+    final id = 'user-${DateTime.now().millisecondsSinceEpoch}';
+    _messages.add(
+      ChatMessage(
+        id: id,
+        role: 'user',
+        parts: text.trim().isEmpty ? const [] : [ChatPart.text(text)],
+        attachmentRefs: refs,
+        pending: true,
+        attachmentUploadState: 'reading',
+        attachmentUploadSent: 0,
+        attachmentUploadTotal: total,
+        timestamp: DateTime.now(),
+      ),
+    );
+    _markTranscriptStructureChanged();
+    notifyListeners();
+    return id;
+  }
+
+  void updateAttachmentUpload(
+    String id, {
+    required String state,
+    required int sent,
+    required int total,
+    List<String>? refs,
+  }) {
+    final index = _messages.indexWhere((m) => m.id == id);
+    if (index < 0) return;
+    _messages[index] = _messages[index].copyWith(
+      attachmentUploadState: state,
+      attachmentUploadSent: sent,
+      attachmentUploadTotal: total,
+      attachmentRefs: refs,
+    );
+    _markMessagesChanged();
+    notifyListeners();
   }
 
   static (String, List<String>) _extractOptimisticAttachmentRefs(String text) {
@@ -2340,16 +2436,18 @@ class ChatStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  void failPendingUserMessage(String error) {
+  void failPendingUserMessage(String error, {String? messageId}) {
     String? retryText;
-    for (var i = _messages.length - 1; i >= 0; i--) {
-      final m = _messages[i];
-      if (m.pending && m.role == 'user') {
-        retryText = m.fullText.trim().isEmpty ? null : m.fullText;
-        _messages[i] = m.copyWith(pending: false, isError: true);
-        _markMessagesChanged();
-        break;
-      }
+    final index = messageId != null
+        ? _messages.indexWhere(
+            (m) => m.id == messageId && m.pending && m.role == 'user',
+          )
+        : _messages.lastIndexWhere((m) => m.pending && m.role == 'user');
+    if (index >= 0) {
+      final m = _messages[index];
+      retryText = m.fullText.trim().isEmpty ? null : m.fullText;
+      _messages[index] = m.copyWith(pending: false, isError: true);
+      _markMessagesChanged();
     }
     _busy = false;
     _turnArmedAt = null;
@@ -2454,6 +2552,7 @@ class ChatStore extends ChangeNotifier {
       case 'sudo.request':
       case 'secret.request':
       case 'mcp.setup.request':
+      case 'terminal.read.request':
         _interactiveRequest(e.type, e.payload);
       case 'interactive.expire':
       case 'interactive.expired':

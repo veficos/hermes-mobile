@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/files_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,6 +38,9 @@ void main() {
         ChangeNotifierProvider<ConnectionStore>.value(
           value: connection,
           child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Builder(
               builder: (context) => ElevatedButton(
                 onPressed: () async {
@@ -80,7 +84,12 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<ConnectionStore>.value(
         value: connection,
-        child: const MaterialApp(home: FilesScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: FilesScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();

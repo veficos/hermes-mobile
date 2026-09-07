@@ -17,8 +17,11 @@ import '../../core/stores/pull_request_store.dart';
 import '../../core/stores/session_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../h/hermes_confirm_dialog.dart';
 import '../h/hermes_states.dart';
+import '../h/hermes_toast.dart';
 import '../../screens/file_editor_screen.dart';
+import '../../chat/content/diff_view.dart';
 
 class GitReviewPanel extends StatefulWidget {
   const GitReviewPanel({super.key, this.initialPath});
@@ -47,11 +50,18 @@ class _GitReviewPanelState extends State<GitReviewPanel>
   bool _shipBusy = false;
   bool _stageBusy = false;
   bool _committing = false;
+  bool _bulkBusy = false;
   Map<String, dynamic>? _shipInfo;
   ApiClient? _loadedApi;
   int _loadGeneration = 0;
   int _diffGeneration = 0;
   int _mutationGeneration = 0;
+
+  /// True while any git mutation (per-file stage/unstage, or a bulk
+  /// stage/unstage/push/revert) is in flight. Gating both the per-file and
+  /// bulk controls on this prevents overlapping git mutations against the
+  /// same repo from two different buttons.
+  bool get _anyBusy => _stageBusy || _bulkBusy;
 
   @override
   void initState() {
@@ -389,6 +399,40 @@ class _GitReviewPanelState extends State<GitReviewPanel>
           _buildSectionHeader(context.l10n.gitUnstagedSection, unstaged.length),
           ...unstaged.map((f) => _buildFileRow(context, f, false)),
         ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _anyBusy || unstaged.isEmpty ? null : _stageAll,
+                icon: const Icon(Icons.add_task, size: 16),
+                label: Text('${context.l10n.gitStage} (${unstaged.length})'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _anyBusy || staged.isEmpty ? null : _unstageAll,
+                icon: const Icon(Icons.remove_done, size: 16),
+                label: Text('${context.l10n.gitUnstage} (${staged.length})'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _anyBusy ? null : _push,
+                icon: const Icon(Icons.cloud_upload_outlined, size: 16),
+                label: Text(context.l10n.gitPushAfterCommit),
+              ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
+                onPressed: _anyBusy || unstaged.isEmpty
+                    ? null
+                    : () => _revert(null),
+                icon: const Icon(Icons.restore, size: 16),
+                label: Text(context.l10n.gitRevertAll),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -506,7 +550,7 @@ class _GitReviewPanelState extends State<GitReviewPanel>
                 ),
               ),
               TextButton(
-                onPressed: _stageBusy
+                onPressed: _anyBusy
                     ? null
                     : () => _selectedFileStaged
                           ? _unstageFile(_selectedFile!)
@@ -518,6 +562,12 @@ class _GitReviewPanelState extends State<GitReviewPanel>
                   style: const TextStyle(fontSize: 11),
                 ),
               ),
+              if (!_selectedFileStaged)
+                IconButton(
+                  tooltip: context.l10n.gitRevert,
+                  onPressed: _anyBusy ? null : () => _revert(_selectedFile),
+                  icon: const Icon(Icons.restore, size: 16),
+                ),
               IconButton(
                 tooltip: context.l10n.commonOpen,
                 onPressed: _openSelectedFile,
@@ -536,16 +586,17 @@ class _GitReviewPanelState extends State<GitReviewPanel>
                       _loadDiff(_selectedFile!, staged: _selectedFileStaged),
                 )
               : _diffContent != null
-              ? SingleChildScrollView(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    _diffContent!,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                )
+              ? (_diffContent!.trim().isEmpty
+                    ? HermesEmptyState(
+                        icon: Icons.description_outlined,
+                        title: context.l10n.gitNoDiff,
+                        description: context.l10n.gitNoDiffDescription,
+                      )
+                    : FileDiffView(
+                        diff: _diffContent!,
+                        path: _selectedFile,
+                        maxHeight: double.infinity,
+                      ))
               : const Center(
                   child: SizedBox(
                     width: 16,
@@ -671,8 +722,10 @@ class _GitReviewPanelState extends State<GitReviewPanel>
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, cwd)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitGenerateMessageFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitGenerateMessageFailed('$e'),
         );
       }
     } finally {
@@ -701,39 +754,32 @@ class _GitReviewPanelState extends State<GitReviewPanel>
         if (mounted &&
             generation == _mutationGeneration &&
             _ownsTarget(api, cwd)) {
-          ScaffoldMessenger.of(
+          showHermesErrorSnackBar(
             context,
-          ).showSnackBar(SnackBar(content: Text(context.l10n.gitOpenPrFailed)));
+            StateError(url),
+            fallback: context.l10n.gitOpenPrFailed,
+          );
         }
         return;
       }
     }
     if (_shipInfo != null && _shipInfo!['ghReady'] != true) {
       if (mounted && _ownsTarget(api, cwd)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitGithubCliUnavailable)),
+        showHermesToast(
+          context,
+          message: context.l10n.gitGithubCliUnavailable,
+          kind: HermesToastKind.error,
         );
       }
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ctx.l10n.gitCreatePr),
-        content: Text(ctx.l10n.gitCreatePrQuestion),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonCreate),
-          ),
-        ],
-      ),
+      title: context.l10n.gitCreatePr,
+      message: context.l10n.gitCreatePrQuestion,
+      confirmLabel: context.l10n.commonCreate,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     if (generation != _mutationGeneration || !_ownsTarget(api, cwd)) {
       _ownsTargetOrNotify(api, cwd);
       return;
@@ -793,8 +839,10 @@ class _GitReviewPanelState extends State<GitReviewPanel>
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, cwd)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitCreatePrFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitCreatePrFailed('$e'),
         );
       }
     } finally {
@@ -807,7 +855,7 @@ class _GitReviewPanelState extends State<GitReviewPanel>
   }
 
   Future<void> _stageFile(String file) async {
-    if (_stageBusy) return;
+    if (_anyBusy) return;
     final api = _loadedApi;
     final cwd = _cwd;
     if (api == null || cwd == null || !_ownsTargetOrNotify(api, cwd)) return;
@@ -831,8 +879,10 @@ class _GitReviewPanelState extends State<GitReviewPanel>
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, cwd)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitStageFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitStageFailed('$e'),
         );
       }
     } finally {
@@ -845,7 +895,7 @@ class _GitReviewPanelState extends State<GitReviewPanel>
   }
 
   Future<void> _unstageFile(String file) async {
-    if (_stageBusy) return;
+    if (_anyBusy) return;
     final api = _loadedApi;
     final cwd = _cwd;
     if (api == null || cwd == null || !_ownsTargetOrNotify(api, cwd)) return;
@@ -869,8 +919,10 @@ class _GitReviewPanelState extends State<GitReviewPanel>
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, cwd)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitUnstageFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitUnstageFailed('$e'),
         );
       }
     } finally {
@@ -878,6 +930,141 @@ class _GitReviewPanelState extends State<GitReviewPanel>
           generation == _mutationGeneration &&
           _ownsTarget(api, cwd)) {
         setState(() => _stageBusy = false);
+      }
+    }
+  }
+
+  Future<void> _stageAll() => _bulkStage(staged: true);
+  Future<void> _unstageAll() => _bulkStage(staged: false);
+
+  Future<void> _bulkStage({required bool staged}) async {
+    if (_anyBusy) return;
+    final api = _loadedApi, cwd = _cwd;
+    if (api == null || cwd == null || !_ownsTargetOrNotify(api, cwd)) return;
+    final files = (_files ?? const [])
+        .where((item) {
+          final status = staged ? item['working_status'] : item['index_status'];
+          return status != null && status != ' ';
+        })
+        .map((item) => item['path']?.toString() ?? '')
+        .where((path) => path.isNotEmpty)
+        .toSet();
+    final generation = _mutationGeneration;
+    setState(() => _bulkBusy = true);
+    try {
+      for (final file in files) {
+        if (staged) {
+          await api.gitStage(cwd, file);
+        } else {
+          await api.gitUnstage(cwd, file);
+        }
+      }
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        await _load();
+      }
+    } catch (error) {
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: staged
+              ? context.l10n.gitStageFailed('$error')
+              : context.l10n.gitUnstageFailed('$error'),
+        );
+      }
+    } finally {
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        setState(() => _bulkBusy = false);
+      }
+    }
+  }
+
+  Future<void> _push() async {
+    if (_anyBusy) return;
+    final api = _loadedApi, cwd = _cwd;
+    if (api == null || cwd == null || !_ownsTargetOrNotify(api, cwd)) return;
+    final generation = _mutationGeneration;
+    setState(() => _bulkBusy = true);
+    try {
+      await api.gitPush(cwd);
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        await _load();
+        if (mounted) {
+          showHermesToast(
+            context,
+            message: context.l10n.gitPushSucceeded,
+            kind: HermesToastKind.success,
+          );
+        }
+      }
+    } catch (error) {
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.gitPushFailed('$error'),
+        );
+      }
+    } finally {
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        setState(() => _bulkBusy = false);
+      }
+    }
+  }
+
+  Future<void> _revert(String? file) async {
+    if (_anyBusy) return;
+    final confirmed = await showHermesConfirmDialog(
+      context: context,
+      title: file == null
+          ? context.l10n.gitRevertAllQuestion
+          : context.l10n.gitRevertFileQuestion,
+      message: file == null
+          ? context.l10n.gitRevertAllDescription
+          : context.l10n.gitRevertFileDescription(file),
+      confirmLabel: context.l10n.gitRevert,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    final api = _loadedApi, cwd = _cwd;
+    if (api == null || cwd == null || !_ownsTargetOrNotify(api, cwd)) return;
+    final generation = _mutationGeneration;
+    setState(() => _bulkBusy = true);
+    try {
+      await api.gitRevert(cwd, file);
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        _selectedFile = null;
+        await _load();
+      }
+    } catch (error) {
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.gitRevertFailed('$error'),
+        );
+      }
+    } finally {
+      if (mounted &&
+          generation == _mutationGeneration &&
+          _ownsTarget(api, cwd)) {
+        setState(() => _bulkBusy = false);
       }
     }
   }
@@ -903,22 +1090,22 @@ class _GitReviewPanelState extends State<GitReviewPanel>
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, cwd)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _pushAfterCommit
-                  ? context.l10n.gitCommitAndPushSucceeded
-                  : context.l10n.gitCommitSucceeded,
-            ),
-          ),
+        showHermesToast(
+          context,
+          message: _pushAfterCommit
+              ? context.l10n.gitCommitAndPushSucceeded
+              : context.l10n.gitCommitSucceeded,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, cwd)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitCommitFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitCommitFailed('$e'),
         );
       }
     } finally {
@@ -937,9 +1124,11 @@ class _GitReviewPanelState extends State<GitReviewPanel>
 
   bool _ownsTargetOrNotify(ApiClient api, String cwd) {
     if (_ownsTarget(api, cwd)) return true;
-    ScaffoldMessenger.of(
+    showHermesToast(
       context,
-    ).showSnackBar(SnackBar(content: Text(context.l10n.backendDisconnected)));
+      message: context.l10n.backendDisconnected,
+      kind: HermesToastKind.error,
+    );
     return false;
   }
 

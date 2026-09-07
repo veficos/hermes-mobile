@@ -16,27 +16,19 @@ import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_logo.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/session/session_card.dart';
 import '../widgets/session/session_list_meta.dart';
 import '../widgets/session/session_row_actions.dart';
-import 'agent_screen.dart';
-import 'artifacts_screen.dart';
 import 'chat_screen.dart';
-import 'cron_screen.dart';
-import 'files_screen.dart';
-import 'git_screen.dart';
-import 'insights_screen.dart';
-import 'kanban_canonical_screen.dart';
-import 'knowledge_screen.dart';
+import 'feature_registry.dart';
 import 'notification_screen.dart';
-import 'project_screen.dart';
 import 'session_list_screen.dart';
 import 'settings_hub_screen.dart';
-import 'subagents_screen.dart';
-import 'terminal_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -46,82 +38,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const _toolOrderKey = 'hm_home_quick_tool_order';
-  static const _defaultToolOrder = [
-    'files',
-    'terminal',
-    'git',
-    'kanban',
-    'agent',
-    'settings',
-    'projects',
-    'subagents',
-    'knowledge',
-    'artifacts',
-    'cron',
-    'insights',
-  ];
-  static final Map<String, _HomeToolSpec> _toolSpecs = {
-    'projects': _HomeToolSpec(
-      id: 'projects',
-      icon: Icons.folder_outlined,
-      builder: (_) => const ProjectScreen(),
-    ),
-    'files': _HomeToolSpec(
-      id: 'files',
-      icon: Icons.description_outlined,
-      builder: (_) => const FilesScreen(),
-    ),
-    'terminal': _HomeToolSpec(
-      id: 'terminal',
-      icon: Icons.terminal,
-      builder: (_) => const TerminalScreen(),
-    ),
-    'git': _HomeToolSpec(
-      id: 'git',
-      icon: Icons.commit,
-      builder: (_) => const GitScreen(),
-    ),
-    'kanban': _HomeToolSpec(
-      id: 'kanban',
-      icon: Icons.view_kanban_outlined,
-      builder: (_) => const KanbanCanonicalScreen(),
-    ),
-    'agent': _HomeToolSpec(
-      id: 'agent',
-      icon: Icons.auto_awesome_outlined,
-      builder: (_) => const AgentScreen(),
-    ),
-    'settings': _HomeToolSpec(
-      id: 'settings',
-      icon: Icons.tune_outlined,
-      builder: (_) => const SettingsHubScreen(),
-    ),
-    'subagents': _HomeToolSpec(
-      id: 'subagents',
-      icon: Icons.account_tree_outlined,
-      builder: (_) => const SubagentsScreen(),
-    ),
-    'knowledge': _HomeToolSpec(
-      id: 'knowledge',
-      icon: Icons.menu_book_outlined,
-      builder: (_) => const KnowledgeScreen(),
-    ),
-    'artifacts': _HomeToolSpec(
-      id: 'artifacts',
-      icon: Icons.photo_library_outlined,
-      builder: (_) => const ArtifactsScreen(),
-    ),
-    'cron': _HomeToolSpec(
-      id: 'cron',
-      icon: Icons.schedule_outlined,
-      builder: (_) => const CronScreen(),
-    ),
-    'insights': _HomeToolSpec(
-      id: 'insights',
-      icon: Icons.query_stats_outlined,
-      builder: (_) => const InsightsScreen(),
-    ),
-  };
+  static const _defaultToolOrder = hermesHomeDefaultToolOrder;
   final Set<String> _expanded = {};
   List<String> _toolOrder = List.of(_defaultToolOrder);
   bool _loading = true;
@@ -141,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadToolOrder() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList(_toolOrderKey) ?? const [];
-    final valid = saved.where(_defaultToolOrder.contains).toSet().toList();
+    final valid = saved.where(hermesHomeToolIds.contains).toSet().toList();
     valid.addAll(_defaultToolOrder.where((id) => !valid.contains(id)));
     if (mounted) setState(() => _toolOrder = valid);
   }
@@ -175,11 +92,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       });
                     },
                     itemBuilder: (context, index) {
-                      final tool = _toolSpecs[draft[index]]!;
+                      final tool = hermesFeaturesById[draft[index]]!;
                       return ListTile(
                         key: ValueKey('quick-tool-editor-${tool.id}'),
                         leading: Icon(tool.icon),
-                        title: Text(_toolLabel(tool.id)),
+                        title: Text(tool.title(context.l10n)),
                         subtitle: index == 4
                             ? Text(context.l10n.homeLastVisibleTool)
                             : null,
@@ -245,9 +162,11 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      showHermesToast(
         context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.commonConnected)));
+        message: context.l10n.commonConnected,
+        kind: HermesToastKind.success,
+      );
     } catch (error) {
       if (!mounted) return;
       showHermesErrorSnackBar(
@@ -487,7 +406,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   model: model,
                   profile: store.activeProfile ?? 'default',
                 ),
-                HermesMobileSectionLabel(
+                HermesSectionHeader(
+                  padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
                   title: context.l10n.homeQuickTools,
                   trailing: IconButton(
                     key: const ValueKey('edit-quick-tools'),
@@ -498,9 +418,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 _quickTools(),
-                HermesMobileSectionLabel(title: context.l10n.homeCurrentWork),
+                HermesSectionHeader(
+                  padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+                  title: context.l10n.homeCurrentWork,
+                ),
                 _statusCards(running, model, attention),
-                HermesMobileSectionLabel(
+                HermesSectionHeader(
+                  padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
                   title: context.l10n.homeRecentSessions,
                   trailing: TextButton.icon(
                     onPressed: () => Navigator.of(context).push(
@@ -738,45 +662,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _tool(String id, IconData icon, Widget page) => _ToolTile(
-    icon: icon,
-    label: _toolLabel(id),
-    subtitle: _toolSubtitle(id),
-    onTap: () =>
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => page)),
-  );
-
-  String _toolLabel(String id) => switch (id) {
-    'files' => context.l10n.featureFiles,
-    'terminal' => context.l10n.featureTerminal,
-    'git' => context.l10n.featureGit,
-    'kanban' => context.l10n.navTasks,
-    'agent' => context.l10n.featureAgent,
-    'settings' => context.l10n.featureSettings,
-    'projects' => context.l10n.featureProjects,
-    'subagents' => context.l10n.featureSubagents,
-    'knowledge' => context.l10n.homeToolKnowledge,
-    'artifacts' => context.l10n.featureArtifacts,
-    'cron' => context.l10n.featureCron,
-    'insights' => context.l10n.featureInsights,
-    _ => id,
-  };
-
-  String _toolSubtitle(String id) => switch (id) {
-    'files' => context.l10n.featureFilesDesc,
-    'terminal' => context.l10n.featureTerminalDesc,
-    'git' => context.l10n.featureGitDesc,
-    'kanban' => context.l10n.featureCronDesc,
-    'agent' => context.l10n.featureAgentDesc,
-    'settings' => context.l10n.featureSettingsDesc,
-    'projects' => context.l10n.featureProjectsDesc,
-    'subagents' => context.l10n.featureSubagentsDesc,
-    'knowledge' => context.l10n.featureStarmapDesc,
-    'artifacts' => context.l10n.featureArtifactsDesc,
-    'cron' => context.l10n.featureCronDesc,
-    'insights' => context.l10n.featureInsightsDesc,
-    _ => context.l10n.homeAllFeatures,
-  };
+  Widget _tool(String id) {
+    final entry = hermesFeaturesById[id]!;
+    return _ToolTile(
+      icon: entry.icon,
+      label: entry.title(context.l10n),
+      subtitle: entry.subtitle(context.l10n),
+      onTap: () => entry.open(context),
+    );
+  }
 
   Widget _quickTools() => LayoutBuilder(
     builder: (context, constraints) {
@@ -796,12 +690,9 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (context, index) {
           if (index < 5) {
             final id = _toolOrder[index];
-            return Builder(
+            return KeyedSubtree(
               key: ValueKey('quick-tool-$id'),
-              builder: (context) {
-                final tool = _toolSpecs[id]!;
-                return _tool(tool.id, tool.icon, tool.builder(context));
-              },
+              child: _tool(id),
             );
           }
           return _moreTools(_toolOrder.skip(5));
@@ -812,11 +703,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _moreTools(Iterable<String> ids) => HermesAdaptiveMenuButton<String>(
     tooltip: context.l10n.homeMoreTools,
-    onSelected: (id) {
-      final tool = _toolSpecs[id]!;
-      Navigator.of(context).push(MaterialPageRoute(builder: tool.builder));
-    },
-    itemBuilder: (_) => [for (final id in ids) _moreItem(_toolSpecs[id]!)],
+    onSelected: (id) => hermesFeaturesById[id]?.open(context),
+    itemBuilder: (_) => [for (final id in ids) _moreItem(hermesFeaturesById[id]!)],
     child: _ToolContent(
       icon: Icons.more_horiz,
       label: context.l10n.navMore,
@@ -824,28 +712,16 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 
-  PopupMenuItem<String> _moreItem(_HomeToolSpec tool) => PopupMenuItem(
+  PopupMenuItem<String> _moreItem(HermesFeatureEntry tool) => PopupMenuItem(
     value: tool.id,
     child: Row(
       children: [
         Icon(tool.icon, size: 20),
         const SizedBox(width: 10),
-        Text(_toolLabel(tool.id)),
+        Text(tool.title(context.l10n)),
       ],
     ),
   );
-}
-
-class _HomeToolSpec {
-  const _HomeToolSpec({
-    required this.id,
-    required this.icon,
-    required this.builder,
-  });
-
-  final String id;
-  final IconData icon;
-  final WidgetBuilder builder;
 }
 
 class _StatusCard extends StatelessWidget {
@@ -895,7 +771,7 @@ class _StatusCard extends StatelessWidget {
                   ),
                 ),
               ),
-              HermesMobileStatusChip(
+              HermesStatusChip(
                 label: busy
                     ? context.l10n.statusRunning
                     : context.l10n.statusReady,

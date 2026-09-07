@@ -3,20 +3,25 @@
 /// S/M 使用分组目录进入子页；L/XL 使用固定分组导航和右侧内容区。
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/stores/appearance_store.dart';
+import '../core/stores/embed_consent_store.dart';
 import '../core/stores/locale_store.dart';
 import '../core/stores/plugin_contribution_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import 'about_screen.dart';
 import 'billing_screen.dart';
 import 'config_screen.dart';
 import 'credentials_screen.dart';
+import 'keybind_settings_screen.dart';
 import 'messaging_screen.dart';
 import 'profiles_screen.dart';
 import 'provider_config_screen.dart';
@@ -135,6 +140,18 @@ class _SettingsHubScreenState extends State<SettingsHubScreen> {
             compactPage: const SettingsScreen(),
             widePage: const SettingsScreen(embedded: true),
           ),
+          // Rebinding shortcuts is meaningless without a physical keyboard.
+          if (defaultTargetPlatform == TargetPlatform.windows ||
+              defaultTargetPlatform == TargetPlatform.macOS ||
+              defaultTargetPlatform == TargetPlatform.linux)
+            _SettingsEntry(
+              id: 'keybinds',
+              icon: Icons.keyboard_outlined,
+              title: l10n.keybindsTitle,
+              subtitle: l10n.settingsKeybindsDesc,
+              compactPage: const KeybindSettingsScreen(),
+              widePage: const KeybindSettingsScreen(embedded: true),
+            ),
           _SettingsEntry(
             id: 'about',
             icon: Icons.info_outline,
@@ -290,17 +307,14 @@ class _SettingsHubScreenState extends State<SettingsHubScreen> {
             title: item.title,
             subtitle: item.description.isEmpty ? null : item.description,
             onTap: () async {
-              final messenger = ScaffoldMessenger.of(context);
               try {
                 await store.invoke(item);
               } catch (e) {
                 if (context.mounted) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        context.l10n.pluginActionFailed(item.title, '$e'),
-                      ),
-                    ),
+                  showHermesErrorSnackBar(
+                    context,
+                    e,
+                    fallback: context.l10n.pluginActionFailed(item.title, '$e'),
                   );
                 }
               }
@@ -345,7 +359,10 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return HermesMobileSectionLabel(title: title, top: 18);
+    return HermesSectionHeader(
+      title: title,
+      padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+    );
   }
 }
 
@@ -455,12 +472,10 @@ class _AppearanceContent extends StatelessWidget {
   }
 
   Future<void> _chooseLanguage(BuildContext context, LocaleStore locale) async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) {
+    final selected = await showMobileSheet<String>(
+      context,
+      avoidViewInsets: false,
+      (sheetContext) {
         final l10n = sheetContext.l10n;
         final options =
             <
@@ -604,6 +619,7 @@ class _AppearanceContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appearance = context.watch<AppearanceStore>();
+    final embedConsent = context.watch<EmbedConsentStore?>();
     final locale = context.watch<LocaleStore>();
     final l10n = context.l10n;
     final palette = HermesPalette.of(context);
@@ -708,6 +724,54 @@ class _AppearanceContent extends StatelessWidget {
           value: appearance.keepAwake,
           onChanged: appearance.setKeepAwake,
         ),
+        const SizedBox(height: HermesSpacing.lg),
+        Text(
+          l10n.embedPrivacySettingsTitle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: HermesSpacing.xs),
+        Text(
+          l10n.embedPrivacySettingsDescription,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: palette.text3),
+        ),
+        const SizedBox(height: HermesSpacing.sm),
+        if (embedConsent != null)
+          SegmentedButton<EmbedMode>(
+            segments: [
+              ButtonSegment(
+                value: EmbedMode.ask,
+                label: Text(l10n.embedModeAsk),
+              ),
+              ButtonSegment(
+                value: EmbedMode.always,
+                label: Text(l10n.embedModeAlways),
+              ),
+              ButtonSegment(
+                value: EmbedMode.off,
+                label: Text(l10n.embedModeOff),
+              ),
+            ],
+            selected: {embedConsent.mode},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) =>
+                embedConsent.setMode(selection.first),
+          ),
+        if (embedConsent != null &&
+            embedConsent.allowedProviders.isNotEmpty) ...[
+          const SizedBox(height: HermesSpacing.sm),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: embedConsent.clearAllowedProviders,
+              icon: const Icon(Icons.restart_alt_rounded),
+              label: Text(
+                l10n.embedClearAllowed(embedConsent.allowedProviders.length),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

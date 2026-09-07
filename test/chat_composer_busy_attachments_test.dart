@@ -18,7 +18,9 @@ import 'package:hermes_mobile/core/stores/command_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/core/stores/session_tab_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/chat_screen.dart';
 import 'package:hermes_mobile/widgets/h/hermes_composer.dart';
 import 'package:provider/provider.dart';
@@ -127,6 +129,9 @@ Future<void> _pumpBareComposer(
   controller ??= TextEditingController();
   await tester.pumpWidget(
     MaterialApp(
+      locale: const Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
         body: HermesComposer(
           controller: controller,
@@ -163,12 +168,25 @@ class _ChatRig {
   Widget app() => MultiProvider(
     providers: [
       ChangeNotifierProvider<ConnectionStore>.value(value: connection),
+      ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
+        create: (_) => SessionTabStore(),
+        update: (_, connection, tabs) =>
+            (tabs ?? SessionTabStore())..attachRoutedEvents(
+              connection.routedEvents,
+              owners: connection.sessionOwners,
+            ),
+      ),
       ChangeNotifierProvider.value(value: session),
       ChangeNotifierProvider.value(value: chat),
       ChangeNotifierProvider.value(value: VoiceStore(connection: connection)),
       ChangeNotifierProvider.value(value: CommandStore(connection: connection)),
     ],
-    child: const MaterialApp(home: ChatScreen()),
+    child: MaterialApp(
+      locale: Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: ChatScreen(),
+    ),
   );
 
   void releasePrompts() {

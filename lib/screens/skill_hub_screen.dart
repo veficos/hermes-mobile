@@ -15,8 +15,12 @@ import '../core/models.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 
 class SkillHubScreen extends StatefulWidget {
@@ -211,28 +215,14 @@ class _SkillHubScreenState extends State<SkillHubScreen>
         expectedApi ??
         connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.skillHubUninstallQuestion(name)),
-        content: Text(l10n.skillHubUninstallDescription),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.skillHubUninstall),
-          ),
-        ],
-      ),
+      title: l10n.skillHubUninstallQuestion(name),
+      message: l10n.skillHubUninstallDescription,
+      confirmLabel: l10n.skillHubUninstall,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     await _runAction(
       identifier,
       (api) => api.uninstallSkillFromHub(name),
@@ -256,16 +246,10 @@ class _SkillHubScreenState extends State<SkillHubScreen>
     }
     if (!mounted || !identical(api, connection.api)) return;
     final installed = _installedMap[r.identifier];
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
+    await showMobileSheet<void>(
+      context,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(HermesRadius.sheet),
-        ),
-      ),
-      builder: (sheetCtx) => _SkillPreviewSheet(
+      (sheetCtx) => _SkillPreviewSheet(
         result: r,
         preview: preview,
         error: error,
@@ -286,28 +270,26 @@ class _SkillHubScreenState extends State<SkillHubScreen>
   @override
   Widget build(BuildContext context) {
     final hasInstalled = _installedMap.isNotEmpty;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.skillsMarketplace),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.skillHubUpdateInstalled,
-            onPressed: (_busyKey.isEmpty && hasInstalled) ? _updateAll : null,
-            icon: _busyKey == '__update_all__'
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.system_update_alt_outlined),
-          ),
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.skillsMarketplace,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.skillHubUpdateInstalled,
+          onPressed: (_busyKey.isEmpty && hasInstalled) ? _updateAll : null,
+          icon: _busyKey == '__update_all__'
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.system_update_alt_outlined),
+        ),
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: Column(
         children: [
           Padding(
@@ -403,13 +385,16 @@ class _SkillHubScreenState extends State<SkillHubScreen>
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 32),
       children: [
         if (sources.sources.isNotEmpty) ...[
-          HermesMobileSectionLabel(title: context.l10n.skillHubSources),
+          HermesSectionHeader(
+            title: context.l10n.skillHubSources,
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               for (final s in sources.sources)
-                HermesMobileStatusChip(
+                HermesStatusChip(
                   color: s.available
                       ? HermesSemantic.green
                       : HermesSemantic.gray,
@@ -432,7 +417,10 @@ class _SkillHubScreenState extends State<SkillHubScreen>
             ),
           ),
         if (sources.featured.isNotEmpty) ...[
-          HermesMobileSectionLabel(title: context.l10n.skillHubFeatured),
+          HermesSectionHeader(
+            title: context.l10n.skillHubFeatured,
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          ),
           HermesMobileGroup(
             children: [
               for (final res in sources.featured) _resultRow(context, res),
@@ -456,7 +444,7 @@ class _SkillHubScreenState extends State<SkillHubScreen>
       subtitle: r.description.isNotEmpty ? r.description : r.source,
       onTap: () => _openPreview(r),
       trailing: installed
-          ? HermesMobileStatusChip(
+          ? HermesStatusChip(
               color: HermesSemantic.blue,
               label: context.l10n.skillHubInstalled,
             )
@@ -527,7 +515,7 @@ class _SkillPreviewSheet extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                HermesMobileStatusChip(
+                HermesStatusChip(
                   color: _trustColor(result.trustLevel),
                   label: _trustLabel(context, result.trustLevel),
                 ),

@@ -5,13 +5,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/api_client.dart';
 import '../core/connection_reload_mixin.dart';
+import '../core/models.dart';
 import '../core/stores/bot_store.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 class BotRoutinesScreen extends StatefulWidget {
   final BotIdentity bot;
@@ -112,36 +116,167 @@ class _BotRoutinesScreenState extends State<BotRoutinesScreen> {
     }
   }
 
-  Future<void> _create() async {
-    final created = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _BotRoutineEditor(bot: widget.bot),
-    );
-    if (created == true) await _load();
-  }
-
-  Future<void> _delete(BotRoutine routine) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.l10n.botRoutineDeleteQuestion),
-        content: Text(context.l10n.botRoutineDeletePrompt(routine.title)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: HermesSemantic.red),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
+  Future<void> _openEditor([BotRoutine? routine]) async {
+    final ownerApi = _ownerApi();
+    if (ownerApi == null) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.backendDisconnected,
+          kind: HermesToastKind.error,
+        );
+      }
+      return;
+    }
+    final saved = await showMobileSheet<bool>(
+      context,
+      (_) => _BotRoutineEditor(
+        bot: widget.bot,
+        ownerApi: ownerApi,
+        routine: routine,
       ),
     );
-    if (confirmed == true) await _mutate(routine, 'remove');
+    if (saved == true) await _load();
+  }
+
+  Future<void> _create() => _openEditor();
+
+  Future<void> _edit(BotRoutine routine) => _openEditor(routine);
+
+  Future<void> _delete(BotRoutine routine) async {
+    final confirmed = await showHermesConfirmDialog(
+      context: context,
+      title: context.l10n.botRoutineDeleteQuestion,
+      message: context.l10n.botRoutineDeletePrompt(routine.title),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
+    );
+    if (confirmed) await _mutate(routine, 'remove');
+  }
+
+  ApiClient? _ownerApi() {
+    return context
+        .read<BotStore>()
+        .connection
+        .registry
+        .runtime(widget.bot.route.connectionId)
+        ?.api;
+  }
+
+  Future<void> _trigger(BotRoutine routine) async {
+    final ownerApi = _ownerApi();
+    if (ownerApi == null) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.backendDisconnected,
+          kind: HermesToastKind.error,
+        );
+      }
+      return;
+    }
+    try {
+      await ownerApi.cronTrigger(routine.id);
+      if (mounted) {
+        showHermesToast(context, message: context.l10n.cronTriggered);
+      }
+    } catch (error) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.cronTriggerFailed('$error'),
+          kind: HermesToastKind.error,
+        );
+      }
+    }
+  }
+
+  Future<void> _showRuns(BotRoutine routine) async {
+    final ownerApi = _ownerApi();
+    if (ownerApi == null) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.backendDisconnected,
+          kind: HermesToastKind.error,
+        );
+      }
+      return;
+    }
+    late final List<Map<String, dynamic>> runs;
+    try {
+      runs = await ownerApi.cronRuns(routine.id);
+    } catch (error) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.cronRunsLoadFailed('$error'),
+          kind: HermesToastKind.error,
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    showMobileSheet<void>(
+      context,
+      (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (ctx, scrollCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                context.l10n.cronRunHistoryTitle(routine.title),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: runs.isEmpty
+                  ? HermesEmptyState(
+                      icon: Icons.history,
+                      title: context.l10n.cronNoRuns,
+                    )
+                  : ListView.builder(
+                      controller: scrollCtrl,
+                      itemCount: runs.length,
+                      itemBuilder: (_, i) {
+                        final r = runs[i];
+                        final ok =
+                            r['success'] != false && r['status'] != 'failed';
+                        return ListTile(
+                          dense: true,
+                          leading: Icon(
+                            ok
+                                ? Icons.check_circle_outline
+                                : Icons.error_outline,
+                            color: ok
+                                ? HermesSemantic.green
+                                : HermesSemantic.red,
+                          ),
+                          title: Text(
+                            r['scheduled_at']?.toString() ??
+                                r['started_at']?.toString() ??
+                                '—',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          subtitle: Text(
+                            r['status']?.toString() ??
+                                r['output']?.toString() ??
+                                '',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showDetails(BotRoutine routine) {
@@ -228,6 +363,28 @@ class _BotRoutinesScreenState extends State<BotRoutinesScreen> {
         ),
         actions: [
           TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showRuns(routine);
+            },
+            child: Text(context.l10n.cronRunHistory),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _trigger(routine);
+            },
+            child: Text(context.l10n.cronTriggerNow),
+          ),
+          if (!routine.legacyUnsafe)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _edit(routine);
+              },
+              child: Text(context.l10n.botRoutineEdit),
+            ),
+          TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(context.l10n.commonClose),
           ),
@@ -238,17 +395,15 @@ class _BotRoutinesScreenState extends State<BotRoutinesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.botRoutineTitle(widget.bot.displayName)),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.botRoutineTitle(widget.bot.displayName),
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       floatingActionButton: FloatingActionButton(
         heroTag: 'new-bot-routine-${widget.bot.key}',
         onPressed: _create,
@@ -376,27 +531,110 @@ String _scheduleLabel(BuildContext context, String schedule) {
 
 class _BotRoutineEditor extends StatefulWidget {
   final BotIdentity bot;
+  final ApiClient ownerApi;
+  final BotRoutine? routine;
 
-  const _BotRoutineEditor({required this.bot});
+  const _BotRoutineEditor({
+    required this.bot,
+    required this.ownerApi,
+    this.routine,
+  });
 
   @override
   State<_BotRoutineEditor> createState() => _BotRoutineEditorState();
 }
 
 class _BotRoutineEditorState extends State<_BotRoutineEditor> {
-  final _title = TextEditingController();
-  final _instruction = TextEditingController();
+  late final _title = TextEditingController(text: widget.routine?.title ?? '');
+  late final _instruction = TextEditingController(
+    text: widget.routine?.promptPreview ?? '',
+  );
   final _time = TextEditingController(text: '09:00');
   final _number = TextEditingController(text: '1');
-  final _repeat = TextEditingController();
-  final _raw = TextEditingController(text: '0 9 * * *');
-  String _frequency = 'daily';
+  late final _repeat = TextEditingController(
+    text: widget.routine?.repeat ?? '',
+  );
+  late final _raw = TextEditingController(
+    text: widget.routine?.schedule ?? '0 9 * * *',
+  );
+  late String _frequency = widget.routine != null ? 'advanced' : 'daily';
   String _unit = 'h';
   String _weekday = '1';
   bool _continuity = false;
-  bool _deliverToChat = false;
+  late bool _deliverToChat = widget.routine?.deliver == 'bot-chat';
   bool _saving = false;
   String? _error;
+
+  bool get _editing => widget.routine != null;
+
+  bool _loadingModels = true;
+  List<ModelInfo> _modelProviders = const [];
+  String _modelChoice = '__default__';
+  bool _loadingJob = false;
+  String? _savedModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadModels();
+    if (widget.routine != null) {
+      _loadingJob = true;
+      _loadFullJob();
+    }
+  }
+
+  Future<void> _loadModels() async {
+    try {
+      final providers = await widget.ownerApi.modelOptions();
+      if (!mounted) return;
+      setState(() {
+        _modelProviders = providers
+            .where((item) => item.models.isNotEmpty)
+            .toList();
+        _loadingModels = false;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _loadingModels = false;
+          _error = context.l10n.cronModelsLoadFailed('$error');
+        });
+      }
+    }
+  }
+
+  Future<void> _loadFullJob() async {
+    final routineId = widget.routine!.id;
+    try {
+      final jobs = await widget.ownerApi.cronJobs();
+      final job = jobs.where((j) => j.id == routineId).firstOrNull;
+      if (!mounted) return;
+      setState(() {
+        _loadingJob = false;
+        if (job != null) {
+          if (job.prompt != null && job.prompt!.isNotEmpty) {
+            _instruction.text = job.prompt!;
+          }
+          if (job.model?.isNotEmpty == true) {
+            _modelChoice = '${job.provider ?? ''}:${job.model}';
+            _savedModel = job.model;
+          }
+        }
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _loadingJob = false;
+          _error = context.l10n.botRoutineLoadFailed('$error');
+        });
+      }
+    }
+  }
+
+  Set<String> get _allModelChoices => {
+    for (final provider in _modelProviders)
+      for (final model in provider.models) '${provider.slug}:$model',
+  };
 
   @override
   void dispose() {
@@ -437,18 +675,26 @@ class _BotRoutineEditorState extends State<_BotRoutineEditor> {
       _saving = true;
       _error = null;
     });
+    final separator = _modelChoice.indexOf(':');
+    final provider = separator >= 0 ? _modelChoice.substring(0, separator) : '';
+    final model = separator >= 0 ? _modelChoice.substring(separator + 1) : '';
+    final draft = BotRoutineDraft(
+      title: _title.text,
+      instruction: _instruction.text,
+      schedule: _schedule,
+      repeat: int.tryParse(_repeat.text),
+      continuity: _continuity,
+      deliverToBotChat: _deliverToChat,
+      model: model.isEmpty ? null : model,
+      provider: provider.isEmpty ? null : provider,
+    );
     try {
-      await context.read<BotStore>().createBotRoutine(
-        widget.bot,
-        BotRoutineDraft(
-          title: _title.text,
-          instruction: _instruction.text,
-          schedule: _schedule,
-          repeat: int.tryParse(_repeat.text),
-          continuity: _continuity,
-          deliverToBotChat: _deliverToChat,
-        ),
-      );
+      final store = context.read<BotStore>();
+      if (widget.routine == null) {
+        await store.createBotRoutine(widget.bot, draft);
+      } else {
+        await store.updateBotRoutine(widget.bot, widget.routine!.id, draft);
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
@@ -477,13 +723,15 @@ class _BotRoutineEditorState extends State<_BotRoutineEditor> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              context.l10n.botRoutineCreateTitle(widget.bot.displayName),
+              _editing
+                  ? context.l10n.botRoutineEditTitle(widget.bot.displayName)
+                  : context.l10n.botRoutineCreateTitle(widget.bot.displayName),
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _title,
-              autofocus: true,
+              autofocus: !_editing,
               decoration: InputDecoration(
                 labelText: context.l10n.commonName,
                 border: const OutlineInputBorder(),
@@ -494,13 +742,68 @@ class _BotRoutineEditorState extends State<_BotRoutineEditor> {
               controller: _instruction,
               minLines: 3,
               maxLines: 6,
+              enabled: !_loadingJob,
               decoration: InputDecoration(
                 labelText: context.l10n.botRoutineInstructionLabel,
                 border: const OutlineInputBorder(),
+                suffixIcon: _loadingJob
+                    ? const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : null,
               ),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
+              key: ValueKey(
+                'bot-routine-model:$_modelChoice:${_modelProviders.length}',
+              ),
+              dropdownColor: hermesDropdownColor(context),
+              borderRadius: hermesDropdownBorderRadius,
+              initialValue: _modelChoice,
+              decoration: InputDecoration(
+                labelText: context.l10n.cronTaskModel,
+                border: const OutlineInputBorder(),
+                suffixIcon: _loadingModels
+                    ? const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : null,
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: '__default__',
+                  child: Text(context.l10n.cronUseGlobalDefault),
+                ),
+                if (_modelChoice != '__default__' &&
+                    !_allModelChoices.contains(_modelChoice))
+                  DropdownMenuItem(
+                    value: _modelChoice,
+                    child: Text(context.l10n.cronSavedModel('$_savedModel')),
+                  ),
+                for (final provider in _modelProviders)
+                  for (final model in provider.models)
+                    DropdownMenuItem(
+                      value: '${provider.slug}:$model',
+                      child: Text('${provider.name} · $model'),
+                    ),
+              ],
+              onChanged: _loadingModels
+                  ? null
+                  : (value) => setState(() => _modelChoice = value ?? '__default__'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              dropdownColor: hermesDropdownColor(context),
+              borderRadius: hermesDropdownBorderRadius,
               initialValue: _frequency,
               decoration: InputDecoration(
                 labelText: context.l10n.cronFrequency,
@@ -555,6 +858,8 @@ class _BotRoutineEditorState extends State<_BotRoutineEditor> {
             if (_frequency == 'weekly') ...[
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
+                dropdownColor: hermesDropdownColor(context),
+                borderRadius: hermesDropdownBorderRadius,
                 initialValue: _weekday,
                 decoration: InputDecoration(
                   labelText: context.l10n.botRoutineWeekday,
@@ -614,6 +919,8 @@ class _BotRoutineEditorState extends State<_BotRoutineEditor> {
                     SizedBox(
                       width: 130,
                       child: DropdownButtonFormField<String>(
+                        dropdownColor: hermesDropdownColor(context),
+                        borderRadius: hermesDropdownBorderRadius,
                         initialValue: _unit,
                         decoration: InputDecoration(
                           labelText: context.l10n.botRoutineUnit,
@@ -684,7 +991,7 @@ class _BotRoutineEditorState extends State<_BotRoutineEditor> {
               Text(_error!, style: const TextStyle(color: HermesSemantic.red)),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _saving ? null : _save,
+              onPressed: (_saving || _loadingJob) ? null : _save,
               icon: _saving
                   ? const SizedBox.square(
                       dimension: 16,
@@ -693,8 +1000,12 @@ class _BotRoutineEditorState extends State<_BotRoutineEditor> {
                   : const Icon(Icons.schedule_send_outlined),
               label: Text(
                 _saving
-                    ? context.l10n.botRoutineCreating
-                    : context.l10n.botRoutineCreate,
+                    ? (_editing
+                          ? context.l10n.botRoutineSaving
+                          : context.l10n.botRoutineCreating)
+                    : (_editing
+                          ? context.l10n.botRoutineSave
+                          : context.l10n.botRoutineCreate),
               ),
             ),
           ],

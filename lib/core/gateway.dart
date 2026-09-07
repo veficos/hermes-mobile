@@ -74,6 +74,17 @@ class GatewayException implements Exception {
 const gatewayAuthenticationFailedCode = -3;
 const gatewayTooManyPendingCode = -32001;
 
+/// Unwraps `package:web_socket_channel`'s error wrapping to find a
+/// [WsHandshakeRejected] with an auth-relevant status code, if present.
+WsHandshakeRejected? _authRejectionOf(Object e) {
+  final inner = e is WebSocketChannelException ? e.inner : e;
+  if (inner is WsHandshakeRejected &&
+      (inner.statusCode == 401 || inner.statusCode == 403)) {
+    return inner;
+  }
+  return null;
+}
+
 String gatewayCloseMessage(int? code, String? reason) => switch (code) {
   4401 => runtimeL10n.commonAuthenticationFailed,
   1011 => runtimeL10n.gatewayUnavailable,
@@ -155,10 +166,22 @@ class GatewayClient {
           if (identical(_channel, channel)) _onFrame(raw);
         },
         onError: (Object e) {
-          _handleSocketClosed('$e', byClient: false, socket: channel);
+          // A pre-upgrade HTTP 401/403 rejection (invalid API key) never
+          // reaches `onDone`'s WS-close-code handling below — it fails here
+          // instead. Route it through the same authentication-failed message
+          // so `ConnectionRuntime` stops retrying rather than reconnecting
+          // forever against a permanently-invalid credential.
+          final rejection = _authRejectionOf(e);
+          final message = rejection != null
+              ? runtimeL10n.commonAuthenticationFailed
+              : '$e';
+          _handleSocketClosed(message, byClient: false, socket: channel);
           if (!connecting.isCompleted) {
             connecting.completeError(
-              GatewayException(-1, 'connection failed: $e'),
+              GatewayException(
+                rejection != null ? gatewayAuthenticationFailedCode : -1,
+                rejection != null ? message : 'connection failed: $e',
+              ),
             );
           }
         },

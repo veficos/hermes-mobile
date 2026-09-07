@@ -10,16 +10,26 @@ import 'core/performance_metrics.dart';
 import 'core/remote_push.dart';
 import 'core/app_navigation.dart';
 import 'core/deep_link_service.dart';
+import 'core/incoming_share.dart';
 import 'core/stores/appearance_store.dart';
+import 'core/stores/embed_consent_store.dart';
+import 'core/stores/embed_runtime_store.dart';
+import 'core/stores/active_session_tray_store.dart';
 import 'core/stores/chat_store.dart';
 import 'core/stores/command_palette_store.dart';
 import 'core/stores/command_store.dart';
 import 'core/stores/composer_status_store.dart';
+import 'core/stores/composer_suggestion_store.dart';
+import 'core/stores/mcp_health_store.dart';
+import 'core/stores/keybind_store.dart';
+import 'core/stores/skin_sync_store.dart';
 import 'core/stores/coding_status_store.dart';
 import 'core/stores/connection_store.dart';
 import 'core/stores/locale_store.dart';
+import 'core/stores/mobile_surface_store.dart';
 import 'core/stores/notification_store.dart';
 import 'core/stores/pane_workspace_store.dart';
+import 'core/stores/composer_handoff_store.dart';
 import 'core/stores/pet_store.dart';
 import 'core/stores/plugin_contribution_store.dart';
 import 'core/stores/preview_store.dart';
@@ -30,6 +40,9 @@ import 'core/stores/billing_store.dart';
 import 'core/stores/request_store.dart';
 import 'core/stores/session_appearance_store.dart';
 import 'core/stores/session_store.dart';
+import 'core/stores/session_view_state_store.dart';
+import 'core/stores/session_tab_store.dart';
+import 'core/session_surface.dart';
 import 'core/stores/subagent_store.dart';
 import 'core/stores/terminal_store.dart';
 import 'core/stores/update_store.dart';
@@ -42,6 +55,7 @@ import 'l10n/l10n.dart';
 import 'l10n/runtime_l10n.dart';
 import 'screens/app_shell.dart';
 import 'theme/hermes_theme.dart';
+import 'widgets/mobile/mobile_tour_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -86,6 +100,7 @@ class HermesMobileApp extends StatelessWidget {
                 ..attachRoutedEvents(connection.routedEvents)),
         ),
         ChangeNotifierProvider(create: (_) => PaneWorkspaceStore()..load()),
+        ChangeNotifierProvider(create: (_) => ComposerHandoffStore()),
         ChangeNotifierProxyProvider<ConnectionStore, BillingStore>(
           create: (ctx) => BillingStore()
             ..attachConnection(ctx.read<ConnectionStore>())
@@ -183,6 +198,26 @@ class HermesMobileApp extends StatelessWidget {
             return store;
           },
         ),
+        ChangeNotifierProxyProvider3<
+          ConnectionStore,
+          SessionStore,
+          PaneWorkspaceStore,
+          MobileSurfaceStore
+        >(
+          lazy: false,
+          create: (ctx) => MobileSurfaceStore(
+            ctx.read<ConnectionStore>(),
+            ctx.read<SessionStore>(),
+            ctx.read<PaneWorkspaceStore>(),
+          ),
+          update: (_, connection, session, panes, store) =>
+              (store ?? MobileSurfaceStore(connection, session, panes))
+                ..bindStores(
+                  connection: connection,
+                  session: session,
+                  panes: panes,
+                ),
+        ),
         ChangeNotifierProxyProvider2<
           ConnectionStore,
           SessionStore,
@@ -204,6 +239,19 @@ class HermesMobileApp extends StatelessWidget {
                 ..bindBackendSnapshotSink(session.syncProfilesFromBackend)
                 ..startAutoRefresh()
                 ..syncFromSession(session.profiles, session.activeProfile),
+        ),
+        ChangeNotifierProxyProvider2<
+          SessionStore,
+          RequestStore,
+          ActiveSessionTrayStore
+        >(
+          create: (ctx) => ActiveSessionTrayStore(
+            ctx.read<SessionStore>(),
+            ctx.read<RequestStore>(),
+          ),
+          update: (_, sessions, requests, store) =>
+              (store ?? ActiveSessionTrayStore(sessions, requests))
+                ..bind(sessions, requests),
         ),
         ChangeNotifierProxyProvider2<
           ConnectionStore,
@@ -250,20 +298,31 @@ class HermesMobileApp extends StatelessWidget {
             return result;
           },
         ),
-        ChangeNotifierProxyProvider2<
+        ChangeNotifierProxyProvider3<
           ConnectionStore,
           SessionStore,
+          RequestStore,
           TerminalStore
         >(
           create: (ctx) => TerminalStore(
             connection: ctx.read<ConnectionStore>(),
             sessionStore: ctx.read<SessionStore>(),
+            requestStore: ctx.read<RequestStore>(),
           ),
-          update: (ctx, connection, session, terminal) {
+          lazy: false,
+          update: (ctx, connection, session, requests, terminal) {
             final store =
                 terminal ??
-                TerminalStore(connection: connection, sessionStore: session);
-            store.bindStores(connection: connection, sessionStore: session);
+                TerminalStore(
+                  connection: connection,
+                  sessionStore: session,
+                  requestStore: requests,
+                );
+            store.bindStores(
+              connection: connection,
+              sessionStore: session,
+              requestStore: requests,
+            );
             return store;
           },
         ),
@@ -288,6 +347,38 @@ class HermesMobileApp extends StatelessWidget {
               (cmd ?? CommandStore(connection: connection))..bindProfile(
                 session.sessionListProfile ?? session.activeProfile,
               ),
+        ),
+        ChangeNotifierProxyProvider3<
+          ConnectionStore,
+          SessionStore,
+          CommandStore,
+          ComposerSuggestionStore
+        >(
+          lazy: false,
+          create: (ctx) => ComposerSuggestionStore(
+            ctx.read<ConnectionStore>(),
+            ctx.read<SessionStore>(),
+            ctx.read<CommandStore>(),
+          ),
+          update: (_, connection, session, commands, store) =>
+              (store ?? ComposerSuggestionStore(connection, session, commands))
+                ..bind(connection, session, commands),
+        ),
+        ChangeNotifierProxyProvider3<
+          ConnectionStore,
+          ProfileScopeStore,
+          NotificationStore,
+          McpHealthStore
+        >(
+          lazy: false,
+          create: (ctx) => McpHealthStore(
+            ctx.read<ConnectionStore>(),
+            ctx.read<ProfileScopeStore>(),
+            ctx.read<NotificationStore>(),
+          ),
+          update: (_, connection, scope, notifications, store) =>
+              (store ?? McpHealthStore(connection, scope, notifications))
+                ..bind(connection, scope, notifications),
         ),
         ChangeNotifierProxyProvider<ConnectionStore, PetStore>(
           create: (ctx) => PetStore(connection: ctx.read<ConnectionStore>()),
@@ -317,13 +408,57 @@ class HermesMobileApp extends StatelessWidget {
           lazy: false,
           create: (_) => DeepLinkService(),
         ),
+        ChangeNotifierProvider<IncomingShareService>(
+          lazy: false,
+          create: (_) => IncomingShareService(),
+        ),
         Provider<ConnectivityService>(
           lazy: false,
           create: (_) => ConnectivityService()..start(),
           dispose: (_, svc) => unawaited(svc.dispose()),
         ),
         ChangeNotifierProvider(create: (_) => AppearanceStore()..load()),
+        ChangeNotifierProvider(create: (_) => SessionViewStateStore()),
+        ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
+          lazy: false,
+          create: (ctx) => SessionTabStore()
+            ..attachRoutedEvents(
+              ctx.read<ConnectionStore>().routedEvents,
+              owners: ctx.read<ConnectionStore>().sessionOwners,
+            )
+            ..restore(),
+          update: (ctx, connection, tabs) {
+            final store = tabs ?? SessionTabStore();
+            store.attachRoutedEvents(
+              connection.routedEvents,
+              owners: connection.sessionOwners,
+            );
+            return store;
+          },
+        ),
+        ChangeNotifierProvider(create: (_) => SessionSurfaceStore()),
+        ChangeNotifierProvider(create: (_) => EmbedConsentStore()..load()),
+        ChangeNotifierProvider(create: (_) => EmbedRuntimeStore()),
+        ChangeNotifierProxyProvider2<
+          ConnectionStore,
+          AppearanceStore,
+          SkinSyncStore
+        >(
+          lazy: false,
+          create: (ctx) => SkinSyncStore(
+            connection: ctx.read<ConnectionStore>(),
+            appearance: ctx.read<AppearanceStore>(),
+          ),
+          update: (ctx, connection, appearance, store) =>
+              (store ??
+                    SkinSyncStore(
+                      connection: connection,
+                      appearance: appearance,
+                    ))
+                ..bind(appearance),
+        ),
         ChangeNotifierProvider(create: (_) => LocaleStore()..load()),
+        ChangeNotifierProvider(create: (_) => KeybindStore()..load()),
         ChangeNotifierProvider<RemotePushService>(
           lazy: false,
           create: (ctx) {
@@ -358,10 +493,23 @@ class HermesMobileApp extends StatelessWidget {
               previous ??
               PluginContributionStore(connection, notifications: notifications),
         ),
-        ChangeNotifierProxyProvider<ConnectionStore, PreviewStore>(
-          create: (ctx) => PreviewStore(ctx.read<ConnectionStore>()),
-          update: (ctx, connection, previous) =>
-              previous ?? PreviewStore(connection),
+        ChangeNotifierProxyProvider2<
+          ConnectionStore,
+          SessionStore,
+          PreviewStore
+        >(
+          create: (ctx) =>
+              PreviewStore(ctx.read<ConnectionStore>())..bindVisibleSession(
+                owner: () => ctx.read<SessionStore>().owner?.route,
+                runtimeId: () => ctx.read<SessionStore>().runtimeId,
+                durableId: () => ctx.read<SessionStore>().durableId,
+              ),
+          update: (ctx, connection, session, previous) =>
+              (previous ?? PreviewStore(connection))..bindVisibleSession(
+                owner: () => session.owner?.route,
+                runtimeId: () => session.runtimeId,
+                durableId: () => session.durableId,
+              ),
         ),
       ],
       child: Consumer2<AppearanceStore, LocaleStore>(
@@ -393,7 +541,7 @@ class HermesMobileApp extends StatelessWidget {
               themeMode: appearance.themeMode,
               builder: (context, child) {
                 RuntimeL10n.use(context.l10n);
-                return child!;
+                return MobileTourOverlay(child: child!);
               },
               home: const AppShell(),
             ),

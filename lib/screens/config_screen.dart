@@ -21,9 +21,11 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 enum _VoiceFieldType { text, number, switchType, elevenLabsVoice }
 
@@ -488,27 +490,15 @@ class _ConfigScreenState extends State<ConfigScreen>
     var result = await api.setModelAssignment(assignment, profile: profile);
     if (!mounted || !_ownsMutation(api, generation, profile)) return null;
     if (result['confirm_required'] == true) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showHermesConfirmDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text(context.l10n.modelConfirmSelection),
-          content: Text(
+        title: context.l10n.modelConfirmSelection,
+        message:
             result['confirm_message']?.toString() ??
-                context.l10n.modelExpensiveWarning,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(context.l10n.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(context.l10n.commonContinue),
-            ),
-          ],
-        ),
+            context.l10n.modelExpensiveWarning,
+        confirmLabel: context.l10n.commonContinue,
       );
-      if (confirmed != true) return null;
+      if (!confirmed) return null;
       if (!mounted || !_ownsMutation(api, generation, profile)) return null;
       _requireMutationTarget(api, profile);
       result = await api.setModelAssignment({
@@ -918,10 +908,9 @@ class _ConfigScreenState extends State<ConfigScreen>
     final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
     final profile = _profile;
-    final edited = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) =>
+    final edited = await showMobileSheet<Map<String, dynamic>>(
+      context,
+      (context) =>
           _MoaPresetEditor(name: name, initial: preset, providers: _providers),
     );
     if (edited == null ||
@@ -1029,6 +1018,8 @@ class _ConfigScreenState extends State<ConfigScreen>
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
+                          dropdownColor: hermesDropdownColor(context),
+                          borderRadius: hermesDropdownBorderRadius,
                           isExpanded: true,
                           initialValue: presets.containsKey(_selectedMoaPreset)
                               ? _selectedMoaPreset
@@ -1842,6 +1833,8 @@ class _ConfigScreenState extends State<ConfigScreen>
       items.add(raw);
     }
     return DropdownButtonFormField<String>(
+      dropdownColor: hermesDropdownColor(context),
+      borderRadius: hermesDropdownBorderRadius,
       isExpanded: true,
       initialValue: raw != null && items.contains(raw) ? raw : null,
       decoration: InputDecoration(
@@ -1921,11 +1914,11 @@ class _ConfigScreenState extends State<ConfigScreen>
       onTap: _saving
           ? null
           : () async {
-              final selected = await showModalBottomSheet<String>(
-                context: context,
-                showDragHandle: true,
-                useSafeArea: true,
-                builder: (context) => Column(
+              final selected = await showMobileSheet<String>(
+                context,
+                isScrollControlled: false,
+                avoidViewInsets: false,
+                (context) => Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ListTile(
@@ -1964,12 +1957,11 @@ class _ConfigScreenState extends State<ConfigScreen>
     String label,
     String current,
   ) async {
-    final value = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) => _MobileTextSettingEditor(
+    final value = await showMobileSheet<String>(
+      context,
+      // _MobileTextSettingEditor 已自行处理键盘避让（viewInsets 内边距）。
+      avoidViewInsets: false,
+      (context) => _MobileTextSettingEditor(
         path: path,
         label: label,
         initialValue: current,
@@ -2424,24 +2416,14 @@ class _EnvVarsSectionState extends State<_EnvVarsSection>
     final generation = _generation;
     final profile = widget.profile;
     if (!_owns(api, generation, profile)) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.configDeleteVariableQuestion(key)),
-        content: Text(context.l10n.configDeleteVariableDescription),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.configDeleteVariableQuestion(key),
+      message: context.l10n.configDeleteVariableDescription,
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !_owns(api, generation, profile)) return;
+    if (!confirmed || !_owns(api, generation, profile)) return;
     if (!mounted) return;
     setState(() => _busyKeys.add(key));
     try {
@@ -2893,6 +2875,8 @@ class _MoaPresetEditorState extends State<_MoaPresetEditor> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<String>(
+                          dropdownColor: hermesDropdownColor(context),
+                          borderRadius: hermesDropdownBorderRadius,
                           isExpanded: true,
                           initialValue:
                               const {'loud', 'silent'}.contains(policy)
@@ -3007,6 +2991,8 @@ class _MoaSlotEditor extends StatelessWidget {
         LayoutBuilder(
           builder: (context, constraints) {
             Widget providerDropdown() => DropdownButtonFormField<String>(
+              dropdownColor: hermesDropdownColor(context),
+              borderRadius: hermesDropdownBorderRadius,
               isExpanded: true,
               initialValue: providerValues.contains(provider) ? provider : null,
               decoration: InputDecoration(
@@ -3042,6 +3028,8 @@ class _MoaSlotEditor extends StatelessWidget {
               },
             );
             Widget modelDropdown() => DropdownButtonFormField<String>(
+              dropdownColor: hermesDropdownColor(context),
+              borderRadius: hermesDropdownBorderRadius,
               isExpanded: true,
               initialValue: models.contains(model) ? model : null,
               decoration: InputDecoration(labelText: context.l10n.modelLabel),
@@ -3198,6 +3186,8 @@ class _ElevenLabsVoiceFieldState extends State<_ElevenLabsVoiceField>
     final ids = [for (final v in voices) v['voice_id']?.toString() ?? ''];
     final hasCurrent = ids.contains(widget.current);
     return DropdownButtonFormField<String>(
+      dropdownColor: hermesDropdownColor(context),
+      borderRadius: hermesDropdownBorderRadius,
       initialValue: hasCurrent ? widget.current : null,
       isExpanded: true,
       decoration: InputDecoration(

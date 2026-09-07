@@ -388,6 +388,50 @@ class AppLocalizationsZh extends AppLocalizations {
   String get appearanceKeepAwakeDesc => '打开对话时防止屏幕自动锁定';
 
   @override
+  String get embedPrivacySettingsTitle => '外部内容隐私';
+
+  @override
+  String get embedPrivacySettingsDescription =>
+      '控制消息预览是否可以连接 YouTube、Spotify 等第三方服务。';
+
+  @override
+  String get embedModeAsk => '每次询问';
+
+  @override
+  String get embedModeAlways => '始终加载';
+
+  @override
+  String get embedModeOff => '关闭';
+
+  @override
+  String embedClearAllowed(int count) {
+    return '清除已允许的服务（$count）';
+  }
+
+  @override
+  String richLinkPrivacyTitle(String provider) {
+    return '加载来自 $provider 的内容？';
+  }
+
+  @override
+  String get richLinkPrivacyDescription =>
+      '加载此预览会连接第三方，可能暴露你的 IP 地址、来源页面或 Cookie。';
+
+  @override
+  String get richLinkLoadOnce => '仅本次加载';
+
+  @override
+  String richLinkAlwaysAllow(String provider) {
+    return '始终允许 $provider';
+  }
+
+  @override
+  String get richLinkOpenOnly => '仅打开链接';
+
+  @override
+  String get richLinkCloseAnotherPreview => '请先关闭其他实时预览';
+
+  @override
   String get appearanceModeDark => '深色';
 
   @override
@@ -1473,6 +1517,34 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatSavedPrompts => '已保存的提示词';
 
   @override
+  String get chatRecentInputs => '最近输入';
+
+  @override
+  String chatPluginPrepareFailed(String error) {
+    return '插件无法处理这条消息：$error';
+  }
+
+  @override
+  String get chatPasteImage => '粘贴图片';
+
+  @override
+  String get workspaceLayoutBalanced => '双栏 · 1:1';
+
+  @override
+  String get workspaceLayoutMainWide => '主视图优先 · 2:1';
+
+  @override
+  String get workspaceLayoutToolsWide => '工具视图优先 · 1:2';
+
+  @override
+  String get chatClipboardHasNoImage => '剪贴板中没有图片';
+
+  @override
+  String chatClipboardImageFailed(String error) {
+    return '无法粘贴剪贴板图片：$error';
+  }
+
+  @override
   String chatSavedPromptsLoadFailed(String error) {
     return '加载已保存的提示词失败：$error';
   }
@@ -1482,6 +1554,20 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get chatSearchLoadedHistory => '搜索已加载的历史记录';
+
+  @override
+  String get chatHistoryLocatorPartial => '还有更早的消息未加载，搜索结果可能不完整';
+
+  @override
+  String get chatLoadAllHistory => '加载全部历史';
+
+  @override
+  String get chatLoadingAllHistory => '正在加载全部历史…';
+
+  @override
+  String chatLoadAllHistoryFailed(Object error) {
+    return '加载历史记录失败：$error';
+  }
 
   @override
   String chatSelectFilesFailed(String error) {
@@ -3395,6 +3481,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get previewRefresh => '刷新预览';
 
   @override
+  String get previewReloadWithoutCache => '不使用缓存重新加载';
+
+  @override
+  String get previewRetry => '重试';
+
+  @override
+  String get previewServerNotFound => '无法访问该服务器';
+
+  @override
+  String get previewAppFailedToBoot => '应用加载失败';
+
+  @override
+  String get previewRemoteLoopbackHint =>
+      '该地址指向的是本机不存在的机器——智能体的开发服务器很可能运行在所连接的电脑上，而不是这台设备上。请尝试在那台电脑上打开。';
+
+  @override
   String get previewRunJavascript => '运行 JavaScript';
 
   @override
@@ -5060,6 +5162,9 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get historyEndOfList => '— 到底了 —';
+
+  @override
   String get historyPinned => '置顶';
 
   @override
@@ -5543,6 +5648,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profilesModel => '模型';
 
   @override
+  String get profilesModelChangeWarningTitle => '有定时任务锁定了旧模型';
+
+  @override
+  String profilesModelChangeWarningBody(int count, String profile) {
+    return '$profile 下有 $count 个定时任务设置了自己的模型覆盖，不会自动切换。仍要保存吗？';
+  }
+
+  @override
+  String get profilesModelChangeViewRoutines => '查看定时任务';
+
+  @override
+  String get profilesModelChangeSaveAnyway => '仍要保存';
+
+  @override
+  String get profilesModelChangeCheckFailedTitle => '无法检查定时任务';
+
+  @override
+  String profilesModelChangeCheckFailedBody(String profile) {
+    return '我们无法确认 $profile 下是否有定时任务设置了自己的模型覆盖，因此无法判断此更改是否会影响它们。仍要保存吗？';
+  }
+
+  @override
   String get profilesSystemPrompt => '系统提示词';
 
   @override
@@ -5810,6 +5937,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentSearchNoMatches => '没有匹配的机器人';
 
   @override
+  String get agentBotUnreachable => '无法访问';
+
+  @override
   String agentGroupSaveFailed(Object error) {
     return '群聊保存失败：$error';
   }
@@ -5976,6 +6106,76 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentDeleteBot => '删除 Bot';
 
   @override
+  String get agentEditAvatarMenuItem => '编辑头像';
+
+  @override
+  String get avatarEditorShapeLabel => '形状';
+
+  @override
+  String get avatarEditorColorLabel => '颜色';
+
+  @override
+  String get avatarEditorRandomize => '随机';
+
+  @override
+  String get avatarEditorUploadPhoto => '上传照片';
+
+  @override
+  String get avatarEditorRemovePhoto => '移除照片';
+
+  @override
+  String get avatarEditorImageTooLarge => '图片过大（最大 15MB）';
+
+  @override
+  String get avatarEditorGenerate => 'AI 生成';
+
+  @override
+  String get avatarEditorGenerateHint => '描述你想要的样子（可选）';
+
+  @override
+  String avatarEditorGenerateFailed(String error) {
+    return '生成失败：$error';
+  }
+
+  @override
+  String get avatarEditorChoosePet => '选择宠物';
+
+  @override
+  String get avatarEditorPetSearchHint => '搜索宠物';
+
+  @override
+  String get avatarEditorPetLoadFailed => '宠物图鉴加载失败';
+
+  @override
+  String get avatarEditorSaved => '头像已更新';
+
+  @override
+  String avatarEditorSaveFailed(String error) {
+    return '更新头像失败：$error';
+  }
+
+  @override
+  String get agentBotMcpMenuItem => 'MCP 服务器';
+
+  @override
+  String get agentBotModelMenuItem => '模型与工具';
+
+  @override
+  String get agentHiddenBotsSection => '已隐藏';
+
+  @override
+  String get agentHideBot => '隐藏';
+
+  @override
+  String get agentUnhideBot => '取消隐藏';
+
+  @override
+  String get agentPinBot => '置顶';
+
+  @override
+  String get agentUnpinBot => '取消置顶';
+
+  @override
   String get agentGateway => '网关';
 
   @override
@@ -6112,6 +6312,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get botRoutineDelete => '删除任务';
+
+  @override
+  String get botRoutineEdit => '编辑';
+
+  @override
+  String botRoutineEditTitle(Object name) {
+    return '编辑任务 · $name';
+  }
+
+  @override
+  String get botRoutineSaving => '保存中...';
+
+  @override
+  String get botRoutineSave => '保存修改';
+
+  @override
+  String botRoutineLoadFailed(Object error) {
+    return '加载任务详情失败：$error';
+  }
 
   @override
   String botRoutineScheduleOnce(Object duration) {
@@ -6256,6 +6475,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String mcpOperationFailed(Object error) {
     return '操作失败：$error';
   }
+
+  @override
+  String mcpHealthNeedsAuthTitle(String name) {
+    return '$name 需要重新授权';
+  }
+
+  @override
+  String get mcpHealthNeedsAuthBody => '后台巡检发现该服务器的连接已过期，请重新连接以继续使用。';
+
+  @override
+  String mcpHealthErrorTitle(String name) {
+    return '$name 无法访问';
+  }
+
+  @override
+  String get mcpHealthErrorBody => '后台巡检无法访问该服务器，请打开 MCP 设置查看详情。';
 
   @override
   String get mcpPersistenceFailed => '服务器未能持久化 MCP 配置变更。';
@@ -8449,6 +8684,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get fileTreeAttachToChat => '附加到聊天';
 
   @override
+  String get sessionActionMarkUnread => '标记为未读';
+
+  @override
+  String get sessionMarkedUnread => '已标记为未读';
+
+  @override
   String get projectAddFolder => '添加文件夹';
 
   @override
@@ -9030,6 +9271,29 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get fileEditorBinaryDescription =>
       '这看起来是一个二进制文件（图片、压缩包或可执行文件）。用文本编辑器打开并保存会损坏原文件，因此已禁用编辑——请改为下载到设备。';
+
+  @override
+  String get fileEditorFindReplaceTitle => '查找和替换';
+
+  @override
+  String get fileEditorFindLabel => '查找';
+
+  @override
+  String get fileEditorReplaceWithLabel => '替换为';
+
+  @override
+  String get fileEditorReplaceAll => '全部替换';
+
+  @override
+  String get fileEditorNoMatches => '未找到匹配项';
+
+  @override
+  String fileEditorReplacedCount(int count) {
+    return '已替换 $count 处';
+  }
+
+  @override
+  String get fileEditorNoChanges => '无变更';
 
   @override
   String kanbanTaskCreatedLinkFailed(String error) {
@@ -10876,6 +11140,38 @@ class AppLocalizationsZh extends AppLocalizations {
   String get botProfileNameUnavailable => '没有可用的配置档案名称';
 
   @override
+  String get botProfileNameInvalid => '名称必须以字母或数字开头，且只能包含小写字母、数字、- 或 _';
+
+  @override
+  String get botCreateTitle => '创建 Bot';
+
+  @override
+  String get botCreateNameHelper => '小写字母、数字、- 或 _';
+
+  @override
+  String botCreateNameTaken(String name) {
+    return '名为“$name”的 Bot 已存在';
+  }
+
+  @override
+  String get botCreateRoleLabel => '角色（可选）';
+
+  @override
+  String get botCreateMissionLabel => '使命（可选）';
+
+  @override
+  String get botCreateCloneFromLabel => '克隆自';
+
+  @override
+  String get botCreateCustomSoulLabel => '自定义 SOUL';
+
+  @override
+  String get botCreateCustomSoulHint => '用你自己的话描述这个 Bot 的身份';
+
+  @override
+  String get botCreateSuccess => 'Bot 已创建';
+
+  @override
   String get botDefaultProfileDeleteForbidden => '无法删除默认配置档案';
 
   @override
@@ -10896,6 +11192,150 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String httpStatusError(int statusCode) {
     return '服务器返回 HTTP $statusCode';
+  }
+
+  @override
+  String get voiceMuteMicrophone => '将麦克风静音';
+
+  @override
+  String get voiceMicrophoneMuted => '麦克风已静音';
+
+  @override
+  String get voiceRecordingDroppedMuted => '麦克风已静音，录音已中断并丢弃';
+
+  @override
+  String get keybindsTitle => '键盘快捷键';
+
+  @override
+  String get settingsKeybindsDesc => '自定义物理键盘的快捷键';
+
+  @override
+  String get keybindActionChatUndo => '撤销';
+
+  @override
+  String get keybindActionChatFind => '查找';
+
+  @override
+  String get keybindChange => '更改';
+
+  @override
+  String get keybindReset => '重置';
+
+  @override
+  String get keybindResetAll => '全部重置';
+
+  @override
+  String get keybindCustomizedBadge => '已自定义';
+
+  @override
+  String get keybindCapturePrompt => '请按下按键组合……';
+
+  @override
+  String get keybindCaptureModifierRequired => '需要包含一个修饰键（Ctrl、⌘、Alt 或 Shift）';
+
+  @override
+  String keybindConflictWith(String action) {
+    return '已被“$action”占用';
+  }
+
+  @override
+  String get keybindNoHardwareKeyboardHint => '仅当设备连接了物理键盘时，快捷键才会生效';
+
+  @override
+  String get previewSource => '源码';
+
+  @override
+  String get previewRendered => '预览';
+
+  @override
+  String get previewDiff => '更改';
+
+  @override
+  String get previewLargeFileTitle => '已暂停大文件预览';
+
+  @override
+  String get previewLargeFileDescription => '加载此文件可能占用较多内存，请仅在需要完整预览时继续。';
+
+  @override
+  String get pluginComposerBlocked => '插件已阻止发送此消息。';
+
+  @override
+  String get pluginComposerInvalidResponse => '输入处理插件返回了无效响应';
+
+  @override
+  String get pluginComposerTextTooLarge => '输入处理插件生成的消息过大';
+
+  @override
+  String get workspaceRenameTab => '重命名标签';
+
+  @override
+  String get workspaceCloseOtherTabs => '关闭其他标签';
+
+  @override
+  String get workspaceCloseTabsToRight => '关闭右侧标签';
+
+  @override
+  String get chatReadingAttachments => '正在读取附件…';
+
+  @override
+  String get chatSendingEllipsis => '正在发送…';
+
+  @override
+  String chatUploadingPercent(int percent) {
+    return '正在上传 $percent%';
+  }
+
+  @override
+  String get chatUploadingEllipsis => '正在上传…';
+
+  @override
+  String get chatPreparingAttachments => '正在准备附件…';
+
+  @override
+  String chatUploadingProgress(int current, int total) {
+    return '正在上传 $current/$total';
+  }
+
+  @override
+  String chatUploadingProgressPercent(int percent) {
+    return '正在上传 · $percent%';
+  }
+
+  @override
+  String get chatSendCancelledRetry => '发送已取消，可重试';
+
+  @override
+  String chatSuggestionUseSkill(String id) {
+    return '使用技能：$id';
+  }
+
+  @override
+  String get chatSuggestionConfigureGithub => '配置 GitHub 能力';
+
+  @override
+  String chatSuggestionConnectMcp(String id) {
+    return '连接 $id MCP';
+  }
+
+  @override
+  String chatSuggestionRepairMcp(String id) {
+    return '修复 $id MCP 连接';
+  }
+
+  @override
+  String chatSuggestionTriggerReason(String trigger) {
+    return '因为草稿或当前会话提到了 $trigger';
+  }
+
+  @override
+  String get chatInvalidPublicUrl => '请输入有效的公网 http/https 地址';
+
+  @override
+  String get messageBubbleAttachmentSendFailed => '附件发送失败，可重试';
+
+  @override
+  String messageBubbleAttachmentUploading(String percent) {
+    return '正在上传附件 $percent';
   }
 }
 
@@ -10972,6 +11412,12 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String botMemberPaused(String name) {
     return '$name 已暫停；直接 @此成員或傳送 resume 即可復原。';
   }
+
+  @override
+  String get botGroupRoundCapReached => '本輪討論已達上限，傳送新訊息即可繼續對話。';
+
+  @override
+  String get botGroupMessageCapReached => '本次對話訊息數已達上限，傳送新訊息即可繼續。';
 
   @override
   String get botRoutineFieldsRequired => '任務名稱、指令與排程不能為空';
@@ -11275,6 +11721,50 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get appearanceKeepAwakeDesc => '開啟對話時防止螢幕自動鎖定';
+
+  @override
+  String get embedPrivacySettingsTitle => '外部內容隱私';
+
+  @override
+  String get embedPrivacySettingsDescription =>
+      '控制訊息預覽是否可以連線 YouTube、Spotify 等第三方服務。';
+
+  @override
+  String get embedModeAsk => '每次詢問';
+
+  @override
+  String get embedModeAlways => '一律載入';
+
+  @override
+  String get embedModeOff => '關閉';
+
+  @override
+  String embedClearAllowed(int count) {
+    return '清除已允許的服務（$count）';
+  }
+
+  @override
+  String richLinkPrivacyTitle(String provider) {
+    return '載入來自 $provider 的內容？';
+  }
+
+  @override
+  String get richLinkPrivacyDescription =>
+      '載入此預覽會連線第三方，可能暴露你的 IP 位址、來源頁面或 Cookie。';
+
+  @override
+  String get richLinkLoadOnce => '僅本次載入';
+
+  @override
+  String richLinkAlwaysAllow(String provider) {
+    return '一律允許 $provider';
+  }
+
+  @override
+  String get richLinkOpenOnly => '僅開啟連結';
+
+  @override
+  String get richLinkCloseAnotherPreview => '請先關閉其他即時預覽';
 
   @override
   String get appearanceModeDark => '深色';
@@ -12362,6 +12852,34 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get chatSavedPrompts => '已儲存的提示詞';
 
   @override
+  String get chatRecentInputs => '最近輸入';
+
+  @override
+  String chatPluginPrepareFailed(String error) {
+    return '外掛程式無法處理這則訊息：$error';
+  }
+
+  @override
+  String get chatPasteImage => '貼上圖片';
+
+  @override
+  String get workspaceLayoutBalanced => '雙欄 · 1:1';
+
+  @override
+  String get workspaceLayoutMainWide => '主視圖優先 · 2:1';
+
+  @override
+  String get workspaceLayoutToolsWide => '工具視圖優先 · 1:2';
+
+  @override
+  String get chatClipboardHasNoImage => '剪貼簿中沒有圖片';
+
+  @override
+  String chatClipboardImageFailed(String error) {
+    return '無法貼上剪貼簿圖片：$error';
+  }
+
+  @override
   String chatSavedPromptsLoadFailed(String error) {
     return '載入已儲存的提示詞失敗：$error';
   }
@@ -12371,6 +12889,20 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get chatSearchLoadedHistory => '搜尋已載入的歷史記錄';
+
+  @override
+  String get chatHistoryLocatorPartial => '還有更早的訊息未載入，搜尋結果可能不完整';
+
+  @override
+  String get chatLoadAllHistory => '載入全部歷史';
+
+  @override
+  String get chatLoadingAllHistory => '正在載入全部歷史…';
+
+  @override
+  String chatLoadAllHistoryFailed(Object error) {
+    return '載入歷史記錄失敗：$error';
+  }
 
   @override
   String chatSelectFilesFailed(String error) {
@@ -14284,6 +14816,22 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get previewRefresh => '重新整理預覽';
 
   @override
+  String get previewReloadWithoutCache => '不使用快取重新載入';
+
+  @override
+  String get previewRetry => '重試';
+
+  @override
+  String get previewServerNotFound => '無法連線此伺服器';
+
+  @override
+  String get previewAppFailedToBoot => '應用程式載入失敗';
+
+  @override
+  String get previewRemoteLoopbackHint =>
+      '此網址指向的是本機不存在的機器——Agent 的開發伺服器很可能執行在所連接的電腦上，而不是這台裝置。請嘗試在那台電腦上開啟。';
+
+  @override
   String get previewRunJavascript => '執行 JavaScript';
 
   @override
@@ -15950,6 +16498,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   }
 
   @override
+  String get historyEndOfList => '— 到底了 —';
+
+  @override
   String get historyPinned => '置頂';
 
   @override
@@ -16433,6 +16984,28 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get profilesModel => '模型';
 
   @override
+  String get profilesModelChangeWarningTitle => '有排程任務鎖定了舊模型';
+
+  @override
+  String profilesModelChangeWarningBody(int count, String profile) {
+    return '$profile 下有 $count 個排程任務設定了自己的模型覆寫，不會自動切換。仍要儲存嗎？';
+  }
+
+  @override
+  String get profilesModelChangeViewRoutines => '查看排程任務';
+
+  @override
+  String get profilesModelChangeSaveAnyway => '仍要儲存';
+
+  @override
+  String get profilesModelChangeCheckFailedTitle => '無法檢查排程任務';
+
+  @override
+  String profilesModelChangeCheckFailedBody(String profile) {
+    return '我們無法確認 $profile 下是否有排程任務設定了自己的模型覆寫，因此無法判斷此變更是否會影響它們。仍要儲存嗎？';
+  }
+
+  @override
   String get profilesSystemPrompt => '系統提示詞';
 
   @override
@@ -16588,6 +17161,11 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   }
 
   @override
+  String memoryInvalidNumber(Object field) {
+    return '$field 不是有效數字';
+  }
+
+  @override
   String get memoryProviderSaved => '提供方設定已儲存';
 
   @override
@@ -16637,6 +17215,36 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get memoryKeepSecretHint => '留空以保留目前的值';
 
   @override
+  String get memoryProviderSetup => '提供方執行環境';
+
+  @override
+  String get memoryProviderSetupDescription =>
+      '此提供方需要先在 Hermes Server 上安裝依賴，安裝操作會作用於伺服器端執行環境。';
+
+  @override
+  String get memoryPythonDependencies => 'Python 依賴套件';
+
+  @override
+  String get memoryRequiredEnvironment => '所需環境變數';
+
+  @override
+  String get memoryInstallDependencies => '安裝提供方依賴套件';
+
+  @override
+  String get memoryInstallingDependencies => '正在安裝…';
+
+  @override
+  String get memorySetupFinished => '提供方依賴安裝完成';
+
+  @override
+  String get memorySetupFailed => '部分提供方依賴安裝失敗，請查看結果';
+
+  @override
+  String memorySetupError(Object error) {
+    return '安裝提供方依賴失敗：$error';
+  }
+
+  @override
   String agentOpenBotFailed(Object error) {
     return '無法開啟 Bot Chat：$error';
   }
@@ -16649,6 +17257,23 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get agentGroupName => '群組聊天名稱';
+
+  @override
+  String get agentSelectMembers => '選擇成員';
+
+  @override
+  String agentGroupMemberCount(Object count, Object max) {
+    return '已選擇 $count/$max 位';
+  }
+
+  @override
+  String get agentSearchBots => '搜尋 Bot';
+
+  @override
+  String get agentSearchNoMatches => '沒有符合的 Bot';
+
+  @override
+  String get agentBotUnreachable => '無法連線';
 
   @override
   String agentGroupSaveFailed(Object error) {
@@ -16741,7 +17366,37 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get agentNoData => '暫無資料';
 
   @override
+  String get agentBotDirectoryTitle => 'Bot 中心';
+
+  @override
+  String agentBotDirectorySummary(int bots, int groups) {
+    return '$bots 個 Bot · $groups 個群組聊天';
+  }
+
+  @override
+  String get agentStopped => '已停止';
+
+  @override
+  String get agentGroupChatsSection => '群組聊天';
+
+  @override
+  String get agentIndividualBotsSection => 'Bot';
+
+  @override
   String get agentManageBots => '管理 / 新增 Bot';
+
+  @override
+  String get agentBotRoutinesMenuItem => 'Bot 排程任務';
+
+  @override
+  String get agentBotsEmptyTitle => '還沒有 Bot';
+
+  @override
+  String get agentBotsEmptyDescription =>
+      'Bot 是綁定到某個設定檔的獨立聊天身分。點一下右上角圖示新增設定檔即可開始。';
+
+  @override
+  String get agentMentionAll => '所有人';
 
   @override
   String get agentRefreshRoster => '重新整理 Bot 名單';
@@ -16785,6 +17440,76 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get agentDeleteBot => '刪除 Bot';
+
+  @override
+  String get agentEditAvatarMenuItem => '編輯頭像';
+
+  @override
+  String get avatarEditorShapeLabel => '形狀';
+
+  @override
+  String get avatarEditorColorLabel => '顏色';
+
+  @override
+  String get avatarEditorRandomize => '隨機';
+
+  @override
+  String get avatarEditorUploadPhoto => '上傳照片';
+
+  @override
+  String get avatarEditorRemovePhoto => '移除照片';
+
+  @override
+  String get avatarEditorImageTooLarge => '圖片過大（最大 15MB）';
+
+  @override
+  String get avatarEditorGenerate => 'AI 生成';
+
+  @override
+  String get avatarEditorGenerateHint => '描述你想要的外觀（選填）';
+
+  @override
+  String avatarEditorGenerateFailed(String error) {
+    return '生成失敗：$error';
+  }
+
+  @override
+  String get avatarEditorChoosePet => '選擇寵物';
+
+  @override
+  String get avatarEditorPetSearchHint => '搜尋寵物';
+
+  @override
+  String get avatarEditorPetLoadFailed => '寵物圖鑑載入失敗';
+
+  @override
+  String get avatarEditorSaved => '頭像已更新';
+
+  @override
+  String avatarEditorSaveFailed(String error) {
+    return '更新頭像失敗：$error';
+  }
+
+  @override
+  String get agentBotMcpMenuItem => 'MCP 伺服器';
+
+  @override
+  String get agentBotModelMenuItem => '模型與工具';
+
+  @override
+  String get agentHiddenBotsSection => '已隱藏';
+
+  @override
+  String get agentHideBot => '隱藏';
+
+  @override
+  String get agentUnhideBot => '取消隱藏';
+
+  @override
+  String get agentPinBot => '置頂';
+
+  @override
+  String get agentUnpinBot => '取消置頂';
 
   @override
   String get agentGateway => '閘道';
@@ -16923,6 +17648,25 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get botRoutineDelete => '刪除 Cronjob';
+
+  @override
+  String get botRoutineEdit => '編輯';
+
+  @override
+  String botRoutineEditTitle(Object name) {
+    return '編輯排程任務 · $name';
+  }
+
+  @override
+  String get botRoutineSaving => '儲存中…';
+
+  @override
+  String get botRoutineSave => '儲存變更';
+
+  @override
+  String botRoutineLoadFailed(Object error) {
+    return '載入排程任務詳情失敗：$error';
+  }
 
   @override
   String botRoutineScheduleOnce(Object duration) {
@@ -17067,6 +17811,22 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String mcpOperationFailed(Object error) {
     return '操作失敗：$error';
   }
+
+  @override
+  String mcpHealthNeedsAuthTitle(String name) {
+    return '$name 需要重新授權';
+  }
+
+  @override
+  String get mcpHealthNeedsAuthBody => '背景檢查發現此伺服器的連線已過期，請重新連線以繼續使用。';
+
+  @override
+  String mcpHealthErrorTitle(String name) {
+    return '$name 無法連線';
+  }
+
+  @override
+  String get mcpHealthErrorBody => '背景檢查無法連線此伺服器，請開啟 MCP 設定查看詳情。';
 
   @override
   String get mcpPersistenceFailed => '伺服器未能持久化 MCP 設定變更。';
@@ -18525,6 +19285,14 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get kanbanViewLog => '檢視日誌';
 
   @override
+  String kanbanCreatedAt(Object time) {
+    return '建立於 $time';
+  }
+
+  @override
+  String get kanbanTaskIdCopied => '任務 ID 已複製';
+
+  @override
   String get kanbanEstimate => '估算';
 
   @override
@@ -19251,6 +20019,12 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get fileTreeAttachToChat => '附加至聊天';
 
   @override
+  String get sessionActionMarkUnread => '標記為未讀';
+
+  @override
+  String get sessionMarkedUnread => '已標記為未讀';
+
+  @override
   String get projectAddFolder => '新增資料夾';
 
   @override
@@ -19834,9 +20608,56 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
       '這看起來是二進位檔案（圖片、封存檔或執行檔）。用文字編輯器開啟並儲存可能會損毀原始檔案，因此已停用編輯功能——請改為下載到裝置。';
 
   @override
+  String get fileEditorFindReplaceTitle => '尋找與取代';
+
+  @override
+  String get fileEditorFindLabel => '尋找';
+
+  @override
+  String get fileEditorReplaceWithLabel => '取代為';
+
+  @override
+  String get fileEditorReplaceAll => '全部取代';
+
+  @override
+  String get fileEditorNoMatches => '找不到符合項目';
+
+  @override
+  String fileEditorReplacedCount(int count) {
+    return '已取代 $count 處';
+  }
+
+  @override
+  String get fileEditorNoChanges => '無變更';
+
+  @override
   String kanbanTaskCreatedLinkFailed(String error) {
     return '任務已建立，但無法新增父任務連結：$error';
   }
+
+  @override
+  String get kanbanTaskContentSection => '任務內容';
+
+  @override
+  String get kanbanTaskArrangementSection => '任務安排';
+
+  @override
+  String get kanbanTaskRuntimeSection => '執行設定';
+
+  @override
+  String get kanbanTaskRuntimeDescription => '工作區、模型和關聯任務等選填設定';
+
+  @override
+  String get kanbanCreateTaskDescription => '描述需要完成的工作，並為任務設定合適的狀態和負責人。';
+
+  @override
+  String get kanbanTaskTitleHint => '輸入清晰、簡短的任務名稱';
+
+  @override
+  String get kanbanTaskTitleRequired => '請輸入任務標題';
+
+  @override
+  String get kanbanTaskDescriptionHint => '補充目標、驗收標準或實作要求';
 
   @override
   String get kanbanTaskStatus => '狀態';
@@ -21654,6 +22475,38 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get botProfileNameUnavailable => '沒有可用的設定檔名稱';
 
   @override
+  String get botProfileNameInvalid => '名稱必須以字母或數字開頭，且只能包含小寫字母、數字、- 或 _';
+
+  @override
+  String get botCreateTitle => '建立 Bot';
+
+  @override
+  String get botCreateNameHelper => '小寫字母、數字、- 或 _';
+
+  @override
+  String botCreateNameTaken(String name) {
+    return '名為「$name」的 Bot 已存在';
+  }
+
+  @override
+  String get botCreateRoleLabel => '角色（可選）';
+
+  @override
+  String get botCreateMissionLabel => '使命（可選）';
+
+  @override
+  String get botCreateCloneFromLabel => '複製自';
+
+  @override
+  String get botCreateCustomSoulLabel => '自訂 SOUL';
+
+  @override
+  String get botCreateCustomSoulHint => '用你自己的話描述這個 Bot 的身分';
+
+  @override
+  String get botCreateSuccess => 'Bot 已建立';
+
+  @override
   String get botDefaultProfileDeleteForbidden => '無法刪除預設設定檔';
 
   @override
@@ -21674,5 +22527,149 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   @override
   String httpStatusError(int statusCode) {
     return '伺服器傳回 HTTP $statusCode';
+  }
+
+  @override
+  String get voiceMuteMicrophone => '將麥克風靜音';
+
+  @override
+  String get voiceMicrophoneMuted => '麥克風已靜音';
+
+  @override
+  String get voiceRecordingDroppedMuted => '麥克風已靜音，錄音已中斷並捨棄';
+
+  @override
+  String get keybindsTitle => '鍵盤快捷鍵';
+
+  @override
+  String get settingsKeybindsDesc => '自訂實體鍵盤的快捷鍵';
+
+  @override
+  String get keybindActionChatUndo => '復原';
+
+  @override
+  String get keybindActionChatFind => '尋找';
+
+  @override
+  String get keybindChange => '變更';
+
+  @override
+  String get keybindReset => '重設';
+
+  @override
+  String get keybindResetAll => '全部重設';
+
+  @override
+  String get keybindCustomizedBadge => '已自訂';
+
+  @override
+  String get keybindCapturePrompt => '請按下按鍵組合…';
+
+  @override
+  String get keybindCaptureModifierRequired => '需要包含一個修飾鍵（Ctrl、⌘、Alt 或 Shift）';
+
+  @override
+  String keybindConflictWith(String action) {
+    return '已被「$action」佔用';
+  }
+
+  @override
+  String get keybindNoHardwareKeyboardHint => '僅當裝置連接實體鍵盤時，快捷鍵才會生效';
+
+  @override
+  String get previewSource => '原始碼';
+
+  @override
+  String get previewRendered => '預覽';
+
+  @override
+  String get previewDiff => '變更';
+
+  @override
+  String get previewLargeFileTitle => '已暫停大型檔案預覽';
+
+  @override
+  String get previewLargeFileDescription => '載入此檔案可能佔用較多記憶體，請僅在需要完整預覽時繼續。';
+
+  @override
+  String get pluginComposerBlocked => '外掛程式已封鎖此訊息。';
+
+  @override
+  String get pluginComposerInvalidResponse => '輸入處理外掛回傳了無效回應';
+
+  @override
+  String get pluginComposerTextTooLarge => '輸入處理外掛生成的訊息過大';
+
+  @override
+  String get workspaceRenameTab => '重新命名分頁';
+
+  @override
+  String get workspaceCloseOtherTabs => '關閉其他分頁';
+
+  @override
+  String get workspaceCloseTabsToRight => '關閉右側分頁';
+
+  @override
+  String get chatReadingAttachments => '正在讀取附件…';
+
+  @override
+  String get chatSendingEllipsis => '正在傳送…';
+
+  @override
+  String chatUploadingPercent(int percent) {
+    return '正在上傳 $percent%';
+  }
+
+  @override
+  String get chatUploadingEllipsis => '正在上傳…';
+
+  @override
+  String get chatPreparingAttachments => '正在準備附件…';
+
+  @override
+  String chatUploadingProgress(int current, int total) {
+    return '正在上傳 $current/$total';
+  }
+
+  @override
+  String chatUploadingProgressPercent(int percent) {
+    return '正在上傳 · $percent%';
+  }
+
+  @override
+  String get chatSendCancelledRetry => '傳送已取消，可重試';
+
+  @override
+  String chatSuggestionUseSkill(String id) {
+    return '使用技能：$id';
+  }
+
+  @override
+  String get chatSuggestionConfigureGithub => '設定 GitHub 能力';
+
+  @override
+  String chatSuggestionConnectMcp(String id) {
+    return '連線 $id MCP';
+  }
+
+  @override
+  String chatSuggestionRepairMcp(String id) {
+    return '修復 $id MCP 連線';
+  }
+
+  @override
+  String chatSuggestionTriggerReason(String trigger) {
+    return '因為草稿或目前對話提到了 $trigger';
+  }
+
+  @override
+  String get chatInvalidPublicUrl => '請輸入有效的公開 http/https 網址';
+
+  @override
+  String get messageBubbleAttachmentSendFailed => '附件傳送失敗，點一下重試';
+
+  @override
+  String messageBubbleAttachmentUploading(String percent) {
+    return '正在上傳附件 $percent';
   }
 }

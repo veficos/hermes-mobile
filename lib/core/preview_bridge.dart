@@ -238,3 +238,28 @@ if(kind==="stop"){state.steps=[];clear();return JSON.stringify({success:true,act
 return JSON.stringify({success:false,error:"Unknown tour action: "+kind})
 })()''';
 }
+
+/// Persistent preview annotations used by the shared annotate_preview wire.
+/// The payload is JSON encoded, and selectors are resolved inside the page.
+String previewAnnotationScript(Map<String, dynamic> action) {
+  final payload = jsonEncode(action);
+  return '''(() => {
+const a=$payload,kind=String(a.action||a.kind||'').toLowerCase();
+const rootId='__hermes-mobile-annotations';
+let state=window.__hermesMobileAnnotations;
+if(!state){state=window.__hermesMobileAnnotations={items:new Map(),raf:0};}
+function root(){let node=document.getElementById(rootId);if(!node){node=document.createElement('div');node.id=rootId;node.style.cssText='position:fixed;inset:0;z-index:2147483645;pointer-events:none';document.documentElement.appendChild(node)}return node}
+function visible(el){const r=el.getBoundingClientRect();return r.width>2&&r.height>2&&r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth}
+function interactive(){return [...document.querySelectorAll('a,button,input,textarea,select,[contenteditable=true],[role=button],[tabindex]')].filter(visible)}
+function target(){if(a.selector){try{return document.querySelector(String(a.selector))}catch(_){return null}}const n=Number(a.ref);return Number.isFinite(n)&&n>0?interactive()[n-1]:null}
+function key(el){if(a.selector)return 'selector:'+a.selector;if(a.ref)return 'ref:'+a.ref;return 'node:'+String(state.items.size+1)}
+function draw(){state.raf=0;for(const [id,item] of state.items){if(!item.el.isConnected){item.node.remove();state.items.delete(id);continue}const r=item.el.getBoundingClientRect();item.node.style.cssText='position:fixed;box-sizing:border-box;left:'+(r.left-3)+'px;top:'+(r.top-3)+'px;width:'+(r.width+6)+'px;height:'+(r.height+6)+'px;border:3px solid #5b8def;border-radius:8px;background:rgba(91,141,239,.08);pointer-events:none';item.label.textContent=item.text||''}}
+function schedule(){if(!state.raf)state.raf=requestAnimationFrame(draw)}
+function add(el,id,text){if(!el)return false;let item=state.items.get(id);if(!item){const node=document.createElement('div'),label=document.createElement('span');label.style.cssText='position:absolute;left:0;top:-24px;max-width:220px;padding:2px 7px;border-radius:7px;background:#5b8def;color:white;font:600 12px/18px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';node.appendChild(label);root().appendChild(node);item={el:el,node:node,label:label,text:''};state.items.set(id,item)}item.el=el;item.text=String(text||'');schedule();return true}
+if(!state.bound){state.bound=true;addEventListener('scroll',schedule,true);addEventListener('resize',schedule);new MutationObserver(schedule).observe(document.documentElement,{subtree:true,childList:true,attributes:true})}
+if(kind==='unpin'){if(a.ref||a.selector){const id=a.selector?'selector:'+a.selector:'ref:'+a.ref;const item=state.items.get(id);if(item)item.node.remove();state.items.delete(id)}else{for(const item of state.items.values())item.node.remove();state.items.clear()}return JSON.stringify({success:true,acted:kind,count:state.items.size})}
+if(kind==='hold'){for(const item of state.items.values())item.node.remove();state.items.clear();interactive().slice(0,80).forEach((el,i)=>add(el,'hold:'+i,String(el.getAttribute('aria-label')||el.innerText||el.value||'').trim().slice(0,40)));return JSON.stringify({success:true,acted:kind,count:state.items.size})}
+if(kind==='pin'){const el=target();if(!el)return JSON.stringify({success:false,error:'Element not found; call elements again.'});add(el,key(el),a.text);el.scrollIntoView({block:'center'});schedule();return JSON.stringify({success:true,acted:kind,count:state.items.size})}
+return JSON.stringify({success:false,error:'Unsupported annotation action: '+kind})
+})()''';
+}

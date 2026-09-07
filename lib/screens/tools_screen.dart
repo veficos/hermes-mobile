@@ -9,6 +9,7 @@ import '../core/connection_reload_mixin.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../core/models.dart';
 import '../l10n/l10n.dart';
+import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/profile_scope_selector.dart';
@@ -392,8 +393,10 @@ class _ToolsScreenState extends State<ToolsScreen>
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, profile)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.toolsBackendSwitchFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.toolsBackendSwitchFailed('$e'),
         );
       }
     } finally {
@@ -584,8 +587,10 @@ class _ToolsScreenState extends State<ToolsScreen>
       if (mounted &&
           generation == _mutationGeneration &&
           _ownsTarget(api, profile)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.toolsToggleFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.toolsToggleFailed('$e'),
         );
       }
     }

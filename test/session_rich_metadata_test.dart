@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/models.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/widgets/session/session_detail_panel.dart';
 
 void main() {
@@ -63,6 +64,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(body: SessionDetailPanel(row: row)),
       ),
     );

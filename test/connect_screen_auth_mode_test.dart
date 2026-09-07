@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/settings_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 import 'package:hermes_mobile/screens/connect_screen.dart';
 import 'package:provider/provider.dart';
@@ -33,7 +34,12 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: connection,
-        child: const MaterialApp(home: ConnectScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ConnectScreen(),
+        ),
       ),
     );
     await tester.pump();
@@ -63,7 +69,12 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: connection,
-        child: const MaterialApp(home: ConnectScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ConnectScreen(),
+        ),
       ),
     );
     await tester.pump();

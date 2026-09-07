@@ -122,6 +122,24 @@ class _SwitchProfileApi extends ApiClient {
   };
 
   @override
+  Future<dynamic> get(
+    String path, {
+    Map<String, String>? query,
+    Duration? timeout,
+  }) async {
+    if (path.endsWith('/messages')) {
+      return const {'messages': <dynamic>[], 'total': 0};
+    }
+    if (path.startsWith('/api/v1/sessions/')) {
+      return {
+        'id': Uri.decodeComponent(path.split('/').last),
+        'message_count': 0,
+      };
+    }
+    throw StateError('unexpected GET $path');
+  }
+
+  @override
   Future<ProfilesPayload> listProfiles() async => ProfilesPayload(
     profiles: availableProfiles,
     active: active,

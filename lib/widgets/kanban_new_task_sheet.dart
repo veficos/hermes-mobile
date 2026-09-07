@@ -6,6 +6,7 @@ import '../kanban/store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import 'mobile/hermes_mobile_surfaces.dart';
+import 'h/hermes_states.dart';
 
 /// Compatibility entry retained for existing callers. Task creation now opens
 /// a full page instead of a modal sheet.
@@ -13,14 +14,17 @@ Future<void> showKanbanNewTaskSheet(
   BuildContext context,
   KanbanStore store,
 ) async {
-  final messenger = ScaffoldMessenger.of(context);
   late final KanbanApi api;
   try {
     api = store.api;
   } catch (error) {
-    messenger.showSnackBar(
-      SnackBar(content: Text(context.l10n.kanbanOperationFailed('$error'))),
-    );
+    if (context.mounted) {
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.kanbanOperationFailed('$error'),
+      );
+    }
     return;
   }
   final created = await Navigator.of(context).push<bool>(
@@ -34,8 +38,10 @@ Future<void> showKanbanNewTaskSheet(
     store.requireApi(api);
   } catch (error) {
     if (context.mounted) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.kanbanOperationFailed('$error'))),
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.kanbanOperationFailed('$error'),
       );
     }
   }
@@ -160,8 +166,10 @@ class _KanbanNewTaskScreenState extends State<KanbanNewTaskScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.kanbanOperationFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: l10n.kanbanOperationFailed('$error'),
         );
       }
     } finally {
@@ -240,6 +248,8 @@ class _KanbanNewTaskScreenState extends State<KanbanNewTaskScreen> {
                   children: [
                     DropdownButtonFormField<String>(
                       key: const ValueKey('kanban-new-task-status'),
+                      dropdownColor: hermesDropdownColor(context),
+                      borderRadius: hermesDropdownBorderRadius,
                       initialValue: status,
                       isExpanded: true,
                       decoration: InputDecoration(
@@ -259,6 +269,8 @@ class _KanbanNewTaskScreenState extends State<KanbanNewTaskScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
+                      dropdownColor: hermesDropdownColor(context),
+                      borderRadius: hermesDropdownBorderRadius,
                       initialValue: priority,
                       isExpanded: true,
                       decoration: InputDecoration(
@@ -278,6 +290,8 @@ class _KanbanNewTaskScreenState extends State<KanbanNewTaskScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
+                      dropdownColor: hermesDropdownColor(context),
+                      borderRadius: hermesDropdownBorderRadius,
                       initialValue: assignee,
                       isExpanded: true,
                       decoration: InputDecoration(
@@ -335,6 +349,8 @@ class _KanbanNewTaskScreenState extends State<KanbanNewTaskScreen> {
                         Icons.cloud_outlined,
                       ),
                       DropdownButtonFormField<String>(
+                        dropdownColor: hermesDropdownColor(context),
+                        borderRadius: hermesDropdownBorderRadius,
                         initialValue: effort,
                         isExpanded: true,
                         decoration: InputDecoration(

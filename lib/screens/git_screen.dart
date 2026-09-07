@@ -15,9 +15,13 @@ import '../core/stores/pull_request_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_button.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 class GitScreen extends StatefulWidget {
   /// Optional repo root to open directly (e.g. from a Project detail);
@@ -285,8 +289,10 @@ class _GitScreenState extends State<GitScreen>
           _logCommits = [];
           _logTotal = 0;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitLogLoadFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitLogLoadFailed('$e'),
         );
       }
     }
@@ -431,8 +437,10 @@ class _GitScreenState extends State<GitScreen>
       await _load();
     } catch (e) {
       if (mounted && _ownsMutation(api, path, generation)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitSwitchBranchFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitSwitchBranchFailed('$e'),
         );
       }
     } finally {
@@ -459,8 +467,10 @@ class _GitScreenState extends State<GitScreen>
       await _load();
     } catch (e) {
       if (mounted && _ownsMutation(api, path, generation)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitStageFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitStageFailed('$e'),
         );
       }
     }
@@ -471,36 +481,18 @@ class _GitScreenState extends State<GitScreen>
   Future<void> _revert(Map<String, dynamic>? f) async {
     final file = f == null ? null : (f['path'] ?? '').toString();
     if (f != null && (file == null || file.isEmpty)) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          file == null
-              ? context.l10n.gitRevertAllQuestion
-              : context.l10n.gitRevertFileQuestion,
-        ),
-        content: Text(
-          file == null
-              ? context.l10n.gitRevertAllDescription
-              : context.l10n.gitRevertFileDescription(file),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.gitRevert),
-          ),
-        ],
-      ),
+      title: file == null
+          ? context.l10n.gitRevertAllQuestion
+          : context.l10n.gitRevertFileQuestion,
+      message: file == null
+          ? context.l10n.gitRevertAllDescription
+          : context.l10n.gitRevertFileDescription(file),
+      confirmLabel: context.l10n.gitRevert,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
     final path = _path;
@@ -519,8 +511,10 @@ class _GitScreenState extends State<GitScreen>
       await _load();
     } catch (e) {
       if (mounted && _ownsMutation(api, path, generation)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitRevertFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitRevertFailed('$e'),
         );
       }
     } finally {
@@ -581,8 +575,10 @@ class _GitScreenState extends State<GitScreen>
           generation == _loadGeneration &&
           identical(api, _api) &&
           path == _path) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitDiffLoadFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitDiffLoadFailed('$e'),
         );
       }
       return;
@@ -692,51 +688,48 @@ class _GitScreenState extends State<GitScreen>
   }
 
   void _showRepositoryInfo() {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          children: [
-            Text(
-              context.l10n.gitRemotes,
-              style: Theme.of(ctx).textTheme.titleMedium,
-            ),
-            if (_remotes.isEmpty)
-              ListTile(title: Text(context.l10n.gitNoVisibleRemotes)),
-            for (final remote in _remotes)
-              ListTile(
-                leading: const Icon(Icons.cloud_outlined),
-                title: Text(
-                  (remote['name'] ?? context.l10n.gitRemoteFallback).toString(),
-                ),
-                subtitle: SelectableText((remote['url'] ?? '').toString()),
+    showMobileSheet(
+      context,
+      (ctx) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+        children: [
+          Text(
+            context.l10n.gitRemotes,
+            style: Theme.of(ctx).textTheme.titleMedium,
+          ),
+          if (_remotes.isEmpty)
+            ListTile(title: Text(context.l10n.gitNoVisibleRemotes)),
+          for (final remote in _remotes)
+            ListTile(
+              leading: const Icon(Icons.cloud_outlined),
+              title: Text(
+                (remote['name'] ?? context.l10n.gitRemoteFallback).toString(),
               ),
-            const Divider(),
-            Text(
-              context.l10n.gitStashes,
-              style: Theme.of(ctx).textTheme.titleMedium,
+              subtitle: SelectableText((remote['url'] ?? '').toString()),
             ),
-            if (_stashes.isEmpty)
-              ListTile(title: Text(context.l10n.gitNoStashes)),
-            for (final stash in _stashes)
-              ListTile(
-                leading: const Icon(Icons.inventory_2_outlined),
-                title: Text(
-                  (stash['message'] ??
-                          stash['name'] ??
-                          stash['ref'] ??
-                          context.l10n.gitStashFallback)
-                      .toString(),
-                ),
-                subtitle: Text(
-                  (stash['oid'] ?? stash['index'] ?? '').toString(),
-                ),
+          const Divider(),
+          Text(
+            context.l10n.gitStashes,
+            style: Theme.of(ctx).textTheme.titleMedium,
+          ),
+          if (_stashes.isEmpty)
+            ListTile(title: Text(context.l10n.gitNoStashes)),
+          for (final stash in _stashes)
+            ListTile(
+              leading: const Icon(Icons.inventory_2_outlined),
+              title: Text(
+                (stash['message'] ??
+                        stash['name'] ??
+                        stash['ref'] ??
+                        context.l10n.gitStashFallback)
+                    .toString(),
               ),
-          ],
-        ),
+              subtitle: Text(
+                (stash['oid'] ?? stash['index'] ?? '').toString(),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -749,7 +742,6 @@ class _GitScreenState extends State<GitScreen>
     final messageCtrl = TextEditingController();
     var push = false;
     var generating = false;
-    final messenger = ScaffoldMessenger.of(context);
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -777,47 +769,38 @@ class _GitScreenState extends State<GitScreen>
             ],
           ),
           actions: [
-            TextButton.icon(
-              onPressed: generating
-                  ? null
-                  : () async {
-                      if (!identical(api, _api) || path != _path) return;
-                      setDlg(() => generating = true);
-                      try {
-                        final suggestion = await api.gitCommitMessage(path);
-                        if (suggestion.message.isNotEmpty &&
-                            ctx.mounted &&
-                            identical(api, _api) &&
-                            path == _path) {
-                          messageCtrl.text = suggestion.message;
-                          messageCtrl.selection = TextSelection.collapsed(
-                            offset: messageCtrl.text.length,
-                          );
-                        }
-                      } catch (e) {
-                        if (ctx.mounted &&
-                            identical(api, _api) &&
-                            path == _path) {
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                l10n.gitGenerateMessageFailed('$e'),
-                              ),
-                            ),
-                          );
-                        }
-                      } finally {
-                        if (ctx.mounted) setDlg(() => generating = false);
-                      }
-                    },
-              icon: generating
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.auto_fix_high, size: 16),
-              label: Text(context.l10n.gitGenerateCommitMessage),
+            HermesButton(
+              variant: HermesButtonVariant.ghost,
+              size: HermesButtonSize.compact,
+              loading: generating,
+              icon: Icons.auto_fix_high,
+              label: context.l10n.gitGenerateCommitMessage,
+              onPressed: () async {
+                if (!identical(api, _api) || path != _path) return;
+                setDlg(() => generating = true);
+                try {
+                  final suggestion = await api.gitCommitMessage(path);
+                  if (suggestion.message.isNotEmpty &&
+                      ctx.mounted &&
+                      identical(api, _api) &&
+                      path == _path) {
+                    messageCtrl.text = suggestion.message;
+                    messageCtrl.selection = TextSelection.collapsed(
+                      offset: messageCtrl.text.length,
+                    );
+                  }
+                } catch (e) {
+                  if (ctx.mounted && identical(api, _api) && path == _path) {
+                    showHermesErrorSnackBar(
+                      ctx,
+                      e,
+                      fallback: l10n.gitGenerateMessageFailed('$e'),
+                    );
+                  }
+                } finally {
+                  if (ctx.mounted) setDlg(() => generating = false);
+                }
+              },
             ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
@@ -855,8 +838,10 @@ class _GitScreenState extends State<GitScreen>
         await _load();
       } catch (e) {
         if (mounted && _ownsMutation(api, path, generation)) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.gitCommitFailed('$e'))),
+          showHermesErrorSnackBar(
+            context,
+            e,
+            fallback: context.l10n.gitCommitFailed('$e'),
           );
         }
       } finally {
@@ -878,14 +863,18 @@ class _GitScreenState extends State<GitScreen>
       if (!mounted || !_ownsMutation(api, path, generation)) return;
       await _load();
       if (mounted && _ownsMutation(api, path, generation)) {
-        ScaffoldMessenger.of(
+        showHermesToast(
           context,
-        ).showSnackBar(SnackBar(content: Text(context.l10n.gitPushSucceeded)));
+          message: context.l10n.gitPushSucceeded,
+          kind: HermesToastKind.success,
+        );
       }
     } catch (e) {
       if (mounted && _ownsMutation(api, path, generation)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitPushFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitPushFailed('$e'),
         );
       }
     } finally {
@@ -901,7 +890,6 @@ class _GitScreenState extends State<GitScreen>
     final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
     if (api == null) return;
     final path = _path;
-    final messenger = ScaffoldMessenger.of(context);
     final session = context.read<SessionStore>();
     final pullRequests = context.read<PullRequestStore>();
     final currentPr = _shipInfo['pr'];
@@ -917,32 +905,16 @@ class _GitScreenState extends State<GitScreen>
       }
     }
     if (_shipInfo['ghReady'] != true) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.gitGithubCliUnavailable)),
-      );
+      showHermesToast(context, message: context.l10n.gitGithubCliUnavailable);
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.gitCreatePr),
-        content: Text(context.l10n.gitCreatePrQuestion),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonCreate),
-          ),
-        ],
-      ),
+      title: context.l10n.gitCreatePr,
+      message: context.l10n.gitCreatePrQuestion,
+      confirmLabel: context.l10n.commonCreate,
     );
-    if (confirmed != true ||
-        !mounted ||
-        !identical(api, _api) ||
-        path != _path) {
+    if (!confirmed || !mounted || !identical(api, _api) || path != _path) {
       return;
     }
     final generation = ++_mutationGeneration;
@@ -1026,8 +998,10 @@ class _GitScreenState extends State<GitScreen>
       );
     } catch (e) {
       if (mounted && _ownsMutation(api, path, generation)) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.gitCreatePrFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitCreatePrFailed('$e'),
         );
       }
     } finally {
@@ -1038,30 +1012,18 @@ class _GitScreenState extends State<GitScreen>
   }
 
   Future<void> _agentShip() async {
-    final messenger = ScaffoldMessenger.of(context);
     if (_path.isEmpty) return;
     final session = context.read<SessionStore>();
     final api = _api;
     final path = _path;
     final sessionId = session.durableId;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.gitAgentShipTitle),
-        content: Text(context.l10n.gitAgentShipQuestion),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonRun),
-          ),
-        ],
-      ),
+      title: context.l10n.gitAgentShipTitle,
+      message: context.l10n.gitAgentShipQuestion,
+      confirmLabel: context.l10n.commonRun,
     );
-    if (confirmed != true ||
+    if (!confirmed ||
         !mounted ||
         !identical(api, _api) ||
         path != _path ||
@@ -1076,16 +1038,20 @@ class _GitScreenState extends State<GitScreen>
           sessionId != session.durableId) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.gitAgentShipSent)),
+      showHermesToast(
+        context,
+        message: context.l10n.gitAgentShipSent,
+        kind: HermesToastKind.success,
       );
     } catch (e) {
       if (mounted &&
           identical(api, _api) &&
           path == _path &&
           sessionId == session.durableId) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.gitAgentShipFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitAgentShipFailed('$e'),
         );
       }
     }
@@ -1253,14 +1219,11 @@ class _GitScreenState extends State<GitScreen>
                                 } catch (error) {
                                   if (mounted &&
                                       _ownsMutation(api, path, generation)) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          context.l10n.gitSwitchBranchFailed(
-                                            '$error',
-                                          ),
-                                        ),
-                                      ),
+                                    showHermesErrorSnackBar(
+                                      context,
+                                      error,
+                                      fallback: context.l10n
+                                          .gitSwitchBranchFailed('$error'),
                                     );
                                   }
                                 } finally {
@@ -1380,8 +1343,10 @@ class _GitScreenState extends State<GitScreen>
           generation == _worktreeGeneration &&
           identical(api, _api) &&
           repoPath == _path) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitOpenedInNewSession(path))),
+        showHermesToast(
+          context,
+          message: context.l10n.gitOpenedInNewSession(path),
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
@@ -1389,8 +1354,10 @@ class _GitScreenState extends State<GitScreen>
           generation == _worktreeGeneration &&
           identical(api, _api) &&
           repoPath == _path) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.previewOpenSessionFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.previewOpenSessionFailed('$e'),
         );
       }
     }
@@ -1403,30 +1370,22 @@ class _GitScreenState extends State<GitScreen>
     final repoPath = _path;
     final generation = _worktreeGeneration;
     if (api == null || repoPath.isEmpty) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.gitDeleteWorktreeQuestion),
-        content: Text(context.l10n.gitDeleteWorktreeDescription(path)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.gitDeleteWorktreeQuestion,
+      message: context.l10n.gitDeleteWorktreeDescription(path),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     if (generation != _worktreeGeneration ||
         !identical(api, _api) ||
         repoPath != _path) {
-      ScaffoldMessenger.of(
+      showHermesToast(
         context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.backendDisconnected)));
+        message: context.l10n.backendDisconnected,
+        kind: HermesToastKind.error,
+      );
       return;
     }
     await _doRemoveWorktree(
@@ -1474,24 +1433,14 @@ class _GitScreenState extends State<GitScreen>
       // straight to force, rather than re-asking the same question twice.
       if (!force && message.toLowerCase().contains('modified or untracked')) {
         setState(() => _worktreeBusy = false);
-        final forceConfirmed = await showDialog<bool>(
+        final forceConfirmed = await showHermesConfirmDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(context.l10n.gitWorktreeHasChanges),
-            content: Text(context.l10n.gitForceDeleteWorktreeQuestion),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: Text(context.l10n.commonCancel),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: Text(context.l10n.gitForceDelete),
-              ),
-            ],
-          ),
+          title: context.l10n.gitWorktreeHasChanges,
+          message: context.l10n.gitForceDeleteWorktreeQuestion,
+          confirmLabel: context.l10n.gitForceDelete,
+          destructive: true,
         );
-        if (forceConfirmed == true &&
+        if (forceConfirmed &&
             mounted &&
             generation == _worktreeGeneration &&
             identical(api, _api) &&
@@ -1506,8 +1455,10 @@ class _GitScreenState extends State<GitScreen>
         }
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.gitDeleteWorktreeFailed('$e'))),
+      showHermesErrorSnackBar(
+        context,
+        e,
+        fallback: context.l10n.gitDeleteWorktreeFailed('$e'),
       );
     } finally {
       if (mounted &&
@@ -1543,11 +1494,9 @@ class _GitScreenState extends State<GitScreen>
           b['name']?.toString() ?? '',
         );
       });
-    return showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => _BaseBranchPickerSheet(
+    return showMobileSheet<String>(
+      context,
+      (sheetContext) => _BaseBranchPickerSheet(
         branches: sorted,
         current: current,
         currentBranch: currentBranch,
@@ -1670,8 +1619,10 @@ class _GitScreenState extends State<GitScreen>
           generation == _worktreeGeneration &&
           identical(api, _api) &&
           path == _path) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.gitCreateWorktreeFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.gitCreateWorktreeFailed('$e'),
         );
       }
     } finally {
@@ -1861,8 +1812,7 @@ class _GitScreenState extends State<GitScreen>
                               ),
                               child: Text(
                                 shortSha,
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
+                                style: HermesType.code.copyWith(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -1987,10 +1937,7 @@ class _GitScreenState extends State<GitScreen>
                     ),
                     child: Text(
                       sha,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                      ),
+                      style: HermesType.code.copyWith(fontSize: 12),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -2056,8 +2003,7 @@ class _GitScreenState extends State<GitScreen>
                       ),
                       child: SelectableText(
                         diff,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
+                        style: HermesType.code.copyWith(
                           fontSize: 12,
                           color: Colors.white,
                         ),

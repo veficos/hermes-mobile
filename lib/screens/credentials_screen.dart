@@ -645,6 +645,8 @@ class _CredentialEditorDialogState extends State<_CredentialEditorDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           DropdownButtonFormField<String>(
+            dropdownColor: hermesDropdownColor(context),
+            borderRadius: hermesDropdownBorderRadius,
             initialValue: _providerSlug,
             decoration: InputDecoration(
               labelText: context.l10n.chatProvider,

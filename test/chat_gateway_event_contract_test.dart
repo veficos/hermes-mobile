@@ -770,23 +770,39 @@ void main() {
       expect(chat.messages.last.isError, isTrue);
     });
 
-    test('sudo and secret requests are handled as interactive', () async {
-      await emit('message.start', const {});
-      await emit('sudo.request', const {
-        'request_id': 'sudo-1',
-        'title': '需要提权',
-      });
-      await emit('secret.request', const {
-        'request_id': 'secret-1',
-        'title': '需要凭据',
-      });
-      final interactions = chat.streamingMessage!.parts
-          .where((part) => part.kind == 'interaction')
-          .toList();
-      expect(interactions, hasLength(2));
-      expect(interactions[0].interaction!['event_type'], 'sudo.request');
-      expect(interactions[1].interaction!['event_type'], 'secret.request');
-    });
+    test(
+      'sudo, secret and terminal-read requests are handled as interactive',
+      () async {
+        // Regression: terminal.read.request was missing from ChatStore's
+        // interactive-request dispatch, so that one request kind never got
+        // an inline timeline card — it could only ever surface through the
+        // global request banner, never "pop up" inside the conversation
+        // itself the way approval/clarify/sudo/secret/mcp-setup do.
+        await emit('message.start', const {});
+        await emit('sudo.request', const {
+          'request_id': 'sudo-1',
+          'title': '需要提权',
+        });
+        await emit('secret.request', const {
+          'request_id': 'secret-1',
+          'title': '需要凭据',
+        });
+        await emit('terminal.read.request', const {
+          'request_id': 'terminal-1',
+          'title': '需要终端输入',
+        });
+        final interactions = chat.streamingMessage!.parts
+            .where((part) => part.kind == 'interaction')
+            .toList();
+        expect(interactions, hasLength(3));
+        expect(interactions[0].interaction!['event_type'], 'sudo.request');
+        expect(interactions[1].interaction!['event_type'], 'secret.request');
+        expect(
+          interactions[2].interaction!['event_type'],
+          'terminal.read.request',
+        );
+      },
+    );
 
     test('interactive expire marks the matching request expired', () async {
       await emit('message.start', const {});

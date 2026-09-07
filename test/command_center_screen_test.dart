@@ -6,6 +6,7 @@ import 'package:hermes_mobile/core/stores/chat_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/command_center_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -139,7 +140,12 @@ Future<_CommandCenterApi> _pump(WidgetTester tester) async {
         ChangeNotifierProvider<ConnectionStore>.value(value: connection),
         ChangeNotifierProvider<SessionStore>.value(value: session),
       ],
-      child: const MaterialApp(home: CommandCenterScreen()),
+      child: MaterialApp(
+        locale: Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: CommandCenterScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();

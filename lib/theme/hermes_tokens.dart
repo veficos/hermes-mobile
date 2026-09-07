@@ -42,11 +42,13 @@ abstract final class HermesFonts {
   /// --font-conv: 会话消息流专用（继承 --font-ui）。
   static const List<String> conversation = ui;
 
-  /// --font-mono: Consolas, JetBrains Mono, Fira Code, Cascadia Code,
+  /// --font-mono: HermesJetBrainsMono（打包字体，pubspec 注册名）,
+  /// JetBrains Mono, Consolas, Fira Code, Cascadia Code,
   /// DejaVu Sans Mono, Liberation Mono, SF Mono, Menlo
   static const List<String> mono = [
-    'Consolas',
+    'HermesJetBrainsMono',
     'JetBrains Mono',
+    'Consolas',
     'Fira Code',
     'Cascadia Code',
     'DejaVu Sans Mono',
@@ -319,42 +321,51 @@ class HermesAccent {
 
 abstract final class HermesAccents {
   /// 主题一：Graphite 石墨（默认）——中性灰 + 信号蓝（§3.2）。
+  ///
+  /// The neutrals used to be nearly true gray (R/G/B within ~3 of each
+  /// other) — technically tinted toward the accent blue, but so faintly it
+  /// read as generic/characterless next to Indigo/Moss/Dune, whose neutrals
+  /// all carry an obviously tinted cast. Deepened the same cool blue-gray
+  /// lean (like the mineral itself, not a desaturated gray) across bg/
+  /// surface/border/text/codeBg so Graphite reads as its own deliberate
+  /// "cool charcoal" identity while staying the most restrained of the
+  /// four — it's still meant to be the plain default, just no longer flat.
   static const graphite = HermesAccent(
     id: 'graphite',
     label: 'Graphite',
     lightPalette: HermesPalette(
-      bg: Color(0xFFF6F7F9),
+      bg: Color(0xFFF2F4F9),
       surface: Color(0xFFFFFFFF),
       elevated: Color(0xFFFFFFFF),
-      border: Color(0xFFE2E5EA),
-      borderStrong: Color(0xFFC9CED6),
-      text: Color(0xFF16181D),
-      text2: Color(0xFF3E4450),
-      text3: Color(0xFF6B7280),
-      text4: Color(0xFF9CA3AF),
+      border: Color(0xFFDCE1EA),
+      borderStrong: Color(0xFFBFC7D6),
+      text: Color(0xFF11141C),
+      text2: Color(0xFF373E4E),
+      text3: Color(0xFF616B80),
+      text4: Color(0xFF919CB0),
       accent: Color(0xFF2F6BFF),
       accentHover: Color(0xFF2057DB),
       accentBg: Color(0xFFEBF0FF),
       accentStrong: Color(0xFFD6E1FF),
-      codeBg: Color(0xFFF0F1F4),
+      codeBg: Color(0xFFE9EDF5),
       bubbleUser: Color(0xFF2F6BFF),
       bubbleUserText: Color(0xFFFFFFFF),
     ),
     darkPalette: HermesPalette(
-      bg: Color(0xFF0E1013),
-      surface: Color(0xFF16191E),
-      elevated: Color(0xFF1D2127),
-      border: Color(0xFF292E36),
-      borderStrong: Color(0xFF3A414B),
-      text: Color(0xFFF2F4F8),
-      text2: Color(0xFFC6CBD4),
-      text3: Color(0xFF8B929E),
-      text4: Color(0xFF5C6470),
+      bg: Color(0xFF0A0D14),
+      surface: Color(0xFF121620),
+      elevated: Color(0xFF191E2A),
+      border: Color(0xFF232A38),
+      borderStrong: Color(0xFF35404F),
+      text: Color(0xFFEEF1F8),
+      text2: Color(0xFFBCC4D6),
+      text3: Color(0xFF7C879C),
+      text4: Color(0xFF56637A),
       accent: Color(0xFF6E97FF),
       accentHover: Color(0xFF8AABFF),
       accentBg: Color(0xFF1B2A52),
       accentStrong: Color(0xFF24386B),
-      codeBg: Color(0xFF0A0C0F),
+      codeBg: Color(0xFF060810),
       bubbleUser: Color(0xFF2F6BFF),
       bubbleUserText: Color(0xFFFFFFFF),
     ),
@@ -504,6 +515,16 @@ abstract final class HermesAccents {
     final resolved = _legacyIdMap[id] ?? id;
     return all.firstWhere((a) => a.id == resolved, orElse: () => graphite);
   }
+
+  /// Resolved theme id for [id] only when it's a genuine match (a current
+  /// theme id or a recognized legacy alias) — unlike [byId], this never
+  /// falls back to a default, so callers can tell "no match" apart from "an
+  /// explicit match that happens to be graphite".
+  static String? matchId(String? id) {
+    if (id == null) return null;
+    final resolved = _legacyIdMap[id] ?? id;
+    return all.any((a) => a.id == resolved) ? resolved : null;
+  }
 }
 
 /// ── Spacing（design-system.md §5.1：8 基准栅格）────────────────────────────
@@ -531,6 +552,20 @@ abstract final class HermesRadius {
   static const double composer = 24; // 旧输入 pill，保留兼容
   static const double capsule = 999; // r-pill
 }
+
+/// `DropdownButton`/`DropdownButtonFormField`'s popup has no ThemeData hook
+/// the way PopupMenuButton/DropdownMenu/MenuAnchor do (see popupMenuTheme /
+/// dropdownMenuTheme / menuTheme in hermes_theme.dart, unified for the exact
+/// same reason: Flutter's own default popup surface doesn't match this
+/// app's card/dialog palette and uses noticeably smaller corners). Every
+/// DropdownButtonFormField call site needs to opt in explicitly with these
+/// to get the same elevated background + r-xl corners as every other popup
+/// surface in the app.
+Color hermesDropdownColor(BuildContext context) =>
+    HermesPalette.of(context).elevated;
+final BorderRadius hermesDropdownBorderRadius = BorderRadius.circular(
+  HermesRadius.dialog,
+);
 
 /// ── Typography（design-system.md §4.2）────────────────────────────────────
 /// 裸 TextStyle 只含字号/字重/行高——不含颜色。优先用
@@ -657,13 +692,6 @@ BoxDecoration hermesCardDecoration(
   );
 }
 
-// Backwards-compatible alias used by older call sites (same solid style).
-BoxDecoration hermesGlassDecoration(
-  BuildContext context, {
-  double radius = HermesRadius.card,
-  Color? tint,
-}) => hermesCardDecoration(context, radius: radius, tint: tint);
-
 /// ── Agent status（状态语义色：等待审批并入 --warning）───────────────────────
 enum HermesAgentStatus {
   idle,
@@ -748,15 +776,3 @@ enum HermesToolStatus {
   }
 }
 
-/// ── Global page states (spec §8, §205) ───────────────────────────────────
-enum HermesUiState {
-  initial,
-  loading,
-  loaded,
-  empty,
-  processing,
-  success,
-  error,
-  offline,
-  disabled,
-}

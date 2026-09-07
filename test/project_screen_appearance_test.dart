@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/gateway.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations_zh.dart';
 import 'package:hermes_mobile/screens/project_screen.dart';
 import 'package:provider/provider.dart';
@@ -96,7 +97,12 @@ Future<_Gateway> _pump(WidgetTester tester) async {
   await tester.pumpWidget(
     ChangeNotifierProvider<ConnectionStore>.value(
       value: connection,
-      child: const MaterialApp(home: ProjectScreen()),
+      child: MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const ProjectScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -112,7 +118,12 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<ConnectionStore>.value(
         value: connection,
-        child: const MaterialApp(home: ProjectScreen()),
+        child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ProjectScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -158,7 +169,12 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<ConnectionStore>.value(
         value: connection,
-        child: const MaterialApp(home: ProjectScreen()),
+        child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ProjectScreen(),
+        ),
       ),
     );
     await tester.pump();
@@ -241,7 +257,12 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<ConnectionStore>.value(
           value: connection,
-          child: const MaterialApp(home: ProjectScreen()),
+          child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const ProjectScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();

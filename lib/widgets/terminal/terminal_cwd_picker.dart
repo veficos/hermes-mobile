@@ -11,8 +11,8 @@ import '../../core/server_path.dart';
 import '../../core/stores/session_store.dart';
 import '../../core/stores/connection_store.dart';
 import '../../l10n/l10n.dart';
-import '../../theme/hermes_tokens.dart';
 import '../h/hermes_states.dart';
+import '../mobile/mobile_page_scaffold.dart';
 
 Future<String?> showTerminalCwdPicker(
   BuildContext context, {
@@ -20,18 +20,17 @@ Future<String?> showTerminalCwdPicker(
 }) async {
   final api = context.read<SessionStore>().api;
   if (api == null) {
-    ScaffoldMessenger.maybeOf(
+    showHermesErrorSnackBar(
       context,
-    )?.showSnackBar(SnackBar(content: Text(context.l10n.backendDisconnected)));
+      StateError(connectionOfflineErrorCode),
+      fallback: context.l10n.backendDisconnected,
+    );
     return null;
   }
-  return showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(HermesRadius.sheet),
-    ),
-    builder: (ctx) => DraggableScrollableSheet(
+  return showMobileSheet<String>(
+    context,
+    avoidViewInsets: false,
+    (ctx) => DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.7,
       maxChildSize: 0.95,

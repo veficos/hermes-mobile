@@ -8,7 +8,9 @@ import 'package:hermes_mobile/core/stores/command_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/core/stores/session_tab_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/chat_screen.dart';
 import 'package:hermes_mobile/widgets/h/hermes_composer.dart';
 import 'package:provider/provider.dart';
@@ -188,12 +190,25 @@ Widget _chatApp(
   return MultiProvider(
     providers: [
       ChangeNotifierProvider.value(value: connection),
+      ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
+        create: (_) => SessionTabStore(),
+        update: (_, connection, tabs) =>
+            (tabs ?? SessionTabStore())..attachRoutedEvents(
+              connection.routedEvents,
+              owners: connection.sessionOwners,
+            ),
+      ),
       ChangeNotifierProvider<SessionStore>.value(value: session),
       ChangeNotifierProvider.value(value: chat),
       ChangeNotifierProvider.value(value: VoiceStore(connection: connection)),
       ChangeNotifierProvider.value(value: CommandStore(connection: connection)),
     ],
-    child: MaterialApp(home: screen),
+    child: MaterialApp(
+      locale: const Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: screen,
+    ),
   );
 }
 
@@ -254,6 +269,9 @@ void main() {
       var toolsTaps = 0;
       await tester.pumpWidget(
         MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: HermesComposer(
               controller: controller,
@@ -335,6 +353,9 @@ void main() {
     addTearDown(controller.dispose);
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: HermesComposer(
             controller: controller,
@@ -561,6 +582,9 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: Align(
                 alignment: Alignment.bottomCenter,
@@ -705,6 +729,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: HermesComposer(
               controller: controller,
@@ -762,6 +789,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: HermesComposer(
             controller: controller,
@@ -802,6 +832,9 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: HermesComposer(
             controller: controller,
@@ -826,6 +859,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: HermesComposer(
               controller: controller,
@@ -887,6 +923,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: HermesComposer(
             controller: controller,
@@ -919,6 +958,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: HermesComposer(
               controller: controller,
@@ -1112,6 +1154,9 @@ void main() {
       ChangeNotifierProvider.value(
         value: session,
         child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: TabletSessionRail(
               width: 280,
@@ -1202,4 +1247,33 @@ void main() {
       connection.dispose();
     },
   );
+
+  testWidgets('failed send status remains actionable in composer', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'keep this text');
+    addTearDown(controller.dispose);
+    var retried = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: HermesComposer(
+            controller: controller,
+            onSend: (_) {},
+            sendStatusLabel: '发送失败，请重试',
+            onRetrySend: () => retried = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('发送失败，请重试'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    await tester.tap(find.text('重试'));
+    expect(retried, isTrue);
+    expect(controller.text, 'keep this text');
+  });
 }

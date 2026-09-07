@@ -4,6 +4,7 @@ import 'package:hermes_mobile/core/stores/appearance_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/locale_store.dart';
 import 'package:hermes_mobile/core/stores/plugin_contribution_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/settings_hub_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -27,6 +28,9 @@ void main() {
           ),
         ],
         child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Builder(
             builder: (context) => Scaffold(
               body: TextButton(

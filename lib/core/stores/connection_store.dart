@@ -681,17 +681,23 @@ class ConnectionStore extends ChangeNotifier {
     api: api,
     gateway: gateway,
     onDropped: (runtime, reason) {
+      // Broadcast unconditionally so UI pinned to a specific non-active
+      // connection (via ConnectionRegistry.stateChanges) can react too —
+      // notifyListeners() below stays scoped to the active connection only.
+      registry.notifyStateChanged(runtime.id);
       if (runtime.id != activeConnectionId) return;
       phase = ConnectionPhase.reconnecting;
       error = reason;
       notifyListeners();
     },
     onStateChanged: (runtime) {
+      registry.notifyStateChanged(runtime.id);
       if (runtime.id != activeConnectionId) return;
       _syncActiveFacade();
       notifyListeners();
     },
     onReconnected: (runtime) {
+      registry.notifyStateChanged(runtime.id);
       if (runtime.id != activeConnectionId) return;
       onReconnected?.call();
       _reconnected.add(null);

@@ -15,17 +15,23 @@ import 'package:share_plus/share_plus.dart';
 import '../core/api_client.dart';
 import '../core/clipboard.dart';
 import '../core/connection_reload_mixin.dart';
+import '../core/connections/connection_registry.dart';
 import '../core/models.dart';
+import '../core/stores/bot_store.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
+import 'bot_routines_screen.dart';
 
 extension _OptionalProfileScope on BuildContext {
   ProfileScopeStore? get profileScopeOrNull {
@@ -40,7 +46,22 @@ extension _OptionalProfileScope on BuildContext {
 class ProfilesScreen extends StatefulWidget {
   final bool embedded;
 
-  const ProfilesScreen({super.key, this.embedded = false});
+  /// When set, this screen operates on that connection's profiles instead of
+  /// whichever connection happens to be active — the "Model & tools" entry
+  /// point from a specific bot's roster row, which may belong to a
+  /// non-active gateway. Mirrors [McpScreen.targetConnectionId].
+  final ConnectionId? targetConnectionId;
+
+  /// When set alongside [targetConnectionId], the list is pinned to this
+  /// bot's own profile and the create/import affordances are hidden.
+  final String? fixedProfile;
+
+  const ProfilesScreen({
+    super.key,
+    this.embedded = false,
+    this.targetConnectionId,
+    this.fixedProfile,
+  });
 
   @override
   State<ProfilesScreen> createState() => _ProfilesScreenState();
@@ -58,7 +79,28 @@ class _ProfilesScreenState extends State<ProfilesScreen>
   int _loadGeneration = 0;
   ApiClient? _loadedApi;
 
-  ApiClient? get _api => context.read<ConnectionStore>().api;
+  /// Resolves the [ApiClient] this screen should act against: the active
+  /// connection by default, or [ProfilesScreen.targetConnectionId]'s
+  /// runtime when set (which may be null if that connection was since
+  /// removed).
+  ApiClient? _resolveApi(ConnectionStore connection) {
+    final targetId = widget.targetConnectionId;
+    if (targetId == null) return connection.api;
+    return connection.registry.runtime(targetId)?.api;
+  }
+
+  ApiClient? get _api => _resolveApi(context.read<ConnectionStore>());
+
+  /// [requireActiveApi] checks identity against the *active* connection,
+  /// which is wrong when [ProfilesScreen.targetConnectionId] points at a
+  /// non-active connection — this checks identity against the resolved
+  /// target instead.
+  ApiClient _requireTargetApi(ConnectionStore connection, ApiClient expected) {
+    if (!identical(_resolveApi(connection), expected)) {
+      throw StateError(context.l10n.backendDisconnected);
+    }
+    return expected;
+  }
 
   @override
   void initState() {
@@ -69,7 +111,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    observeConnection(context.read<ConnectionStore>(), _reloadForConnection);
+    observeConnection(
+      context.read<ConnectionStore>(),
+      _reloadForConnection,
+      targetConnectionId: widget.targetConnectionId,
+    );
   }
 
   void _reloadForConnection() {
@@ -133,10 +179,12 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       if (!mounted || generation != _loadGeneration || !identical(api, _api)) {
         return;
       }
+      final fixed = widget.fixedProfile;
       setState(() {
         _profiles = [
           for (final p in payload.profiles)
-            active != null ? p.copyWith(isActive: p.name == active) : p,
+            if (fixed == null || p.name == fixed)
+              active != null ? p.copyWith(isActive: p.name == active) : p,
         ];
         _modelOptions = models;
         _allTools = tools;
@@ -159,15 +207,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final connection = context.read<ConnectionStore>();
     final api = _entityApiOrNotify();
     if (api == null) return;
-    final saved = await showModalBottomSheet<ProfileInfo>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(HermesRadius.sheet),
-        ),
-      ),
-      builder: (_) => _ProfileEditorSheet(
+    final saved = await showMobileSheet<ProfileInfo>(
+      context,
+      // _ProfileEditorSheet 已自行处理键盘避让（viewInsets 内边距）。
+      avoidViewInsets: false,
+      (_) => _ProfileEditorSheet(
         existing: existing,
         modelOptions: _modelOptions,
         allTools: _allTools,
@@ -175,20 +219,39 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     );
     if (saved == null) return;
     if (!mounted) return;
+    if (existing != null && existing.model != saved.model) {
+      final affected = await _routinesWithModelOverride(api, existing.name);
+      if (affected == null) {
+        // The check itself failed (e.g. network hiccup) — that is NOT the
+        // same as "no routines are affected". Ask explicitly rather than
+        // silently assuming it's safe to proceed.
+        if (!mounted) return;
+        final proceed = await _confirmModelChangeCheckFailed(existing.name);
+        if (proceed != true) return;
+      } else if (affected.isNotEmpty) {
+        if (!mounted) return;
+        final proceed = await _confirmModelChangeImpact(
+          existing.name,
+          affected.length,
+        );
+        if (proceed != true) return;
+      }
+    }
+    if (!mounted) return;
     try {
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       if (existing == null) {
         await api.saveProfile(saved.toJson());
       } else {
         await api.updateProfile(existing.name, saved.toJson());
       }
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       if (saved.isActive && existing?.isActive != true) {
         if (!mounted) return;
         await context.read<SessionStore>().switchActiveProfile(saved.name);
         if (!mounted) return;
-        requireActiveApi(context, connection, api);
+        _requireTargetApi(connection, api);
       }
     } catch (e) {
       if (!mounted) return;
@@ -210,6 +273,92 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     );
   }
 
+  /// Routines bound to [profile] (by the `[bot:<profile>]` name prefix, or
+  /// unprefixed routines when profile is `default`) that pin their own
+  /// model override — those keep running on the old model unless the user
+  /// updates them too, so a model change here is worth flagging.
+  /// Returns `null` (rather than an empty list) when the fetch itself fails,
+  /// so callers can tell "verified, nothing affected" apart from "couldn't
+  /// verify" instead of silently treating a failed check as a clean bill of
+  /// health.
+  Future<List<CronJob>?> _routinesWithModelOverride(
+    ApiClient api,
+    String profile,
+  ) async {
+    try {
+      final jobs = await api.cronJobs();
+      final target = profile.trim().toLowerCase();
+      return jobs.where((job) {
+        if (job.model == null || job.model!.trim().isEmpty) return false;
+        final name = (job.name ?? '').trim().toLowerCase();
+        final match = RegExp(
+          r'^\[bot:([a-z0-9][a-z0-9_-]*)\]',
+        ).firstMatch(name);
+        final owner = match?.group(1) ?? 'default';
+        return owner == target;
+      }).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool?> _confirmModelChangeImpact(String profile, int count) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.l10n.profilesModelChangeWarningTitle),
+        content: Text(
+          context.l10n.profilesModelChangeWarningBody(count, profile),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(context.l10n.commonCancel),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop(false);
+              final bot = BotIdentity(
+                route: OwnerRoute(
+                  connectionId:
+                      widget.targetConnectionId ??
+                      context.read<ConnectionStore>().activeConnectionId,
+                  profile: profile,
+                ),
+                profile: profile,
+                displayName: profile,
+              );
+              if (!mounted) return;
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => BotRoutinesScreen(bot: bot),
+                ),
+              );
+            },
+            child: Text(context.l10n.profilesModelChangeViewRoutines),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(context.l10n.profilesModelChangeSaveAnyway),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shown when [_routinesWithModelOverride] itself couldn't complete (e.g. a
+  /// network error), so we genuinely don't know whether any routines on
+  /// [profile] would be affected by the model change — distinct from
+  /// [_confirmModelChangeImpact], which is shown once we *do* know.
+  Future<bool?> _confirmModelChangeCheckFailed(String profile) {
+    return showHermesConfirmDialog(
+      context: context,
+      title: context.l10n.profilesModelChangeCheckFailedTitle,
+      message: context.l10n.profilesModelChangeCheckFailedBody(profile),
+      confirmLabel: context.l10n.profilesModelChangeSaveAnyway,
+    );
+  }
+
   Future<void> _duplicate(ProfileInfo p) async {
     final connection = context.read<ConnectionStore>();
     final api = _entityApiOrNotify();
@@ -224,7 +373,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
             .toJson(),
       );
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
     } catch (e) {
       if (!mounted) return;
       showHermesToast(
@@ -247,38 +396,22 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final connection = context.read<ConnectionStore>();
     final api = _entityApiOrNotify();
     if (api == null) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.profilesDeleteQuestion(p.name)),
-        content: Text(
-          p.isActive
-              ? context.l10n.profilesDeleteActiveWarning
-              : context.l10n.profilesDeleteWarning,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.profilesDeleteQuestion(p.name),
+      message: p.isActive
+          ? context.l10n.profilesDeleteActiveWarning
+          : context.l10n.profilesDeleteWarning,
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     if (!mounted) return;
     try {
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       await api.deleteProfile(p.name);
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
     } catch (e) {
       if (!mounted) return;
       showHermesToast(
@@ -302,10 +435,10 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final api = _entityApiOrNotify();
     if (api == null || p.isActive) return;
     try {
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       await context.read<SessionStore>().switchActiveProfile(p.name);
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
     } catch (e) {
       if (!mounted) return;
       showHermesToast(
@@ -331,7 +464,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     try {
       final soul = await api.getProfileSoul(profile.name);
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       final controller = TextEditingController(text: soul.content);
       final content = await showDialog<String>(
         context: context,
@@ -369,10 +502,10 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       );
       WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
       if (content == null || !mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       await api.updateProfileSoul(profile.name, content);
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       if (mounted) {
         showHermesToast(
           context,
@@ -398,7 +531,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     try {
       final command = await api.getProfileSetupCommand(profile.name);
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -452,7 +585,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     try {
       final archive = await api.exportProfileArchive(profile.name);
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       final result = await SharePlus.instance.share(
         ShareParams(
           files: [
@@ -488,8 +621,16 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
   Future<void> _importProfile() async {
     final connection = context.read<ConnectionStore>();
-    final api = connectedApiOrNotify(context, connection);
-    if (api == null || _transferring) return;
+    final api = _resolveApi(connection);
+    if (api == null) {
+      showHermesToast(
+        context,
+        message: context.l10n.backendDisconnected,
+        kind: HermesToastKind.error,
+      );
+      return;
+    }
+    if (_transferring) return;
     setState(() => _transferring = true);
     try {
       final file = await openFile(
@@ -501,13 +642,13 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         ],
       );
       if (file == null || !mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       final result = await api.importProfileArchive(
         await file.readAsBytes(),
         file.name,
       );
       if (!mounted) return;
-      requireActiveApi(context, connection, api);
+      _requireTargetApi(connection, api);
       await _load();
       if (mounted) {
         showHermesToast(
@@ -533,7 +674,8 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
   ApiClient? _entityApiOrNotify() {
     final api = _loadedApi;
-    if (api != null && identical(api, context.read<ConnectionStore>().api)) {
+    if (api != null &&
+        identical(api, _resolveApi(context.read<ConnectionStore>()))) {
       return api;
     }
     showHermesToast(
@@ -552,21 +694,23 @@ class _ProfilesScreenState extends State<ProfilesScreen>
           : AppBar(
               title: Text(context.l10n.profilesTitle),
               actions: [
-                IconButton(
-                  tooltip: context.l10n.profilesImport,
-                  onPressed: _transferring ? null : _importProfile,
-                  icon: _transferring
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.file_upload_outlined),
-                ),
-                IconButton(
-                  tooltip: context.l10n.profilesNew,
-                  onPressed: () => _openEditor(),
-                  icon: const Icon(Icons.add),
-                ),
+                if (widget.fixedProfile == null) ...[
+                  IconButton(
+                    tooltip: context.l10n.profilesImport,
+                    onPressed: _transferring ? null : _importProfile,
+                    icon: _transferring
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.file_upload_outlined),
+                  ),
+                  IconButton(
+                    tooltip: context.l10n.profilesNew,
+                    onPressed: () => _openEditor(),
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
                 IconButton(
                   tooltip: context.l10n.commonRefresh,
                   onPressed: _load,
@@ -608,7 +752,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                         ),
                         const SizedBox(height: 12),
                       ],
-                      if (widget.embedded)
+                      if (widget.embedded && widget.fixedProfile == null)
                         Align(
                           alignment: Alignment.centerRight,
                           child: IconButton(
@@ -664,7 +808,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           if (p.isActive)
-            HermesMobileStatusChip(
+            HermesStatusChip(
               label: context.l10n.profilesActive,
               color: HermesPalette.of(context).accent,
             )
@@ -872,6 +1016,8 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final providerField = DropdownButtonFormField<String>(
+                    dropdownColor: hermesDropdownColor(context),
+                    borderRadius: hermesDropdownBorderRadius,
                     initialValue:
                         widget.modelOptions.any((o) => o.slug == _provider)
                         ? _provider
@@ -896,6 +1042,8 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
                     },
                   );
                   final modelField = DropdownButtonFormField<String>(
+                    dropdownColor: hermesDropdownColor(context),
+                    borderRadius: hermesDropdownBorderRadius,
                     initialValue: models.contains(_model) ? _model : null,
                     decoration: InputDecoration(
                       labelText: context.l10n.profilesModel,

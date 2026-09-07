@@ -14,6 +14,10 @@ import '../core/models.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_button.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 
@@ -136,24 +140,13 @@ class _CommandCenterScreenState extends State<CommandCenterScreen>
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
     final generation = _mutationGeneration;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.settingsRestartBackend),
-        content: Text(context.l10n.commandRestartWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonRestart),
-          ),
-        ],
-      ),
+      title: context.l10n.settingsRestartBackend,
+      message: context.l10n.commandRestartWarning,
+      confirmLabel: context.l10n.commonRestart,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     if (!mounted) return;
     setState(() => _restarting = true);
     try {
@@ -293,7 +286,7 @@ class _CommandCenterScreenState extends State<CommandCenterScreen>
                   ],
                 ),
               ),
-              HermesMobileStatusChip(
+              HermesStatusChip(
                 label: running
                     ? context.l10n.commonRunning
                     : context.l10n.commandStopped,
@@ -303,7 +296,10 @@ class _CommandCenterScreenState extends State<CommandCenterScreen>
           ),
         ),
         if (canReadLogs) ...[
-          HermesMobileSectionLabel(title: context.l10n.commandLiveLogs),
+          HermesSectionHeader(
+            title: context.l10n.commandLiveLogs,
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          ),
           Container(
             height: 220,
             padding: const EdgeInsets.all(12),
@@ -324,22 +320,19 @@ class _CommandCenterScreenState extends State<CommandCenterScreen>
           const SizedBox(height: 10),
         ],
         if (canRestart)
-          OutlinedButton.icon(
-            onPressed: _restarting ? null : _restart,
-            icon: _restarting
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.restart_alt),
-            label: Text(
-              _restarting
-                  ? context.l10n.agentRestarting
-                  : context.l10n.settingsRestartBackend,
-            ),
+          HermesButton(
+            variant: HermesButtonVariant.secondary,
+            icon: Icons.restart_alt,
+            label: _restarting
+                ? context.l10n.agentRestarting
+                : context.l10n.settingsRestartBackend,
+            loading: _restarting,
+            onPressed: _restart,
           ),
-        HermesMobileSectionLabel(title: context.l10n.commandDiagnostics),
+        HermesSectionHeader(
+          title: context.l10n.commandDiagnostics,
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+        ),
         HermesMobileGroup(
           children: [
             Material(
@@ -522,7 +515,10 @@ class _UsagePanelState extends State<_UsagePanel>
                 ),
               ],
             ),
-            HermesMobileSectionLabel(title: context.l10n.commandDailyUsage),
+            HermesSectionHeader(
+              title: context.l10n.commandDailyUsage,
+              padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+            ),
             HermesMobileCard(
               child: usage.daily.isEmpty
                   ? Padding(
@@ -765,7 +761,10 @@ class _TopList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          HermesMobileSectionLabel(title: title, top: 0),
+          HermesSectionHeader(
+            title: title,
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+          ),
           HermesMobileCard(
             child: items.isEmpty
                 ? Text(
@@ -1103,9 +1102,9 @@ class _MaintenancePanelState extends State<_MaintenancePanel> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 32),
       children: [
-        HermesMobileSectionLabel(
+        HermesSectionHeader(
           title: context.l10n.commandDiagnosticsMaintenance,
-          top: 0,
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
         ),
         HermesMobileGroup(
           children: [

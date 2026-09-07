@@ -3,13 +3,16 @@ import '../kanban/api.dart';
 import '../kanban/models.dart';
 import '../kanban/store.dart';
 import '../l10n/l10n.dart';
+import '../theme/hermes_tokens.dart';
+import 'h/hermes_confirm_dialog.dart';
+import 'h/hermes_states.dart';
 import 'mobile/hermes_adaptive_menu.dart';
+import 'mobile/mobile_page_scaffold.dart';
 
 Future<void> showKanbanBoardSheet(
   BuildContext context,
   KanbanStore store,
 ) async {
-  final messenger = ScaffoldMessenger.of(context);
   late final KanbanApi api;
   try {
     api = store.api;
@@ -18,19 +21,18 @@ Future<void> showKanbanBoardSheet(
     if (store.error case final error?) throw StateError(error);
   } catch (error) {
     if (context.mounted) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.kanbanOperationFailed('$error'))),
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.kanbanOperationFailed('$error'),
       );
     }
     return;
   }
   if (!context.mounted) return;
-  final selectedSlug = await showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
-    builder: (sheet) => _BoardSheet(store: store, api: api),
+  final selectedSlug = await showMobileSheet<String>(
+    context,
+    (sheet) => _BoardSheet(store: store, api: api),
   );
   if (selectedSlug == null || !context.mounted) return;
 
@@ -42,14 +44,18 @@ Future<void> showKanbanBoardSheet(
     await store.selectBoard(selectedSlug, expectedApi: api);
     if (!context.mounted) return;
     if (store.error case final error?) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.kanbanOperationFailed(error))),
+      showHermesErrorSnackBar(
+        context,
+        StateError(error),
+        fallback: context.l10n.kanbanOperationFailed(error),
       );
     }
   } catch (error) {
     if (context.mounted) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.kanbanOperationFailed('$error'))),
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.kanbanOperationFailed('$error'),
       );
     }
   }
@@ -76,14 +82,15 @@ class _BoardSheetState extends State<_BoardSheet> {
   KanbanApi get _currentApi => widget.store.requireApi(_api);
 
   Future<void> _runMutation(Future<void> Function() action) async {
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     try {
       await action();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.kanbanOperationFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: l10n.kanbanOperationFailed('$e'),
         );
       }
     }
@@ -133,8 +140,10 @@ class _BoardSheetState extends State<_BoardSheet> {
       projectRaw = await _currentApi.projects();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.kanbanOperationFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: l10n.kanbanOperationFailed('$e'),
         );
       }
       return;
@@ -159,6 +168,8 @@ class _BoardSheetState extends State<_BoardSheet> {
                 decoration: InputDecoration(labelText: l10n.commonName),
               ),
               DropdownButtonFormField<String>(
+                dropdownColor: hermesDropdownColor(c),
+                borderRadius: hermesDropdownBorderRadius,
                 initialValue: projectId,
                 decoration: InputDecoration(labelText: l10n.kanbanProject),
                 items: [
@@ -204,24 +215,14 @@ class _BoardSheetState extends State<_BoardSheet> {
   Future<void> _delete(KanbanBoardMeta board) async {
     if (board.current) return;
     final l10n = context.l10n;
-    final ok = await showDialog<bool>(
+    final ok = await showHermesConfirmDialog(
       context: context,
-      builder: (c) => AlertDialog(
-        title: Text(l10n.kanbanDeleteBoardQuestion),
-        content: Text(l10n.kanbanDeleteBoardDescription(board.label)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: Text(l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: l10n.kanbanDeleteBoardQuestion,
+      message: l10n.kanbanDeleteBoardDescription(board.label),
+      confirmLabel: l10n.commonDelete,
+      destructive: true,
     );
-    if (ok != true) return;
+    if (!ok) return;
     await _runMutation(() async {
       await _currentApi.deleteBoard(board.slug);
       await widget.store.loadBoards(expectedApi: _api);

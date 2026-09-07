@@ -10,17 +10,20 @@ import 'package:provider/provider.dart';
 import '../core/api_client.dart';
 import '../core/clipboard.dart';
 import '../core/fs_download.dart';
+import '../core/json_document.dart';
 import '../core/connection_reload_mixin.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
+import '../chat/content/code_highlighter.dart';
 
 enum _ConflictChoice { cancel, reload, overwrite }
 
 class FileEditorScreen extends StatefulWidget {
   final String path;
   final String name;
+  final String? profile;
 
   /// When true, renders without its own Scaffold (embedded in a tablet split).
   final bool embedded;
@@ -29,6 +32,7 @@ class FileEditorScreen extends StatefulWidget {
     super.key,
     required this.path,
     required this.name,
+    this.profile,
     this.embedded = false,
   });
 
@@ -50,10 +54,150 @@ class _FileEditorScreenState extends State<FileEditorScreen>
   bool _syncingScroll = false;
   int _loadGeneration = 0;
   int _mutationGeneration = 0;
+  String _findQuery = '';
+  bool _showDiff = false;
   ApiClient? _loadedApi;
   String? _loadedPath;
 
   bool get _dirty => _ctrl.text != _original;
+  bool get _isJson => widget.name.toLowerCase().endsWith('.json');
+
+  List<_DiffOp> get _diffOps =>
+      _lineDiff(_original.split('\n'), _ctrl.text.split('\n'));
+
+  ({int added, int removed}) get _changeStats {
+    var added = 0;
+    var removed = 0;
+    for (final op in _diffOps) {
+      switch (op.kind) {
+        case _DiffOpKind.insert:
+          added++;
+        case _DiffOpKind.delete:
+          removed++;
+        case _DiffOpKind.equal:
+          break;
+      }
+    }
+    return (added: added, removed: removed);
+  }
+
+  Future<void> _findInFile() async {
+    final result =
+        await showDialog<({String query, String replacement, bool replaceAll})>(
+          context: context,
+          builder: (ctx) {
+            final controller = TextEditingController(text: _findQuery);
+            final replacement = TextEditingController();
+            return AlertDialog(
+              title: Text(context.l10n.fileEditorFindReplaceTitle),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: context.l10n.fileEditorFindLabel,
+                    ),
+                  ),
+                  TextField(
+                    controller: replacement,
+                    decoration: InputDecoration(
+                      labelText: context.l10n.fileEditorReplaceWithLabel,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(context.l10n.commonCancel),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop((
+                    query: controller.text,
+                    replacement: replacement.text,
+                    replaceAll: true,
+                  )),
+                  child: Text(context.l10n.fileEditorReplaceAll),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop((
+                    query: controller.text,
+                    replacement: replacement.text,
+                    replaceAll: false,
+                  )),
+                  child: Text(context.l10n.fileEditorFindLabel),
+                ),
+              ],
+            );
+          },
+        );
+    if (!mounted || result == null || result.query.isEmpty) return;
+    final query = result.query;
+    if (result.replaceAll) {
+      final count = _ctrl.text.split(query).length - 1;
+      if (count > 0) {
+        final text = _ctrl.text.replaceAll(query, result.replacement);
+        setState(() {
+          _ctrl.text = text;
+          _lineCount = '\n'.allMatches(text).length + 1;
+        });
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            count == 0
+                ? context.l10n.fileEditorNoMatches
+                : context.l10n.fileEditorReplacedCount(count),
+          ),
+        ),
+      );
+      return;
+    }
+    final start = _ctrl.selection.isValid ? _ctrl.selection.end : 0;
+    var index = _ctrl.text.indexOf(query, start);
+    if (index < 0 && start > 0) index = _ctrl.text.indexOf(query);
+    if (index < 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.paletteNoResults)));
+      return;
+    }
+    setState(() {
+      _findQuery = query;
+      _ctrl.selection = TextSelection(
+        baseOffset: index,
+        extentOffset: index + query.length,
+      );
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_editorScroll.hasClients) return;
+      final line = '\n'.allMatches(_ctrl.text.substring(0, index)).length;
+      _editorScroll.animateTo(
+        (line * 22.0).clamp(0.0, _editorScroll.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  void _formatJson() {
+    try {
+      final formatted = JsonDocument.parse(_ctrl.text).formatted();
+      setState(() {
+        _ctrl.value = TextEditingValue(
+          text: formatted,
+          selection: TextSelection.collapsed(offset: formatted.length),
+        );
+        _lineCount = '\n'.allMatches(formatted).length + 1;
+      });
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.configInvalidJson('$error'))),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -141,7 +285,7 @@ class _FileEditorScreenState extends State<FileEditorScreen>
       _isBinary = false;
     });
     try {
-      final text = await api.fsReadText(path);
+      final text = await api.fsReadText(path, profile: widget.profile);
       if (!mounted ||
           generation != _loadGeneration ||
           path != widget.path ||
@@ -387,7 +531,7 @@ class _FileEditorScreenState extends State<FileEditorScreen>
     }
     setState(() => _saving = true);
     try {
-      final onDisk = await api.fsReadText(path);
+      final onDisk = await api.fsReadText(path, profile: widget.profile);
       if (!mounted ||
           generation != _mutationGeneration ||
           !_ownsTarget(api, path)) {
@@ -423,7 +567,7 @@ class _FileEditorScreenState extends State<FileEditorScreen>
           return;
         }
       }
-      await api.fsWriteText(path, text);
+      await api.fsWriteText(path, text, profile: widget.profile);
       if (!mounted ||
           generation != _mutationGeneration ||
           !_ownsTarget(api, path)) {
@@ -460,8 +604,17 @@ class _FileEditorScreenState extends State<FileEditorScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final titleText = _dirty ? '● ${widget.name}' : widget.name;
+    final stats = _dirty ? _changeStats : (added: 0, removed: 0);
+    final titleText = _dirty
+        ? '● ${widget.name}  (+${stats.added} / -${stats.removed})'
+        : widget.name;
     final actions = [
+      if (_isJson && !_isBinary)
+        IconButton(
+          tooltip: l10n.configFullJson,
+          onPressed: _saving || _loading || _error != null ? null : _formatJson,
+          icon: const Icon(Icons.data_object),
+        ),
       IconButton(
         tooltip: l10n.filesDownloadToDevice,
         onPressed: _saving || _loading || _error != null
@@ -474,6 +627,16 @@ class _FileEditorScreenState extends State<FileEditorScreen>
         onPressed: _saving ? null : _load,
         icon: const Icon(Icons.refresh),
       ),
+      if (!_isBinary)
+        IconButton(
+          tooltip: _showDiff ? 'Edit file' : 'Show changes',
+          onPressed: _loading || _error != null
+              ? null
+              : () => setState(() => _showDiff = !_showDiff),
+          icon: Icon(
+            _showDiff ? Icons.edit_outlined : Icons.difference_outlined,
+          ),
+        ),
       if (!_isBinary)
         IconButton(
           onPressed: _saving ? null : _save,
@@ -496,6 +659,9 @@ class _FileEditorScreenState extends State<FileEditorScreen>
         const SingleActivator(LogicalKeyboardKey.keyS, meta: true): _saving
             ? () {}
             : _save,
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _findInFile,
+        const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _findInFile,
       },
       child: Focus(autofocus: widget.embedded, child: _buildBody(context)),
     );
@@ -554,7 +720,14 @@ class _FileEditorScreenState extends State<FileEditorScreen>
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          actions: actions,
+          actions: [
+            IconButton(
+              tooltip: context.l10n.commonSearch,
+              onPressed: _loading || _isBinary ? null : _findInFile,
+              icon: const Icon(Icons.search),
+            ),
+            ...actions,
+          ],
         ),
         body: body,
       ),
@@ -607,6 +780,7 @@ class _FileEditorScreenState extends State<FileEditorScreen>
         onRetry: _load,
       );
     }
+    if (_showDiff) return _buildDiff(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final codeStyle = HermesType.code.copyWith(
@@ -628,11 +802,19 @@ class _FileEditorScreenState extends State<FileEditorScreen>
           child: SingleChildScrollView(
             controller: _gutterScroll,
             physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              List.generate(_lineCount, (i) => '${i + 1}').join('\n'),
-              textAlign: TextAlign.center,
-              style: gutterStyle,
+            child: SizedBox(
+              height: (_lineCount < 1 ? 1 : _lineCount) * 20.3 + 24,
+              child: ListView.builder(
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                itemCount: _lineCount,
+                itemExtent: 20.3,
+                itemBuilder: (_, index) => Text(
+                  '${index + 1}',
+                  textAlign: TextAlign.center,
+                  style: gutterStyle,
+                ),
+              ),
             ),
           ),
         ),
@@ -660,6 +842,191 @@ class _FileEditorScreenState extends State<FileEditorScreen>
       ],
     );
   }
+
+  Widget _buildDiff(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final rows = <_EditorDiffRow>[];
+    var oldLine = 0;
+    var newLine = 0;
+    for (final op in _diffOps) {
+      switch (op.kind) {
+        case _DiffOpKind.equal:
+          oldLine++;
+          newLine++;
+          rows.add(_EditorDiffRow('  ', op.text, null, newLine));
+        case _DiffOpKind.delete:
+          oldLine++;
+          rows.add(
+            _EditorDiffRow(
+              '- ',
+              op.text,
+              dark ? const Color(0xFF4A2028) : const Color(0xFFFFE8EA),
+              oldLine,
+            ),
+          );
+        case _DiffOpKind.insert:
+          newLine++;
+          rows.add(
+            _EditorDiffRow(
+              '+ ',
+              op.text,
+              dark ? const Color(0xFF1E422C) : const Color(0xFFE7F6EA),
+              newLine,
+            ),
+          );
+      }
+    }
+    if (rows.isEmpty) {
+      return Center(
+        child: Text(
+          context.l10n.fileEditorNoChanges,
+          style: theme.textTheme.bodyMedium,
+        ),
+      );
+    }
+    return Container(
+      color: theme.scaffoldBackgroundColor,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        itemCount: rows.length,
+        itemBuilder: (_, i) {
+          final row = rows[i];
+          return _diffLine(context, row.prefix, row.text, row.color, row.line);
+        },
+      ),
+    );
+  }
+
+  Widget _diffLine(
+    BuildContext context,
+    String prefix,
+    String text,
+    Color? color,
+    int line,
+  ) {
+    final palette = HermesPalette.of(context);
+    final ext = widget.name.contains('.') ? widget.name.split('.').last : '';
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final highlighted = ext.isEmpty
+        ? null
+        : CodeHighlighter.instance.highlight(text, ext, dark);
+    return Container(
+      color: color,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 42,
+            child: Text(
+              '$line',
+              textAlign: TextAlign.right,
+              style: HermesType.code.copyWith(color: palette.text4),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            prefix,
+            style: HermesType.code.copyWith(fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: highlighted == null
+                  ? Text(text, style: HermesType.code)
+                  : Text.rich(
+                      TextSpan(style: HermesType.code, children: [highlighted]),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditorDiffRow {
+  final String prefix;
+  final String text;
+  final Color? color;
+  final int line;
+  const _EditorDiffRow(this.prefix, this.text, this.color, this.line);
+}
+
+enum _DiffOpKind { equal, insert, delete }
+
+class _DiffOp {
+  final _DiffOpKind kind;
+  final String text;
+  const _DiffOp(this.kind, this.text);
+}
+
+// Above this many (before-lines * after-lines) cells, the O(n*m) LCS table
+// below gets too expensive in time/memory for a spot editor on a phone; fall
+// back to a naive positional diff rather than hang or OOM on huge files.
+const int _maxLineDiffCells = 4000000;
+
+/// Line-based LCS (longest common subsequence) diff. Unlike a naive
+/// index-by-index comparison, a single inserted/deleted line does not shift
+/// every later line out of alignment and get misreported as changed.
+List<_DiffOp> _lineDiff(List<String> before, List<String> after) {
+  final n = before.length;
+  final m = after.length;
+  if (n * m > _maxLineDiffCells) {
+    return _naiveLineDiff(before, after);
+  }
+  // dp[i][j] = length of the LCS of before[i:] and after[j:].
+  final dp = List.generate(n + 1, (_) => List<int>.filled(m + 1, 0));
+  for (var i = n - 1; i >= 0; i--) {
+    for (var j = m - 1; j >= 0; j--) {
+      dp[i][j] = before[i] == after[j]
+          ? dp[i + 1][j + 1] + 1
+          : (dp[i + 1][j] >= dp[i][j + 1] ? dp[i + 1][j] : dp[i][j + 1]);
+    }
+  }
+  final ops = <_DiffOp>[];
+  var i = 0;
+  var j = 0;
+  while (i < n && j < m) {
+    if (before[i] == after[j]) {
+      ops.add(_DiffOp(_DiffOpKind.equal, before[i]));
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      ops.add(_DiffOp(_DiffOpKind.delete, before[i]));
+      i++;
+    } else {
+      ops.add(_DiffOp(_DiffOpKind.insert, after[j]));
+      j++;
+    }
+  }
+  while (i < n) {
+    ops.add(_DiffOp(_DiffOpKind.delete, before[i]));
+    i++;
+  }
+  while (j < m) {
+    ops.add(_DiffOp(_DiffOpKind.insert, after[j]));
+    j++;
+  }
+  return ops;
+}
+
+/// Fallback for files too large for the LCS table: the previous
+/// positional comparison. Used only above [_maxLineDiffCells].
+List<_DiffOp> _naiveLineDiff(List<String> before, List<String> after) {
+  final max = before.length > after.length ? before.length : after.length;
+  final ops = <_DiffOp>[];
+  for (var i = 0; i < max; i++) {
+    final a = i < before.length ? before[i] : null;
+    final b = i < after.length ? after[i] : null;
+    if (a == b) {
+      ops.add(_DiffOp(_DiffOpKind.equal, a ?? ''));
+    } else {
+      if (a != null) ops.add(_DiffOp(_DiffOpKind.delete, a));
+      if (b != null) ops.add(_DiffOp(_DiffOpKind.insert, b));
+    }
+  }
+  return ops;
 }
 
 class _DiffPane extends StatelessWidget {

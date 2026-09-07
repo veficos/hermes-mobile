@@ -1,6 +1,18 @@
 library;
 
-enum ComposerTokenKind { text, slash, file, folder, url, image, session }
+enum ComposerTokenKind {
+  text,
+  slash,
+  file,
+  folder,
+  url,
+  image,
+  tool,
+  git,
+  diff,
+  staged,
+  session,
+}
 
 class ComposerToken {
   final ComposerTokenKind kind;
@@ -21,7 +33,7 @@ class ComposerToken {
 List<ComposerToken> parseComposerTokens(String source) {
   if (source.isEmpty) return const [];
   final matches = RegExp(
-    r'^/[\w.-]+(?=\s|$)|@(file|folder|url|image|session):(?:`[^`]+`|\S+)|https?://\S+',
+    r'^/[\w.-]+(?=\s|$)|@(file|folder|url|image|tool|git|session):(?:`[^`]+`|\S+)|@(diff|staged)(?=\s|$)|https?://\S+',
     multiLine: true,
   ).allMatches(source);
   final result = <ComposerToken>[];
@@ -46,6 +58,14 @@ List<ComposerToken> parseComposerTokens(String source) {
         ? ComposerTokenKind.folder
         : value.startsWith('@image:')
         ? ComposerTokenKind.image
+        : value.startsWith('@tool:')
+        ? ComposerTokenKind.tool
+        : value.startsWith('@git:')
+        ? ComposerTokenKind.git
+        : value == '@diff'
+        ? ComposerTokenKind.diff
+        : value == '@staged'
+        ? ComposerTokenKind.staged
         : value.startsWith('@session:')
         ? ComposerTokenKind.session
         : ComposerTokenKind.url;

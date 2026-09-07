@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/stores/connection_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../widgets/h/hermes_toast.dart';
 import '../../widgets/web_preview.dart' show openChatLink;
 
 enum MediaKind { audio, video, file, none }
@@ -107,8 +108,10 @@ class _InlineAudioPlayerState extends State<InlineAudioPlayer> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatAudioPlaybackFailed)),
+        showHermesToast(
+          context,
+          message: context.l10n.chatAudioPlaybackFailed,
+          kind: HermesToastKind.error,
         );
       }
     } finally {

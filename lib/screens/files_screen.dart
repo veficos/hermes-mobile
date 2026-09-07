@@ -10,18 +10,25 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/clipboard.dart';
+import '../core/connections/connection_registry.dart';
 import '../core/fs_download.dart';
 import '../core/connection_reload_mixin.dart';
 import '../core/models.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/file_tree_store.dart';
+import '../core/stores/pane_workspace_store.dart';
+import '../core/stores/preview_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import 'file_editor_screen.dart';
 import 'git_screen.dart';
 import 'new_session_screen.dart';
+import 'pane_workspace_screen.dart';
 
 class FilesScreen extends StatefulWidget {
   /// Jump straight to this directory (e.g. the active session's workspace)
@@ -37,7 +44,18 @@ class FilesScreen extends StatefulWidget {
   /// candidate-list sheet.
   final bool pickMode;
 
-  const FilesScreen({super.key, this.initialPath, this.pickMode = false});
+  /// True when this browser already lives inside PaneWorkspaceScreen. File
+  /// previews are opened as sibling tabs without pushing another workspace.
+  final bool workspaceMode;
+  final OwnerRoute? owner;
+
+  const FilesScreen({
+    super.key,
+    this.initialPath,
+    this.pickMode = false,
+    this.workspaceMode = false,
+    this.owner,
+  });
 
   @override
   State<FilesScreen> createState() => _FilesScreenState();
@@ -102,61 +120,68 @@ class _FilesScreenState extends State<FilesScreen>
     super.dispose();
   }
 
-  Future<bool> _confirmLargeEdit(FsEntry entry) async {
-    final size = entry.size;
-    if (size == null || size <= _largeDownloadBytes) return true;
-    final mb = (size / (1024 * 1024)).toStringAsFixed(1);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.filesLargeEditQuestion),
-        content: Text(context.l10n.filesLargeEditDescription(entry.name, mb)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.filesContinueEdit),
-          ),
-        ],
-      ),
-    );
-    return ok == true;
-  }
-
   Future<void> _open(FsEntry entry) async {
     if (entry.isDirectory) {
       await _store.navigateTo(entry.path, promoteRoot: _store.cwd.isEmpty);
       return;
     }
-    if (!await _confirmLargeEdit(entry) || !mounted) return;
+    // Tablet keeps the split-view embedded preview (right pane in
+    // _buildTablet) rather than pushing the full-screen pane workspace.
     final isTablet = MediaQuery.sizeOf(context).width >= 840;
     if (isTablet) {
       _store.selectPreview(entry);
       return;
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FileEditorScreen(
-          key: ValueKey(entry.path),
-          path: entry.path,
-          name: entry.name,
-        ),
-      ),
-    );
-    if (mounted) await _store.refreshCurrent();
+    final connection = context.read<ConnectionStore>();
+    final api = connection.api;
+    final owner =
+        widget.owner ?? OwnerRoute(connectionId: connection.activeConnectionId);
+    try {
+      final preview = context.read<PreviewStore>();
+      await preview.openFile(
+        entry.path,
+        title: entry.name,
+        owner: owner,
+        repositoryRoot: _store.root.isEmpty ? _store.cwd : _store.root,
+        byteSize: entry.size,
+      );
+      if (!mounted || !identical(connection.api, api)) return;
+      await context.read<PaneWorkspaceStore>().openCorePane(
+        kind: WorkspacePaneKind.preview,
+        title: entry.name,
+        owner: owner,
+        // Persist the canonical file path rather than PreviewStore's ephemeral
+        // tab id so a restored workspace can hydrate the document again.
+        referenceId: entry.path,
+        repositoryRoot: _store.root.isEmpty ? _store.cwd : _store.root,
+        byteSize: entry.size,
+      );
+      if (!mounted ||
+          !identical(connection.api, api) ||
+          widget.workspaceMode) {
+        return;
+      }
+      await openWorkspaceScreen(Navigator.of(context));
+      if (mounted) await _store.refreshCurrent();
+    } catch (error) {
+      if (!mounted) return;
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.previewFailed('$error'),
+      );
+    }
   }
 
   Future<void> _revealEntry(FsEntry entry) async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await _store.revealInExplorer(entry);
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.filesRevealFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.filesRevealFailed('$e'),
         );
       }
     }
@@ -166,47 +191,21 @@ class _FilesScreenState extends State<FilesScreen>
     final size = entry.size;
     if (size == null || size <= _largeDownloadBytes) return true;
     final mb = (size / (1024 * 1024)).toStringAsFixed(1);
-    final ok = await showDialog<bool>(
+    return showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.filesLargeDownloadQuestion),
-        content: Text(
-          context.l10n.filesLargeDownloadDescription(entry.name, mb),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.filesContinueDownload),
-          ),
-        ],
-      ),
+      title: context.l10n.filesLargeDownloadQuestion,
+      message: context.l10n.filesLargeDownloadDescription(entry.name, mb),
+      confirmLabel: context.l10n.filesContinueDownload,
     );
-    return ok == true;
   }
 
-  Future<bool> _confirmFolderDownload(FsEntry entry) async {
-    final ok = await showDialog<bool>(
+  Future<bool> _confirmFolderDownload(FsEntry entry) {
+    return showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.filesFolderDownloadQuestion),
-        content: Text(context.l10n.filesFolderDownloadDescription(entry.name)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.filesArchiveDownload),
-          ),
-        ],
-      ),
+      title: context.l10n.filesFolderDownloadQuestion,
+      message: context.l10n.filesFolderDownloadDescription(entry.name),
+      confirmLabel: context.l10n.filesArchiveDownload,
     );
-    return ok == true;
   }
 
   String _downloadFileName(FsEntry entry) =>
@@ -216,7 +215,6 @@ class _FilesScreenState extends State<FilesScreen>
     if (_downloading) return;
     final connection = context.read<ConnectionStore>();
     final api = connectedApiOrNotify(context, connection);
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     if (api == null) return;
     if (entry.isDirectory) {
@@ -226,7 +224,11 @@ class _FilesScreenState extends State<FilesScreen>
     }
     if (!mounted) return;
     if (!identical(connection.api, api)) {
-      messenger.showSnackBar(SnackBar(content: Text(l10n.backendDisconnected)));
+      showHermesToast(
+        context,
+        message: l10n.backendDisconnected,
+        kind: HermesToastKind.error,
+      );
       return;
     }
     final generation = _downloadGeneration;
@@ -251,8 +253,10 @@ class _FilesScreenState extends State<FilesScreen>
       if (mounted &&
           generation == _downloadGeneration &&
           identical(connection.api, api)) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.filesDownloadFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: l10n.filesDownloadFailed('$e'),
         );
       }
     } finally {
@@ -270,15 +274,12 @@ class _FilesScreenState extends State<FilesScreen>
       if (entry != null) entries.add(entry);
     }
     if (entries.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.filesSelectDownloadItem)),
-      );
+      showHermesToast(context, message: context.l10n.filesSelectDownloadItem);
       return;
     }
     if (_downloading) return;
     final connection = context.read<ConnectionStore>();
     final api = connectedApiOrNotify(context, connection);
-    final messenger = ScaffoldMessenger.of(context);
     if (api == null) return;
     final generation = _downloadGeneration;
     setState(() => _downloading = true);
@@ -317,15 +318,12 @@ class _FilesScreenState extends State<FilesScreen>
           !identical(connection.api, api)) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            context.l10n.filesDownloadSummary(
-              okCount,
-              failedCount,
-              skippedCount,
-            ),
-          ),
+      showHermesToast(
+        context,
+        message: context.l10n.filesDownloadSummary(
+          okCount,
+          failedCount,
+          skippedCount,
         ),
       );
     } finally {
@@ -336,7 +334,6 @@ class _FilesScreenState extends State<FilesScreen>
   }
 
   void _showEntryMenu(FsEntry entry) {
-    final messenger = ScaffoldMessenger.of(context);
     showModalBottomSheet(
       context: context,
       shape: RoundedRectangleBorder(
@@ -406,8 +403,9 @@ class _FilesScreenState extends State<FilesScreen>
                 onTap: () {
                   Navigator.of(ctx).pop();
                   _store.setClipboard([entry.path], cut: false);
-                  messenger.showSnackBar(
-                    SnackBar(content: Text(context.l10n.filesCopiedPasteHint)),
+                  showHermesToast(
+                    context,
+                    message: context.l10n.filesCopiedPasteHint,
                   );
                 },
               ),
@@ -418,8 +416,9 @@ class _FilesScreenState extends State<FilesScreen>
                 onTap: () {
                   Navigator.of(ctx).pop();
                   _store.setClipboard([entry.path], cut: true);
-                  messenger.showSnackBar(
-                    SnackBar(content: Text(context.l10n.filesCutPasteHint)),
+                  showHermesToast(
+                    context,
+                    message: context.l10n.filesCutPasteHint,
                   );
                 },
               ),
@@ -493,92 +492,78 @@ class _FilesScreenState extends State<FilesScreen>
       if (entry.writable != null)
         l10n.filesInfoWritable(entry.writable! ? l10n.agentYes : l10n.agentNo),
     ];
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(entry.name, style: Theme.of(ctx).textTheme.titleMedium),
-              const SizedBox(height: 12),
-              for (final row in rows)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: SelectableText(row),
-                ),
-            ],
-          ),
+    showMobileSheet(
+      context,
+      (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(entry.name, style: Theme.of(ctx).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: SelectableText(row),
+              ),
+          ],
         ),
       ),
     );
   }
 
   Future<void> _pasteClipboard() async {
-    final messenger = ScaffoldMessenger.of(context);
     if (!_store.hasClipboard) return;
     final wasCut = _store.clipboardIsCut;
     final count = _store.clipboardPaths?.length ?? 0;
     try {
       await _store.pasteClipboard();
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              wasCut
-                  ? context.l10n.filesMovedCount(count)
-                  : context.l10n.filesCopiedCount(count),
-            ),
-          ),
+        showHermesToast(
+          context,
+          message: wasCut
+              ? context.l10n.filesMovedCount(count)
+              : context.l10n.filesCopiedCount(count),
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.filesPasteFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.filesPasteFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _deleteSelection() async {
-    final messenger = ScaffoldMessenger.of(context);
     final count = _store.selection.length;
     if (count == 0) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.filesConfirmDelete),
-        content: Text(context.l10n.filesDeleteSelectedDescription(count)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: HermesSemantic.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.filesConfirmDelete,
+      message: context.l10n.filesDeleteSelectedDescription(count),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await _store.deleteSelection();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.filesDeleteFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.filesDeleteFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _newFile() async {
-    final messenger = ScaffoldMessenger.of(context);
     if (_store.cwd.isEmpty) return;
     final ctrl = TextEditingController();
     final name = await showDialog<String>(
@@ -608,8 +593,10 @@ class _FilesScreenState extends State<FilesScreen>
       await _store.createFile(name);
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.filesCreateFileFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.filesCreateFileFailed('$e'),
         );
       }
     }
@@ -673,7 +660,6 @@ class _FilesScreenState extends State<FilesScreen>
   }
 
   Future<void> _renameEntry(FsEntry entry) async {
-    final messenger = ScaffoldMessenger.of(context);
     final ctrl = TextEditingController(text: entry.name);
     final newName = await showDialog<String>(
       context: context,
@@ -702,51 +688,40 @@ class _FilesScreenState extends State<FilesScreen>
       await _store.renameEntry(entry, newName);
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.filesRenameFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.filesRenameFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _deleteEntry(FsEntry entry) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.filesConfirmDelete),
-        content: Text(
-          entry.isDirectory
-              ? context.l10n.filesDeleteFolderDescription(entry.name)
-              : context.l10n.filesDeleteFileDescription(entry.name),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: HermesSemantic.red),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.filesConfirmDelete,
+      message: entry.isDirectory
+          ? context.l10n.filesDeleteFolderDescription(entry.name)
+          : context.l10n.filesDeleteFileDescription(entry.name),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await _store.deleteEntry(entry);
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.filesDeleteFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.filesDeleteFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _newFolder() async {
-    final messenger = ScaffoldMessenger.of(context);
     if (_store.cwd.isEmpty) return;
     final ctrl = TextEditingController();
     final name = await showDialog<String>(
@@ -776,8 +751,10 @@ class _FilesScreenState extends State<FilesScreen>
       await _store.createDirectory(name);
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.filesCreateFolderFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.filesCreateFolderFailed('$e'),
         );
       }
     }
@@ -802,164 +779,160 @@ class _FilesScreenState extends State<FilesScreen>
               if (didPop) return;
               if (_listModeCanClimb(store)) store.goUp();
             },
-            child: Scaffold(
-              appBar: AppBar(
-                title: Text(
-                  widget.pickMode
-                      ? context.l10n.filesSelectWorkspaceDirectory
-                      : store.selecting
-                      ? context.l10n.filesSelectedCount(store.selection.length)
-                      : context.l10n.featureFiles,
-                ),
-                actions: [
-                  IconButton(
-                    tooltip: store.treeMode
-                        ? context.l10n.filesSwitchToDirectoryBrowser
-                        : context.l10n.filesSwitchToProjectTree,
-                    onPressed: store.toggleTreeMode,
-                    icon: Icon(
-                      store.treeMode
-                          ? Icons.folder_outlined
-                          : Icons.account_tree_outlined,
-                    ),
+            child: MobilePageScaffold(
+              title: widget.pickMode
+                  ? context.l10n.filesSelectWorkspaceDirectory
+                  : store.selecting
+                  ? context.l10n.filesSelectedCount(store.selection.length)
+                  : context.l10n.featureFiles,
+              actions: [
+                IconButton(
+                  tooltip: store.treeMode
+                      ? context.l10n.filesSwitchToDirectoryBrowser
+                      : context.l10n.filesSwitchToProjectTree,
+                  onPressed: store.toggleTreeMode,
+                  icon: Icon(
+                    store.treeMode
+                        ? Icons.folder_outlined
+                        : Icons.account_tree_outlined,
                   ),
-                  HermesAdaptiveMenuButton<String>(
-                    tooltip: context.l10n.commonMore,
-                    onSelected: (action) {
-                      switch (action) {
-                        case 'newFile':
-                          _showCreateMenu();
-                        case 'refresh':
-                          store.refreshCurrent();
-                        case 'git':
-                          _openGitForCurrentDirectory();
-                        case 'newSession':
-                          _sendSelectionToNewSession();
-                        case 'download':
-                          _downloadSelection();
-                        case 'copy':
-                          store.copySelectionToClipboard(cut: false);
-                        case 'cut':
-                          store.copySelectionToClipboard(cut: true);
-                        case 'paste':
-                          _pasteClipboard();
-                        case 'delete':
-                          _deleteSelection();
-                        case 'clearSelection':
-                          store.clearSelection();
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      if (store.cwd.isNotEmpty)
+                ),
+                HermesAdaptiveMenuButton<String>(
+                  tooltip: context.l10n.commonMore,
+                  onSelected: (action) {
+                    switch (action) {
+                      case 'newFile':
+                        _showCreateMenu();
+                      case 'refresh':
+                        store.refreshCurrent();
+                      case 'git':
+                        _openGitForCurrentDirectory();
+                      case 'newSession':
+                        _sendSelectionToNewSession();
+                      case 'download':
+                        _downloadSelection();
+                      case 'copy':
+                        store.copySelectionToClipboard(cut: false);
+                      case 'cut':
+                        store.copySelectionToClipboard(cut: true);
+                      case 'paste':
+                        _pasteClipboard();
+                      case 'delete':
+                        _deleteSelection();
+                      case 'clearSelection':
+                        store.clearSelection();
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    if (store.cwd.isNotEmpty)
+                      PopupMenuItem(
+                        value: 'newFile',
+                        child: ListTile(
+                          leading: const Icon(Icons.add_circle_outline),
+                          title: Text(context.l10n.commonNew),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    PopupMenuItem(
+                      value: 'refresh',
+                      child: ListTile(
+                        leading: const Icon(Icons.refresh),
+                        title: Text(context.l10n.commonRefresh),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    if (store.cwd.isNotEmpty) ...[
+                      PopupMenuItem(
+                        value: 'git',
+                        child: ListTile(
+                          leading: const Icon(Icons.account_tree_outlined),
+                          title: Text(context.l10n.filesOpenInGit),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'newSession',
+                        child: ListTile(
+                          leading: const Icon(Icons.add_comment_outlined),
+                          title: Text(
+                            store.selection.isEmpty
+                                ? context.l10n.filesNewSessionForDirectory
+                                : context.l10n.filesSendSelectionToNewSession,
+                          ),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
+                    if (store.selecting) ...[
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: 'download',
+                        enabled: !_downloading,
+                        child: ListTile(
+                          leading: const Icon(Icons.download_outlined),
+                          title: Text(
+                            _downloading
+                                ? context.l10n.filesDownloading
+                                : context.l10n.filesDownloadSelected,
+                          ),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      if (store.canCopyEntries)
                         PopupMenuItem(
-                          value: 'newFile',
+                          value: 'copy',
                           child: ListTile(
-                            leading: const Icon(Icons.add_circle_outline),
-                            title: Text(context.l10n.commonNew),
+                            leading: const Icon(Icons.copy_outlined),
+                            title: Text(context.l10n.filesCopySelected),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      if (store.canMoveEntries)
+                        PopupMenuItem(
+                          value: 'cut',
+                          child: ListTile(
+                            leading: const Icon(Icons.content_cut_outlined),
+                            title: Text(context.l10n.filesCutSelected),
                             contentPadding: EdgeInsets.zero,
                           ),
                         ),
                       PopupMenuItem(
-                        value: 'refresh',
+                        value: 'delete',
                         child: ListTile(
-                          leading: const Icon(Icons.refresh),
-                          title: Text(context.l10n.commonRefresh),
+                          leading: const Icon(Icons.delete_outline),
+                          title: Text(context.l10n.filesDeleteSelected),
                           contentPadding: EdgeInsets.zero,
                         ),
                       ),
-                      if (store.cwd.isNotEmpty) ...[
-                        PopupMenuItem(
-                          value: 'git',
-                          child: ListTile(
-                            leading: const Icon(Icons.account_tree_outlined),
-                            title: Text(context.l10n.filesOpenInGit),
-                            contentPadding: EdgeInsets.zero,
-                          ),
+                      PopupMenuItem(
+                        value: 'clearSelection',
+                        child: ListTile(
+                          leading: const Icon(Icons.close),
+                          title: Text(context.l10n.filesClearSelection),
+                          contentPadding: EdgeInsets.zero,
                         ),
-                        PopupMenuItem(
-                          value: 'newSession',
-                          child: ListTile(
-                            leading: const Icon(Icons.add_comment_outlined),
-                            title: Text(
-                              store.selection.isEmpty
-                                  ? context.l10n.filesNewSessionForDirectory
-                                  : context.l10n.filesSendSelectionToNewSession,
-                            ),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ],
-                      if (store.selecting) ...[
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: 'download',
-                          enabled: !_downloading,
-                          child: ListTile(
-                            leading: const Icon(Icons.download_outlined),
-                            title: Text(
-                              _downloading
-                                  ? context.l10n.filesDownloading
-                                  : context.l10n.filesDownloadSelected,
-                            ),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                        if (store.canCopyEntries)
-                          PopupMenuItem(
-                            value: 'copy',
-                            child: ListTile(
-                              leading: const Icon(Icons.copy_outlined),
-                              title: Text(context.l10n.filesCopySelected),
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          ),
-                        if (store.canMoveEntries)
-                          PopupMenuItem(
-                            value: 'cut',
-                            child: ListTile(
-                              leading: const Icon(Icons.content_cut_outlined),
-                              title: Text(context.l10n.filesCutSelected),
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          ),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: ListTile(
-                            leading: const Icon(Icons.delete_outline),
-                            title: Text(context.l10n.filesDeleteSelected),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'clearSelection',
-                          child: ListTile(
-                            leading: const Icon(Icons.close),
-                            title: Text(context.l10n.filesClearSelection),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ],
-                      if (store.canPasteClipboard)
-                        PopupMenuItem(
-                          value: 'paste',
-                          child: ListTile(
-                            leading: Icon(
-                              store.clipboardIsCut
-                                  ? Icons.drive_file_move_outlined
-                                  : Icons.content_paste_outlined,
-                            ),
-                            title: Text(
-                              store.clipboardIsCut
-                                  ? context.l10n.filesMoveHere
-                                  : context.l10n.filesCopyHere,
-                            ),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
+                      ),
                     ],
-                  ),
-                ],
-              ),
+                    if (store.canPasteClipboard)
+                      PopupMenuItem(
+                        value: 'paste',
+                        child: ListTile(
+                          leading: Icon(
+                            store.clipboardIsCut
+                                ? Icons.drive_file_move_outlined
+                                : Icons.content_paste_outlined,
+                          ),
+                          title: Text(
+                            store.clipboardIsCut
+                                ? context.l10n.filesMoveHere
+                                : context.l10n.filesCopyHere,
+                          ),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
               body: isTablet
                   ? _buildTablet(context, store)
                   : _buildPhone(context, store),
@@ -1048,6 +1021,7 @@ class _FilesScreenState extends State<FilesScreen>
                   key: ValueKey(selected.path),
                   path: selected.path,
                   name: selected.name,
+                  profile: widget.owner?.profile,
                   embedded: true,
                 ),
         ),

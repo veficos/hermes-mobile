@@ -1280,6 +1280,21 @@
   "appearanceHighContrastDesc": "Increase text and border contrast",
   "appearanceKeepAwake": "Keep screen awake",
   "appearanceKeepAwakeDesc": "Prevent the screen from sleeping while a chat is open",
+  "embedPrivacySettingsTitle": "External content privacy",
+  "embedPrivacySettingsDescription": "Control whether message previews may contact services such as YouTube or Spotify.",
+  "embedModeAsk": "Ask",
+  "embedModeAlways": "Always",
+  "embedModeOff": "Off",
+  "embedClearAllowed": "Clear allowed services ({count})",
+  "@embedClearAllowed": {"placeholders": {"count": {"type": "int"}}},
+  "richLinkPrivacyTitle": "Load content from {provider}?",
+  "@richLinkPrivacyTitle": {"placeholders": {"provider": {"type": "String"}}},
+  "richLinkPrivacyDescription": "Loading this preview contacts a third party and may reveal your IP address, referrer, or cookies.",
+  "richLinkLoadOnce": "Load once",
+  "richLinkAlwaysAllow": "Always allow {provider}",
+  "@richLinkAlwaysAllow": {"placeholders": {"provider": {"type": "String"}}},
+  "richLinkOpenOnly": "Open link only",
+  "richLinkCloseAnotherPreview": "Close another live preview first.",
   "appearanceModeDark": "Dark",
   "appearanceModeLight": "Light",
   "appearanceModeSystem": "System",
@@ -1595,9 +1610,23 @@
   "chatSaveCurrentInput": "Save current input",
   "chatSavePromptFailed": "Could not save prompt: {error}",
   "chatSavedPrompts": "Saved prompts",
+  "chatRecentInputs": "Recent inputs",
+  "chatPluginPrepareFailed": "A plugin could not prepare the message: {error}",
+  "chatPasteImage": "Paste image",
+  "workspaceLayoutBalanced": "Two panes · 1:1",
+  "workspaceLayoutMainWide": "Main wide · 2:1",
+  "workspaceLayoutToolsWide": "Tools wide · 1:2",
+  "chatClipboardHasNoImage": "The clipboard does not contain an image",
+  "chatClipboardImageFailed": "Could not paste the clipboard image: {error}",
+  "@chatClipboardImageFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@chatPluginPrepareFailed": {"placeholders": {"error": {"type": "String"}}},
   "chatSavedPromptsLoadFailed": "Could not load saved prompts: {error}",
   "chatScrollToBottom": "Scroll to bottom",
   "chatSearchLoadedHistory": "Search loaded history",
+  "chatHistoryLocatorPartial": "Older messages aren't loaded yet — search results may be incomplete",
+  "chatLoadAllHistory": "Load all history",
+  "chatLoadingAllHistory": "Loading all history…",
+  "chatLoadAllHistoryFailed": "Failed to load history: {error}",
   "chatSelectFilesFailed": "Could not select files: {error}",
   "chatSelectFolder": "Select folder",
   "chatSelectFolderFailed": "Could not select folder: {error}",
@@ -2175,6 +2204,11 @@
   "previewOpenConsole": "Open console",
   "previewOpenSessionFailed": "Could not open session: {error}",
   "previewRefresh": "Refresh preview",
+  "previewReloadWithoutCache": "Reload without cache",
+  "previewRetry": "Try again",
+  "previewServerNotFound": "Can't reach this server",
+  "previewAppFailedToBoot": "The app failed to load",
+  "previewRemoteLoopbackHint": "This address points to a machine that doesn't exist on this device — the agent's dev server is probably running on the connected computer, not here. Try opening it there instead.",
   "previewRunJavascript": "Run JavaScript",
   "previewRunScript": "Run script",
   "previewTitle": "Preview",
@@ -2737,6 +2771,7 @@
   "historyNoMatches": "No matching sessions",
   "historyLoadMore": "Load more",
   "historyLoadMoreCount": "Load more ({loaded}/{total})",
+  "historyEndOfList": "— End of history —",
   "historyPinned": "Pinned",
   "historyToday": "Today",
   "historyYesterday": "Yesterday",
@@ -2873,6 +2908,14 @@
   "profilesEditTitle": "Edit profile",
   "profilesProvider": "Provider",
   "profilesModel": "Model",
+  "profilesModelChangeWarningTitle": "Routines pin the old model",
+  "profilesModelChangeWarningBody": "{count} routine(s) on {profile} have their own model override and won't switch automatically. Save anyway?",
+  "@profilesModelChangeWarningBody": {"placeholders":{"count":{"type":"int"},"profile":{"type":"String"}}},
+  "profilesModelChangeViewRoutines": "View routines",
+  "profilesModelChangeSaveAnyway": "Save anyway",
+  "profilesModelChangeCheckFailedTitle": "Couldn't check routines",
+  "profilesModelChangeCheckFailedBody": "We couldn't verify whether any routines on {profile} pin their own model override, so we can't tell if this change affects them. Save anyway?",
+  "@profilesModelChangeCheckFailedBody": {"placeholders":{"profile":{"type":"String"}}},
   "profilesSystemPrompt": "System prompt",
   "profilesDescriptionOptional": "Description (optional)",
   "profilesTools": "Tools",
@@ -2951,6 +2994,7 @@
   "agentGroupMemberCount": "{count}/{max} selected",
   "agentSearchBots": "Search bots",
   "agentSearchNoMatches": "No matching bots",
+  "agentBotUnreachable": "Unreachable",
   "agentGroupSaveFailed": "Could not save group chat: {error}",
   "agentBotThinking": "{name} is thinking",
   "agentBotPaused": "{name} paused",
@@ -3006,6 +3050,38 @@
   "agentBotOperationFailed": "Bot operation failed: {error}",
   "agentDuplicateBot": "Duplicate Bot",
   "agentDeleteBot": "Delete Bot",
+  "agentEditAvatarMenuItem": "Edit avatar",
+  "avatarEditorShapeLabel": "Shape",
+  "avatarEditorColorLabel": "Color",
+  "avatarEditorRandomize": "Randomize",
+  "avatarEditorUploadPhoto": "Upload photo",
+  "avatarEditorRemovePhoto": "Remove photo",
+  "avatarEditorImageTooLarge": "Image too large (max 15MB)",
+  "avatarEditorGenerate": "Generate with AI",
+  "avatarEditorGenerateHint": "Describe your bot's look (optional)",
+  "avatarEditorGenerateFailed": "Generation failed: {error}",
+  "@avatarEditorGenerateFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "avatarEditorChoosePet": "Choose pet",
+  "avatarEditorPetSearchHint": "Search pets",
+  "avatarEditorPetLoadFailed": "Couldn't load the pet gallery",
+  "avatarEditorSaved": "Avatar updated",
+  "avatarEditorSaveFailed": "Failed to update avatar: {error}",
+  "@avatarEditorSaveFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "agentBotMcpMenuItem": "MCP servers",
+  "agentBotModelMenuItem": "Model & tools",
+  "agentHiddenBotsSection": "Hidden",
+  "agentHideBot": "Hide",
+  "agentUnhideBot": "Unhide",
+  "agentPinBot": "Pin",
+  "agentUnpinBot": "Unpin",
   "agentGateway": "Gateway",
   "agentActiveAgents": "Active agents",
   "agentBusy": "Busy",
@@ -3048,6 +3124,11 @@
   "botRoutineNext": "Next {time}",
   "botRoutineLegacyPaused": "Legacy task, paused safely",
   "botRoutineDelete": "Delete routine",
+  "botRoutineEdit": "Edit",
+  "botRoutineEditTitle": "Edit routine · {name}",
+  "botRoutineSaving": "Saving...",
+  "botRoutineSave": "Save changes",
+  "botRoutineLoadFailed": "Could not load routine details: {error}",
   "botRoutineScheduleOnce": "Once · in {duration}",
   "botRoutineScheduleEvery": "Every {duration}",
   "botRoutineScheduleHourly": "At the start of every hour",
@@ -3092,6 +3173,12 @@
   "botRoutineCreate": "Create routine",
   "mcpTitle": "MCP servers",
   "mcpOperationFailed": "Operation failed: {error}",
+  "mcpHealthNeedsAuthTitle": "{name} needs reauthorization",
+  "@mcpHealthNeedsAuthTitle": {"placeholders": {"name": {"type": "String"}}},
+  "mcpHealthNeedsAuthBody": "A background check found this server's connection has expired. Reconnect to keep using it.",
+  "mcpHealthErrorTitle": "{name} is unreachable",
+  "@mcpHealthErrorTitle": {"placeholders": {"name": {"type": "String"}}},
+  "mcpHealthErrorBody": "A background check couldn't reach this server. Open MCP settings to investigate.",
   "mcpPersistenceFailed": "The server did not persist the MCP configuration change.",
   "mcpTestSuccess": "Connected: {tools} tools, {prompts} prompts, {resources} resources",
   "mcpTestConnectionFailed": "Connection failed: {error}",
@@ -3454,7 +3541,7 @@
   "messagingTitle":"Messaging platforms", "messagingRestartGateway":"Restart Gateway", "messagingLoading":"Loading messaging platforms...", "messagingPendingApproval":"Pending approval", "messagingPlatforms":"Platforms", "messagingEmpty":"No messaging platforms", "messagingEmptyDescription":"The server returned no configurable messaging platforms", "messagingAuthorizedUsers":"Authorized users", "messagingConfigure":"Configure", "messagingTest":"Test", "messagingOpenDocs":"Open documentation", "messagingUnknownUser":"Unknown user", "messagingApprove":"Approve",
   "messagingStateDisabled":"Disabled", "messagingStateGatewayStopped":"Configured; Gateway not running", "messagingStateFatal":"Fatal error", "messagingStateStartupFailed":"Startup failed", "messagingStateConfigured":"Configured", "messagingStateNeedsConfig":"Needs configuration", "messagingPlatformConfig":"{name} configuration", "messagingNoEditableConfig":"This platform has no editable settings.", "messagingAdvancedSettings":"Advanced settings", "messagingSetLeaveBlank":"Set; leave blank to keep unchanged", "messagingEnterNewValue":"Enter a new value", "messagingShow":"Show", "messagingClearSavedValue":"Clear saved value",
   "@messagingLoadFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingPlatformEnabled":{"placeholders":{"name":{"type":"String"}}}, "@messagingPlatformDisabled":{"placeholders":{"name":{"type":"String"}}}, "@messagingUpdateFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingTestPassed":{"placeholders":{"name":{"type":"String"}}}, "@messagingTestFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingConfigSaved":{"placeholders":{"name":{"type":"String"}}}, "@messagingSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingApproved":{"placeholders":{"name":{"type":"String"}}}, "@messagingApproveFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingRevokeQuestion":{"placeholders":{"name":{"type":"String"}}}, "@messagingRevokeFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingRestartFailed":{"placeholders":{"error":{"type":"String"}}}, "@messagingPlatformConfig":{"placeholders":{"name":{"type":"String"}}},
-  "fileTreeListView":"List view", "fileTreeTreeView":"Tree view", "fileTreeAttachToChat":"Attach to chat",
+  "fileTreeListView":"List view", "fileTreeTreeView":"Tree view", "fileTreeAttachToChat":"Attach to chat", "sessionActionMarkUnread":"Mark as unread", "sessionMarkedUnread":"Marked as unread",
   "projectAddFolder":"Add folder", "projectFolderPath":"Folder path", "projectFolderLabelOptional":"Label (optional)",
   "projectCreate":"Create project", "projectLoading":"Loading projects...", "projectEmpty":"No projects yet", "projectEmptyDescription":"Create a project to organize working directories and sessions", "projectWorkspace":"Project workspace",
   "projectEditAppearance":"Edit appearance", "projectColor":"Color", "projectIcon":"Icon", "projectAppearanceSaveFailed":"Could not save appearance: {error}", "projectRename":"Rename", "projectRenameTitle":"Rename project", "projectName":"Project name", "projectRenameFailed":"Could not rename project: {error}",
@@ -3473,8 +3560,8 @@
   "@starmapLoadDetailFailed":{"placeholders":{"error":{"type":"String"}}}, "@starmapOpenNode":{"placeholders":{"name":{"type":"String"}}}, "@starmapSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@starmapDeleteDescription":{"placeholders":{"name":{"type":"String"}}}, "@starmapDeleteFailed":{"placeholders":{"error":{"type":"String"}}}, "@starmapUseCount":{"placeholders":{"count":{"type":"int"}}},
   "configCenterLoadFailed":"Could not load capability data: {error}", "configCenterKnowledgeTab":"Knowledge", "configCenterTitle":"Capability management", "configCenterLoadErrorTitle":"Could not load capabilities", "configCenterMcpEmptyDescription":"Add an MCP server to connect external tools and data.", "configCenterUrlOrCommand":"URL or command", "configCenterTransport":"Transport", "configCenterLocalStdio":"Stdio (local process)", "configCenterMutationFailed":"Could not apply change: {error}", "configCenterKnowledgeTitle":"Knowledge sources", "configCenterKnowledgeEmpty":"No knowledge sources", "configCenterKnowledgeEmptyDescription":"Add a file, folder, or URL as a knowledge source.", "configCenterDatabase":"Database", "configCenterKnowledgeMeta":"{type} · {count} chunks · {status}", "configCenterIndexed":"Indexed", "configCenterNotIndexed":"Not indexed", "configCenterSkillsEmpty":"No skills", "configCenterSkillsEmptyDescription":"The server did not return any skills for this profile.", "configCenterConfiguration":"Configuration", "configCenterInstallPlugin":"Install plugin", "configCenterPluginsEmpty":"No plugins", "configCenterPluginsEmptyDescription":"Install a plugin to extend Hermes.", "configCenterInstall":"Install", "configCenterPluginUrl":"Plugin URL or identifier",
   "@configCenterLoadFailed":{"placeholders":{"error":{"type":"String"}}}, "@configCenterMutationFailed":{"placeholders":{"error":{"type":"String"}}}, "@configCenterKnowledgeMeta":{"placeholders":{"type":{"type":"String"},"count":{"type":"int"},"status":{"type":"String"}}},
-  "fileEditorDiscardQuestion":"Discard unsaved changes?", "fileEditorDiscardDescription":"Going back will discard your current edits.", "fileEditorKeepEditing":"Keep editing", "fileEditorDiscard":"Discard", "fileEditorDisk":"On disk", "fileEditorEditor":"Editor", "fileEditorConflictDescription":"This file changed on disk. Overwrite it, reload the disk version, or cancel.", "fileEditorConflictTitle":"File changed externally", "fileEditorOverwriteSave":"Overwrite and save", "fileEditorReloaded":"Reloaded the disk version", "fileEditorSaved":"Saved", "fileEditorSaveFailed":"Could not save file: {error}", "fileEditorSaving":"Saving...", "fileEditorUnsavedTitle":"{name}, unsaved changes", "fileEditorEmpty":"(Empty)", "fileEditorBinaryTitle":"This file can't be edited as text", "fileEditorBinaryDescription":"It looks like a binary file (image, archive, or executable). Opening it in the text editor would corrupt it on save, so editing is disabled — download it to your device instead.",
-  "@fileEditorSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@fileEditorUnsavedTitle":{"placeholders":{"name":{"type":"String"}}},
+  "fileEditorDiscardQuestion":"Discard unsaved changes?", "fileEditorDiscardDescription":"Going back will discard your current edits.", "fileEditorKeepEditing":"Keep editing", "fileEditorDiscard":"Discard", "fileEditorDisk":"On disk", "fileEditorEditor":"Editor", "fileEditorConflictDescription":"This file changed on disk. Overwrite it, reload the disk version, or cancel.", "fileEditorConflictTitle":"File changed externally", "fileEditorOverwriteSave":"Overwrite and save", "fileEditorReloaded":"Reloaded the disk version", "fileEditorSaved":"Saved", "fileEditorSaveFailed":"Could not save file: {error}", "fileEditorSaving":"Saving...", "fileEditorUnsavedTitle":"{name}, unsaved changes", "fileEditorEmpty":"(Empty)", "fileEditorBinaryTitle":"This file can't be edited as text", "fileEditorBinaryDescription":"It looks like a binary file (image, archive, or executable). Opening it in the text editor would corrupt it on save, so editing is disabled — download it to your device instead.", "fileEditorFindReplaceTitle":"Find and Replace", "fileEditorFindLabel":"Find", "fileEditorReplaceWithLabel":"Replace with", "fileEditorReplaceAll":"Replace all", "fileEditorNoMatches":"No matches found", "fileEditorReplacedCount":"Replaced {count} occurrences", "fileEditorNoChanges":"No changes",
+  "@fileEditorSaveFailed":{"placeholders":{"error":{"type":"String"}}}, "@fileEditorUnsavedTitle":{"placeholders":{"name":{"type":"String"}}}, "@fileEditorReplacedCount":{"placeholders":{"count":{"type":"int"}}},
   "kanbanTaskCreatedLinkFailed":"Task created, but the parent link could not be added: {error}", "@kanbanTaskCreatedLinkFailed":{"placeholders":{"error":{"type":"String"}}},
   "kanbanTaskContentSection": "Task details",
   "kanbanTaskArrangementSection": "Assignment",
@@ -3541,5 +3628,113 @@
   "sshCommandTimedOut":"SSH command timed out", "sshRemoteHomeUnsafe":"The remote Hermes home is unsafe", "sshOwnershipVerificationFailed":"Could not verify remote Hermes process ownership", "sshOwnershipProbeFailed":"Remote ownership probe failed ({status})", "sshHelperInvalidJson":"The remote helper returned invalid JSON", "sshWindowsOwnershipVerificationFailed":"Could not verify remote Windows process ownership", "sshRemotePathInvalid":"The remote Hermes path must be absolute or start with ~/", "sshExecutableNotFound":"The configured Hermes executable was not found on the remote host", "sshHermesNotInstalled":"Hermes is not installed on the remote host", "sshBootstrapFlagsUnsupported":"Remote Hermes must support secure SSH ownership bootstrap flags", "sshWindowsIdentityInvalid":"The remote Windows backend returned an invalid identity", "sshWindowsExitedBeforeReady":"The remote Windows backend exited before becoming ready", "sshWindowsOwnershipProofFailed":"Remote Windows ownership proof failed", "sshProcessIdMissing":"Remote Hermes did not return a process ID", "sshExitedBeforeReady":"Remote Hermes exited before becoming ready", "sshOwnershipProofFailed":"Remote Hermes ownership proof failed",
   "@sshOwnershipProbeFailed":{"placeholders":{"status":{"type":"String"}}},
   "errorSessionBranchIdMissing":"Hermes did not return a durable branched session ID", "errorDuplicateImportFailed":"Hermes did not import the duplicated session", "errorSessionNoTitleableMessages":"The session has no messages that can be used to generate a title", "errorTitleGeneratorEmpty":"The title generator returned an empty title", "errorProjectIdRequired":"A project is required", "errorProjectWorkingFolderMissing":"The target project has no working folder", "errorDownloadFailed":"Download failed", "errorMessagingPlatformNotFound":"Messaging platform not found", "errorBotGroupSessionStartFailed":"{name}'s group session did not start", "@errorBotGroupSessionStartFailed":{"placeholders":{"name":{"type":"String"}}}, "sshRemoteCommandFailed":"Remote command failed ({code})", "sshHostAndUserRequired":"SSH host and user are required", "sshPortInvalid":"SSH port must be between 1 and 65535", "sshHostKeyChanged":"The SSH host key for {host} changed. Expected {expected}; received {received}", "sshProfileInvalid":"The remote profile name is invalid", "@sshRemoteCommandFailed":{"placeholders":{"code":{"type":"String"}}}, "@sshHostKeyChanged":{"placeholders":{"host":{"type":"String"},"expected":{"type":"String"},"received":{"type":"String"}}},
-  "errorDirectGatewayFeatureUnavailable":"This feature requires Hermes Mobile Server and is unavailable on a direct Gateway connection", "errorOperationFailedWithDetail":"Operation failed: {error}", "@errorOperationFailedWithDetail":{"placeholders":{"error":{"type":"String"}}}, "gatewayOauthRejected":"Gateway rejected sign-in: {error}", "gatewayOauthCodeMissing":"The Gateway callback is missing the authorization code", "gatewayOauthStateMismatch":"The Gateway callback state did not match. Sign-in was cancelled for security.", "gatewayOauthRefreshTokenMissing":"The Gateway session expired and has no refresh token", "gatewayOauthTicketMissing":"The Gateway did not return a WebSocket ticket", "gatewayOauthAccessTokenMissing":"The Gateway token response did not include an access token", "gatewayOauthTimedOut":"Gateway sign-in timed out", "gatewayOauthNativeUnsupported":"Native Gateway OAuth is not supported on this platform", "@gatewayOauthRejected":{"placeholders":{"error":{"type":"String"}}}, "updateManifestInvalid":"The update manifest is invalid", "sshRemotePlatformUnsupported":"The remote platform is unsupported: {error}", "sshWebUnsupported":"Native SSH connections are not supported on web", "@sshRemotePlatformUnsupported":{"placeholders":{"error":{"type":"String"}}}, "filesDownloadPlatformUnsupported":"Local file download is unavailable on this platform", "sessionExportPlatformUnsupported":"Local file export is unavailable on this platform", "errorPluginCanonicalKeyRequired":"This plugin needs a canonical key before it can be changed", "connectGatewayToken":"Gateway token", "modelMoaTitle":"Mixture of Agents", "insightsTokens":"Tokens", "messageWebFallback":"Web", "mcpLogsSourceStdio":"stdio", "mcpLogsSourceAgent":"Agent", "projectPrimaryFolder":"Main", "botGroupNameRequired":"Enter a group name", "botGroupMembersMinimum":"A group needs at least two bots", "botGroupMembersRange":"A group needs 2–{max} bots", "botGroupMembersMaximum":"A group supports at most {max} bots", "botGroupMemberUnavailable":"No group member is available", "botProfileNameUnavailable":"No free profile name is available", "botDefaultProfileDeleteForbidden":"The default profile cannot be deleted", "botConnectionUnavailable":"The bot connection is unavailable", "botTurnFailed":"The bot turn failed", "@botGroupMembersRange":{"placeholders":{"max":{"type":"int"}}}, "@botGroupMembersMaximum":{"placeholders":{"max":{"type":"int"}}}, "mcpInvalidJsonSyntax":"The JSON syntax is invalid", "mcpJsonObjectRequired":"The top-level JSON value must be an object", "voiceWakeMicStreamEnded":"The wake word microphone stream ended unexpectedly", "httpStatusError":"The server returned HTTP {statusCode}", "@httpStatusError":{"placeholders":{"statusCode":{"type":"int"}}}
+  "errorDirectGatewayFeatureUnavailable":"This feature requires Hermes Mobile Server and is unavailable on a direct Gateway connection", "errorOperationFailedWithDetail":"Operation failed: {error}", "@errorOperationFailedWithDetail":{"placeholders":{"error":{"type":"String"}}}, "gatewayOauthRejected":"Gateway rejected sign-in: {error}", "gatewayOauthCodeMissing":"The Gateway callback is missing the authorization code", "gatewayOauthStateMismatch":"The Gateway callback state did not match. Sign-in was cancelled for security.", "gatewayOauthRefreshTokenMissing":"The Gateway session expired and has no refresh token", "gatewayOauthTicketMissing":"The Gateway did not return a WebSocket ticket", "gatewayOauthAccessTokenMissing":"The Gateway token response did not include an access token", "gatewayOauthTimedOut":"Gateway sign-in timed out", "gatewayOauthNativeUnsupported":"Native Gateway OAuth is not supported on this platform", "@gatewayOauthRejected":{"placeholders":{"error":{"type":"String"}}}, "updateManifestInvalid":"The update manifest is invalid", "sshRemotePlatformUnsupported":"The remote platform is unsupported: {error}", "sshWebUnsupported":"Native SSH connections are not supported on web", "@sshRemotePlatformUnsupported":{"placeholders":{"error":{"type":"String"}}}, "filesDownloadPlatformUnsupported":"Local file download is unavailable on this platform", "sessionExportPlatformUnsupported":"Local file export is unavailable on this platform", "errorPluginCanonicalKeyRequired":"This plugin needs a canonical key before it can be changed", "connectGatewayToken":"Gateway token", "modelMoaTitle":"Mixture of Agents", "insightsTokens":"Tokens", "messageWebFallback":"Web", "mcpLogsSourceStdio":"stdio", "mcpLogsSourceAgent":"Agent", "projectPrimaryFolder":"Main", "botGroupNameRequired":"Enter a group name", "botGroupMembersMinimum":"A group needs at least two bots", "botGroupMembersRange":"A group needs 2–{max} bots", "botGroupMembersMaximum":"A group supports at most {max} bots", "botGroupMemberUnavailable":"No group member is available", "botProfileNameUnavailable":"No free profile name is available", "botProfileNameInvalid":"Names must start with a letter or number and use only lowercase letters, numbers, - or _", "botCreateTitle":"Create bot", "botCreateNameHelper":"Lowercase letters, numbers, - or _", "botCreateNameTaken":"A bot named \"{name}\" already exists", "@botCreateNameTaken":{"placeholders":{"name":{"type":"String"}}},"botCreateRoleLabel":"Role (optional)", "botCreateMissionLabel":"Mission (optional)", "botCreateCloneFromLabel":"Clone from", "botCreateCustomSoulLabel":"Write a custom SOUL", "botCreateCustomSoulHint":"Describe this bot's identity in its own words", "botCreateSuccess":"Bot created", "botDefaultProfileDeleteForbidden":"The default profile cannot be deleted", "botConnectionUnavailable":"The bot connection is unavailable", "botTurnFailed":"The bot turn failed", "@botGroupMembersRange":{"placeholders":{"max":{"type":"int"}}}, "@botGroupMembersMaximum":{"placeholders":{"max":{"type":"int"}}}, "mcpInvalidJsonSyntax":"The JSON syntax is invalid", "mcpJsonObjectRequired":"The top-level JSON value must be an object", "voiceWakeMicStreamEnded":"The wake word microphone stream ended unexpectedly", "httpStatusError":"The server returned HTTP {statusCode}", "@httpStatusError":{"placeholders":{"statusCode":{"type":"int"}}}
+  ,"voiceMuteMicrophone": "Mute microphone",
+  "voiceMicrophoneMuted": "Microphone muted",
+  "voiceRecordingDroppedMuted": "Recording stopped and discarded because the microphone was muted",
+  "keybindsTitle": "Keyboard shortcuts",
+  "settingsKeybindsDesc": "Customize shortcuts for a physical keyboard",
+  "keybindActionChatUndo": "Undo",
+  "keybindActionChatFind": "Find",
+  "keybindChange": "Change",
+  "keybindReset": "Reset",
+  "keybindResetAll": "Reset all",
+  "keybindCustomizedBadge": "Customized",
+  "keybindCapturePrompt": "Press a key combination…",
+  "keybindCaptureModifierRequired": "Include a modifier key (Ctrl, ⌘, Alt, or Shift)",
+  "keybindConflictWith": "Already used by \"{action}\"",
+  "@keybindConflictWith": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "keybindNoHardwareKeyboardHint": "Shortcuts apply when this device has a physical keyboard attached",
+  "previewSource": "Source",
+  "previewRendered": "Rendered",
+  "previewDiff": "Changes",
+  "previewLargeFileTitle": "Large file preview is paused",
+  "previewLargeFileDescription": "Loading this file may use substantial memory. Open it only when you need the full preview.",
+  "pluginComposerBlocked": "A plugin blocked this message.",
+  "pluginComposerInvalidResponse": "A composer plugin returned an invalid response",
+  "pluginComposerTextTooLarge": "The message produced by a composer plugin is too large",
+  "workspaceRenameTab": "Rename tab",
+  "workspaceCloseOtherTabs": "Close other tabs",
+  "workspaceCloseTabsToRight": "Close tabs to the right",
+  "chatReadingAttachments": "Reading attachment…",
+  "chatSendingEllipsis": "Sending…",
+  "chatUploadingPercent": "Uploading {percent}%",
+  "@chatUploadingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "chatUploadingEllipsis": "Uploading…",
+  "chatPreparingAttachments": "Preparing attachment…",
+  "chatUploadingProgress": "Uploading {current}/{total}",
+  "@chatUploadingProgress": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "chatUploadingProgressPercent": "Uploading · {percent}%",
+  "@chatUploadingProgressPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "chatSendCancelledRetry": "Send cancelled, you can retry",
+  "chatSuggestionUseSkill": "Use skill: {id}",
+  "@chatSuggestionUseSkill": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "chatSuggestionConfigureGithub": "Configure GitHub capability",
+  "chatSuggestionConnectMcp": "Connect {id} MCP",
+  "@chatSuggestionConnectMcp": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "chatSuggestionRepairMcp": "Repair {id} MCP connection",
+  "@chatSuggestionRepairMcp": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "chatSuggestionTriggerReason": "Because the draft or current session mentioned {trigger}",
+  "@chatSuggestionTriggerReason": {
+    "placeholders": {
+      "trigger": {
+        "type": "String"
+      }
+    }
+  },
+  "chatInvalidPublicUrl": "Enter a valid public http/https address",
+  "messageBubbleAttachmentSendFailed": "Attachment failed to send, tap to retry",
+  "messageBubbleAttachmentUploading": "Uploading attachment {percent}",
+  "@messageBubbleAttachmentUploading": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  }
 }

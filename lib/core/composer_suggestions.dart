@@ -1,11 +1,7 @@
 /// Desktop parity: `store/suggestion-providers/*` — passive draft analysis
 /// that surfaces a dismissible suggestion instead of requiring the user to
-/// know a slash command exists. Desktop renders these as hover pills above
-/// the composer; only the cron/recurrence provider is ported here (the
-/// others — GitHub auth nudge, MCP directory match, tool-failure repair,
-/// installed-skill match — depend on live catalogs or auth probes that would
-/// need real backend wiring to be trustworthy rather than noisy, so they're
-/// left for a follow-up rather than shipped half-verified).
+/// know a slash command exists. The pure high-precision matchers live here so
+/// both the stateful provider bus and unit tests share exactly one contract.
 ///
 /// Mobile adaptation: a debounced regex check runs on composer text changes
 /// (chat_screen.dart's existing 250ms `_onComposerChanged` debounce) and, on
@@ -71,3 +67,120 @@ bool shouldSuggestCron(
 
 /// Prefix inserted into the draft when the cron suggestion is accepted.
 const cronSuggestionPrefix = 'Schedule this as a recurring task: ';
+
+String _escapeRegex(String value) =>
+    value.replaceAllMapped(RegExp(r'[.*+?^${}()|[\]\\]'), (m) => '\\${m[0]}');
+
+/// Skill names match completed whole words. Hyphens/underscores may be typed
+/// as spaces (`pr-ready` -> `pr ready`), but `read` never matches `already`.
+bool composerSkillHit(String text, String name) {
+  if (name.length < 4 || text.trimLeft().startsWith('/')) return false;
+  final flexible = name
+      .toLowerCase()
+      .split(RegExp(r'[-_]'))
+      .map(_escapeRegex)
+      .join(r'[-_ ]');
+  final pattern = RegExp(
+    r'(?<![\p{L}\p{N}])'
+    '$flexible'
+    r'(?![\p{L}\p{N}-])',
+    caseSensitive: false,
+    unicode: true,
+  );
+  return pattern.allMatches(text).any((m) => m.end < text.length);
+}
+
+bool composerSkillCollidesWithWorkspace(String name, String cwd) {
+  if (name.isEmpty || cwd.isEmpty) return false;
+  final escaped = _escapeRegex(name.toLowerCase());
+  return RegExp(
+    r'(?<![\p{L}\p{N}])'
+    '$escaped'
+    r'(?![\p{L}\p{N}])',
+    unicode: true,
+  ).hasMatch(cwd.toLowerCase());
+}
+
+final _githubHost = RegExp(
+  r'''https?://([^\s/,)\]}"'<>]*@)?([\w.-]*\.)?github\.com(?=[/\s:,)\]}"'<>]|$)''',
+  caseSensitive: false,
+);
+final _githubWord = RegExp(
+  r'(?<![\p{L}\p{N}])github(?![\p{L}\p{N}])',
+  caseSensitive: false,
+  unicode: true,
+);
+
+bool composerGithubHit(String text) {
+  if (text.trimLeft().startsWith('/')) return false;
+  if (_githubHost.hasMatch(text)) return true;
+  final withoutUrls = text.replaceAll(RegExp(r'https?://[^\s]+'), ' ');
+  return _githubWord
+      .allMatches(withoutUrls)
+      .any((m) => m.end < withoutUrls.length);
+}
+
+List<({String server, String trigger})> composerMcpMatches(
+  String text,
+  Iterable<Map<String, dynamic>> catalog, {
+  int limit = 2,
+}) {
+  final lower = text.toLowerCase();
+  final urlHosts =
+      RegExp(r'''https?://([^\s/,)\]}"'<>]+)''', caseSensitive: false)
+          .allMatches(text)
+          .map(
+            (m) => m
+                .group(1)!
+                .split('@')
+                .last
+                .replaceFirst(RegExp(r':\d+$'), '')
+                .toLowerCase(),
+          )
+          .toList();
+  final result = <({String server, String trigger})>[];
+  for (final entry in catalog) {
+    final name = entry['name']?.toString() ?? '';
+    final suggest = entry['suggest'];
+    if (name.isEmpty || suggest is! Map) continue;
+    final hosts = (suggest['hosts'] as List? ?? const []).map(
+      (e) => e.toString().toLowerCase(),
+    );
+    final keywords = (suggest['keywords'] as List? ?? const []).map(
+      (e) => e.toString().toLowerCase(),
+    );
+    String? trigger;
+    for (final suffix in hosts) {
+      if (urlHosts.any((host) => host == suffix || host.endsWith('.$suffix'))) {
+        trigger = suffix;
+        break;
+      }
+    }
+    if (trigger == null) {
+      for (final keyword in keywords) {
+        final escaped = _escapeRegex(keyword);
+        final re = RegExp(
+          r'(?<![\p{L}\p{N}])'
+          '$escaped'
+          r'(?![\p{L}\p{N}])',
+          unicode: true,
+        );
+        if (re.allMatches(lower).any((m) => m.end < lower.length)) {
+          trigger = keyword;
+          break;
+        }
+      }
+    }
+    if (trigger != null) result.add((server: name, trigger: trigger));
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+final composerMcpRepairError = RegExp(
+  r'\b(401|403|unauthorized|forbidden|token .*(expired|invalid)|oauth|authenticat\w+ (failed|required|expired)|connection (refused|closed|reset|failed)|server (unavailable|disconnected|not connected)|ECONNREFUSED)\b',
+  caseSensitive: false,
+);
+
+String? composerMcpServerFromTool(String toolName) =>
+    RegExp(r'^mcp__([^_]+(?:_[^_]+)*?)__').firstMatch(toolName)?.group(1);

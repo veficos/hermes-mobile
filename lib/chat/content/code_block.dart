@@ -92,7 +92,17 @@ class HermesArtifactCard extends StatelessWidget {
     int total = 0;
     try {
       final chat = context.read<ChatStore>();
-      version = chat.registerArtifact(language, code);
+      version = chat.registerArtifact(
+        _isMermaid ? 'diagram' : (_isWeb ? 'web' : 'code'),
+        code,
+        language: language,
+        title: _title(context),
+        // Plain code blocks bake a live line count into their display title,
+        // which changes on every streaming tick. Feed a stable identity (no
+        // line count) so the slug doesn't churn — matching how the
+        // mermaid/web titles above are already constant per language.
+        identity: (_isMermaid || _isWeb) ? null : '',
+      );
       total = chat.artifactVersionCount(language);
     } catch (_) {
       // No ChatStore (test harness) — version badge simply hidden.

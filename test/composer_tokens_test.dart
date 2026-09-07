@@ -32,4 +32,16 @@ void main() {
     expect(token?.kind, ComposerTokenKind.folder);
     expect(token?.value, '@folder:lib/widgets/');
   });
+
+  test('tool, git and simple context references are atomic tokens', () {
+    final tokens = parseComposerTokens(
+      'use @tool:web then @git:status with @diff and @staged',
+    );
+    expect(tokens.where((token) => token.atomic).map((token) => token.kind), [
+      ComposerTokenKind.tool,
+      ComposerTokenKind.git,
+      ComposerTokenKind.diff,
+      ComposerTokenKind.staged,
+    ]);
+  });
 }

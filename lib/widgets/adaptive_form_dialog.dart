@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/hermes_tokens.dart';
+import 'mobile/mobile_page_scaffold.dart';
 
 /// Keyboard-safe editing surface: a scrollable sheet on phones, dialog on
 /// larger windows. Confirmation alerts should continue to use AlertDialog.
@@ -11,12 +12,12 @@ Future<T?> showAdaptiveFormDialog<T>({
   required List<Widget> actions,
 }) {
   if (MediaQuery.sizeOf(context).width < HermesBreakpoints.phone) {
-    return showModalBottomSheet<T>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) => AnimatedPadding(
+    return showMobileSheet<T>(
+      context,
+      // The form keeps its own AnimatedPadding for keyboard avoidance so the
+      // inset animates instead of jumping.
+      avoidViewInsets: false,
+      (sheetContext) => AnimatedPadding(
         key: const ValueKey('adaptive-phone-form-sheet'),
         duration: HermesMotion.fast,
         padding: EdgeInsets.only(

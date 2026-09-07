@@ -4,12 +4,13 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api_client.dart';
 import '../connections/connection_registry.dart';
+import '../voice_recorder.dart';
+import '../voice_player.dart';
 import '../../l10n/runtime_l10n.dart';
 import 'connection_store.dart';
 import 'wake_word_store.dart';
@@ -46,11 +47,14 @@ enum VoiceConversationPhase { idle, listening, transcribing, waiting, speaking }
 
 class VoiceStore extends ChangeNotifier {
   final ConnectionStore connection;
-  final AudioPlayer _player = AudioPlayer();
+  late final VoicePlayerAdapter _player;
   bool _recording = false;
   bool _speaking = false;
   bool _continuousConversation = false;
   bool _autoSpeak = false;
+  bool _muted = false;
+  bool _bargeMonitoring = false;
+  double _inputLevel = 0;
   VoiceConversationPhase _phase = VoiceConversationPhase.idle;
   String? _voiceError;
   int _generation = 0;
@@ -65,10 +69,18 @@ class VoiceStore extends ChangeNotifier {
   Completer<void>? _streamingSpeechDone;
   Completer<void>? _playbackGate;
   DateTime? _playbackInterruptedAt;
-  final voice_record.VoiceRecorder _recorder = voice_record.VoiceRecorder();
+  late final VoiceRecorderAdapter _recorder;
   WakeWordStore? _wakeWord;
+  Completer<void>? _bargeCancel;
+  Completer<void>? _bargeStopped;
 
-  VoiceStore({required this.connection}) {
+  VoiceStore({
+    required this.connection,
+    VoiceRecorderAdapter? recorder,
+    VoicePlayerAdapter? player,
+  }) {
+    _recorder = recorder ?? voice_record.VoiceRecorder();
+    _player = player ?? DeviceVoicePlayer();
     connection.addListener(_onConnectionChanged);
     _connectionId = connection.activeConnectionId;
     _connectionApi = connection.api;
@@ -91,6 +103,9 @@ class VoiceStore extends ChangeNotifier {
   bool get speaking => _speaking;
   bool get continuousConversation => _continuousConversation;
   bool get autoSpeak => _autoSpeak;
+  bool get muted => _muted;
+  bool get bargeMonitoring => _bargeMonitoring;
+  double get inputLevel => _inputLevel;
   VoiceConversationPhase get phase => _phase;
   String? get voiceError => _voiceError;
   int get generation => _generation;
@@ -128,6 +143,32 @@ class VoiceStore extends ChangeNotifier {
 
   Future<void> toggleAutoSpeak() => setAutoSpeak(!_autoSpeak);
 
+  void toggleMuted() {
+    _muted = !_muted;
+    if (_muted) {
+      if (_recording) {
+        // Bump the generation so any in-flight recordAndTranscribe/
+        // _finishRecording call recognizes it was interrupted by muting
+        // instead of silently discarding the utterance (see _finishRecording
+        // and recordAndTranscribe's `operation != _generation` guards).
+        _generation++;
+        _voiceError = runtimeL10n.voiceRecordingDroppedMuted;
+        unawaited(_recorder.stop());
+      }
+      if (_bargeMonitoring) unawaited(stopBargeInMonitoring());
+    }
+    _recording = false;
+    _inputLevel = 0;
+    notifyListeners();
+  }
+
+  void _reportInputLevel(double level) {
+    final next = level.clamp(0.0, 1.0);
+    if ((next - _inputLevel).abs() < 0.04) return;
+    _inputLevel = next;
+    notifyListeners();
+  }
+
   Future<void> bindConversationScope(String? scope) async {
     if (scope == _conversationScope) return;
     _conversationScope = scope;
@@ -135,6 +176,7 @@ class VoiceStore extends ChangeNotifier {
     _continuousConversation = false;
     _phase = VoiceConversationPhase.idle;
     await _player.stop();
+    if (_bargeMonitoring) await stopBargeInMonitoring();
     if (_recording) await _recorder.stop();
     _recording = false;
     _speaking = false;
@@ -148,6 +190,7 @@ class VoiceStore extends ChangeNotifier {
     _generation++;
     if (!_continuousConversation) {
       unawaited(_player.stop());
+      if (_bargeMonitoring) unawaited(stopBargeInMonitoring());
       _resetStreamingSpeech();
       _speaking = false;
       _phase = VoiceConversationPhase.idle;
@@ -159,6 +202,23 @@ class VoiceStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> endConversation() async {
+    _generation++;
+    _continuousConversation = false;
+    final gate = _playbackGate;
+    if (gate != null && !gate.isCompleted) gate.complete();
+    await _player.stop();
+    if (_bargeMonitoring) await stopBargeInMonitoring();
+    if (_recording) await _recorder.stop();
+    _recording = false;
+    _speaking = false;
+    _phase = VoiceConversationPhase.idle;
+    _resetStreamingSpeech();
+    _voiceError = null;
+    unawaited(_wakeWord?.resumeAfterVoice());
+    notifyListeners();
+  }
+
   void markWaiting() {
     if (!_continuousConversation) return;
     _phase = VoiceConversationPhase.waiting;
@@ -167,6 +227,7 @@ class VoiceStore extends ChangeNotifier {
 
   /// Record one utterance and return the transcribed text, or null.
   Future<String?> recordAndTranscribe() async {
+    if (_muted) return null;
     final operation = _generation;
     final api = connection.api;
     if (api == null) {
@@ -174,7 +235,7 @@ class VoiceStore extends ChangeNotifier {
       notifyListeners();
       return null;
     }
-    if (!voice_record.isSupported) {
+    if (!_recorder.supported) {
       _voiceError = runtimeL10n.voiceRecordingUnsupported;
       notifyListeners();
       return null;
@@ -204,7 +265,7 @@ class VoiceStore extends ChangeNotifier {
       _voiceError = null;
       notifyListeners();
       if (_continuousConversation) {
-        await _recorder.waitForSpeechEnd();
+        await _recorder.waitForSpeechEnd(onLevel: _reportInputLevel);
         if (operation != _generation) return null;
         return await _finishRecording(api);
       }
@@ -221,6 +282,116 @@ class VoiceStore extends ChangeNotifier {
     }
   }
 
+  /// Monitor the microphone while a voice turn is generating/playing. The
+  /// recorder starts immediately, preserving pre-roll; once sustained speech
+  /// is detected [onDetected] cuts the active response and the captured
+  /// utterance is transcribed for immediate resubmission.
+  ///
+  /// [stopBargeInMonitoring] cancels an in-progress call and releases the
+  /// microphone promptly instead of waiting for the internal (up to 60s)
+  /// speech-detection loops below to notice a state change on their own.
+  Future<String?> monitorBargeIn(FutureOr<void> Function() onDetected) async {
+    if (!_continuousConversation ||
+        _muted ||
+        _bargeMonitoring ||
+        !_recorder.supported) {
+      return null;
+    }
+    final api = connection.api;
+    if (api == null) return null;
+    _bargeMonitoring = true;
+    final cancelled = Completer<void>();
+    _bargeCancel = cancelled;
+    final stopped = Completer<void>();
+    _bargeStopped = stopped;
+    try {
+      return await Future.any<String?>([
+        _runBargeInMonitor(api, onDetected, cancelled),
+        cancelled.future.then((_) => null),
+      ]);
+    } finally {
+      _bargeMonitoring = false;
+      _bargeCancel = null;
+      _inputLevel = 0;
+      if (identical(_bargeStopped, stopped)) _bargeStopped = null;
+      if (!stopped.isCompleted) stopped.complete();
+      notifyListeners();
+    }
+  }
+
+  Future<String?> _runBargeInMonitor(
+    dynamic api,
+    FutureOr<void> Function() onDetected,
+    Completer<void> cancelled,
+  ) async {
+    final scope = _conversationScope;
+    try {
+      if (!await _recorder.start()) return null;
+      final heard = await _raceCancelled(
+        _recorder.waitForSpeechStart(onLevel: _reportInputLevel),
+        cancelled,
+        fallback: false,
+      );
+      if (!heard ||
+          scope != _conversationScope ||
+          _muted ||
+          cancelled.isCompleted) {
+        await _recorder.stop();
+        return null;
+      }
+      await onDetected();
+      await _raceCancelled(
+        _recorder.waitForSpeechEnd(onLevel: _reportInputLevel),
+        cancelled,
+        fallback: null,
+      );
+      final bytes = await _recorder.stop();
+      if (bytes == null ||
+          bytes.isEmpty ||
+          scope != _conversationScope ||
+          !_continuousConversation ||
+          _muted ||
+          cancelled.isCompleted) {
+        return null;
+      }
+      final mime = _recorder.mimeType;
+      final text = await api.audioTranscribe(
+        'data:$mime;base64,${base64Encode(bytes)}',
+        mime,
+      );
+      if (cancelled.isCompleted) return null;
+      if (isStopPhrase(text)) {
+        toggleContinuousConversation();
+        return null;
+      }
+      return text.trim().isEmpty ? null : text.trim();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Race [future] against [cancel]; if cancellation wins, [fallback] is
+  /// returned instead (the still-pending [future] is left to resolve in the
+  /// background and is ignored).
+  Future<T> _raceCancelled<T>(
+    Future<T> future,
+    Completer<void> cancel, {
+    required T fallback,
+  }) {
+    return Future.any<T>([future, cancel.future.then((_) => fallback)]);
+  }
+
+  /// Cancel any in-progress [monitorBargeIn] call and stop the microphone
+  /// immediately. Safe to call even when no monitoring is active.
+  Future<void> stopBargeInMonitoring() async {
+    if (!_bargeMonitoring) return;
+    final cancel = _bargeCancel;
+    if (cancel != null && !cancel.isCompleted) cancel.complete();
+    await _recorder.stop();
+    final stopped = _bargeStopped;
+    if (stopped != null) await stopped.future;
+  }
+
   Future<String?> _finishRecording(dynamic api) async {
     final operation = _generation;
     try {
@@ -229,7 +400,7 @@ class VoiceStore extends ChangeNotifier {
       _recording = false;
       notifyListeners();
       if (bytes == null || bytes.isEmpty) return null;
-      final mime = voice_record.mimeType;
+      final mime = _recorder.mimeType;
       final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
       final text = await api.audioTranscribe(dataUrl, mime);
       if (operation != _generation) return null;
@@ -238,7 +409,7 @@ class VoiceStore extends ChangeNotifier {
         notifyListeners();
         return null;
       }
-      if (_isStopPhrase(text)) {
+      if (isStopPhrase(text)) {
         _continuousConversation = false;
         _phase = VoiceConversationPhase.idle;
         notifyListeners();
@@ -281,12 +452,10 @@ class VoiceStore extends ChangeNotifier {
       await _player.stop();
       final completed = Completer<void>();
       late final StreamSubscription<void> subscription;
-      subscription = _player.onPlayerComplete.listen((_) {
+      subscription = _player.onComplete.listen((_) {
         if (!completed.isCompleted) completed.complete();
       });
-      await _player.play(
-        BytesSource(Uint8List.fromList(bytes), mimeType: 'audio/mpeg'),
-      );
+      await _player.play(Uint8List.fromList(bytes));
       await completed.future.timeout(const Duration(minutes: 5));
       await subscription.cancel();
     } catch (e) {
@@ -406,13 +575,11 @@ class VoiceStore extends ChangeNotifier {
     final completed = Completer<void>();
     _playbackGate = completed;
     late final StreamSubscription<void> subscription;
-    subscription = _player.onPlayerComplete.listen((_) {
+    subscription = _player.onComplete.listen((_) {
       if (!completed.isCompleted) completed.complete();
     });
     try {
-      await _player.play(
-        BytesSource(Uint8List.fromList(bytes), mimeType: 'audio/mpeg'),
-      );
+      await _player.play(Uint8List.fromList(bytes));
       await completed.future.timeout(const Duration(minutes: 2));
     } finally {
       await subscription.cancel();
@@ -458,7 +625,7 @@ class VoiceStore extends ChangeNotifier {
         DateTime.now().difference(at) < const Duration(minutes: 2);
   }
 
-  static bool _isStopPhrase(String text) {
+  static bool isStopPhrase(String text) {
     final normalized = text.trim().toLowerCase().replaceAll(
       RegExp(r'[，。！？,.!?\s]'),
       '',
@@ -468,6 +635,8 @@ class VoiceStore extends ChangeNotifier {
       '结束对话',
       'stopconversation',
       'stoplistening',
+      'stop',
+      '停止',
     }.contains(normalized);
   }
 
@@ -482,7 +651,7 @@ class VoiceStore extends ChangeNotifier {
     connection.removeListener(_onConnectionChanged);
     _wakeWord?.removeListener(_onWakeChanged);
     _recorder.dispose();
-    _player.dispose();
+    unawaited(_player.dispose());
     super.dispose();
   }
 }

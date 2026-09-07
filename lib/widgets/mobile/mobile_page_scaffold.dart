@@ -62,14 +62,36 @@ class MobilePageScaffold extends StatelessWidget {
   }
 }
 
-Future<T?> showMobileSheet<T>(BuildContext context, WidgetBuilder builder) {
+/// Shared mobile bottom sheet: drag handle, SafeArea and keyboard avoidance
+/// are on by default and can be turned off per call site.
+///
+/// - [showDragHandle]: Material drag handle at the top (default true).
+/// - [useSafeArea]: keep the sheet inside system safe areas (default true).
+/// - [avoidViewInsets]: pad the bottom by the keyboard height (default true);
+///   turn off for sheets without text input.
+/// - [isScrollControlled]: let the sheet grow past half screen (default
+///   true); pass false for compact, intrinsic-height pickers.
+/// - [backgroundColor]: sheet background; pass `Colors.transparent` when the
+///   content draws its own surface (e.g. floating-card action sheets).
+Future<T?> showMobileSheet<T>(
+  BuildContext context,
+  WidgetBuilder builder, {
+  bool showDragHandle = true,
+  bool useSafeArea = true,
+  bool avoidViewInsets = true,
+  bool isScrollControlled = true,
+  Color? backgroundColor,
+}) {
   return showModalBottomSheet<T>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
+    isScrollControlled: isScrollControlled,
+    useSafeArea: useSafeArea,
+    showDragHandle: showDragHandle,
+    backgroundColor: backgroundColor,
     builder: (ctx) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+      padding: avoidViewInsets
+          ? EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom)
+          : EdgeInsets.zero,
       child: builder(ctx),
     ),
   );

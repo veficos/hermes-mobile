@@ -32,6 +32,9 @@ import '../core/stores/pet_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 enum _Phase { intro, generating, ready, hatching, preview }
 
@@ -242,10 +245,10 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.petGenerateReferenceFailed('$error')),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.petGenerateReferenceFailed('$error'),
         );
       }
     }
@@ -254,9 +257,7 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
   Future<void> _generate() async {
     final prompt = _promptCtrl.text.trim();
     if (prompt.isEmpty && _referenceDataUri == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.petGenerateInputRequired)),
-      );
+      showHermesToast(context, message: context.l10n.petGenerateInputRequired);
       return;
     }
     final api = _store.activeApi;
@@ -330,8 +331,10 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
         await _store.cancelJob(token, expectedApi: api);
       } catch (error) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.petCleanupFailed('$error'))),
+          showHermesErrorSnackBar(
+            context,
+            error,
+            fallback: context.l10n.petCleanupFailed('$error'),
           );
         }
       }
@@ -396,8 +399,10 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
     } catch (e) {
       if (!mounted || generation != _operationGeneration) return;
       setState(() => _phase = _Phase.ready);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.petGenerateHatchFailed('$e'))),
+      showHermesErrorSnackBar(
+        context,
+        e,
+        fallback: context.l10n.petGenerateHatchFailed('$e'),
       );
     }
   }
@@ -424,8 +429,10 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.petGenerateAdoptFailed('$e'))),
+      showHermesErrorSnackBar(
+        context,
+        e,
+        fallback: context.l10n.petGenerateAdoptFailed('$e'),
       );
     }
   }
@@ -444,8 +451,10 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
         await _store.remove(slug, expectedApi: api);
       } catch (error) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.petCleanupFailed('$error'))),
+          showHermesErrorSnackBar(
+            context,
+            error,
+            fallback: context.l10n.petCleanupFailed('$error'),
           );
         }
       }
@@ -454,17 +463,15 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.petGenerateTitle)),
-      body: SafeArea(
-        child: switch (_phase) {
-          _Phase.intro => _buildIntro(context),
-          _Phase.generating => _buildGenerating(context),
-          _Phase.ready => _buildReady(context),
-          _Phase.hatching => _buildHatching(context),
-          _Phase.preview => _buildPreview(context),
-        },
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.petGenerateTitle,
+      body: switch (_phase) {
+        _Phase.intro => _buildIntro(context),
+        _Phase.generating => _buildGenerating(context),
+        _Phase.ready => _buildReady(context),
+        _Phase.hatching => _buildHatching(context),
+        _Phase.preview => _buildPreview(context),
+      },
     );
   }
 
@@ -543,6 +550,8 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
+            dropdownColor: hermesDropdownColor(context),
+            borderRadius: hermesDropdownBorderRadius,
             initialValue: _selectedProvider,
             decoration: const InputDecoration(border: OutlineInputBorder()),
             items: [
@@ -740,12 +749,10 @@ class _PetGenerateScreenState extends State<PetGenerateScreen>
                     await _store.cancelJob(token);
                   } catch (error) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            context.l10n.petCleanupFailed('$error'),
-                          ),
-                        ),
+                      showHermesErrorSnackBar(
+                        context,
+                        error,
+                        fallback: context.l10n.petCleanupFailed('$error'),
                       );
                     }
                   }

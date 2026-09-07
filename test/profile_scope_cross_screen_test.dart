@@ -7,6 +7,7 @@ import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/profile_scope_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/config_center_screen.dart';
 import 'package:hermes_mobile/screens/mcp_screen.dart';
 import 'package:provider/provider.dart';
@@ -93,6 +94,9 @@ void main() {
             ChangeNotifierProvider.value(value: scopeStore),
           ],
           child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Navigator(
               onGenerateRoute: (settings) =>
                   MaterialPageRoute(builder: (_) => const McpScreen()),
@@ -124,7 +128,12 @@ void main() {
             ChangeNotifierProvider.value(value: sessions),
             ChangeNotifierProvider.value(value: scopeStore),
           ],
-          child: const MaterialApp(home: ConfigCenterScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ConfigCenterScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();

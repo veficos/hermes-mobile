@@ -75,7 +75,7 @@ void main() {
         'dQw4w9WgXcQ',
       );
       expect(
-        detectRichLink('https://youtube.com/shorts/abc123xyz')?.kind,
+        detectRichLink('https://youtube.com/shorts/abc123xyz01')?.kind,
         RichLinkKind.youtube,
       );
     });

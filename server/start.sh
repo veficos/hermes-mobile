@@ -16,5 +16,6 @@ fi
 export HERMES_MOBILE_HOST="${HERMES_MOBILE_HOST:-0.0.0.0}"
 export HERMES_MOBILE_PORT="${HERMES_MOBILE_PORT:-8877}"
 export HERMES_DASHBOARD_PUBLIC_URL=""
+export HERMES_MOBILE_WORKSPACE="/app/workspace"
 echo "正在启动 Hermes Mobile Server：${HERMES_MOBILE_HOST}:${HERMES_MOBILE_PORT}"
 exec uv run --locked hermes-mobile-server "$@"

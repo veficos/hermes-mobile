@@ -38,7 +38,11 @@ class _FakeApi extends ApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> fsWriteText(String path, String content) async {
+  Future<Map<String, dynamic>> fsWriteText(
+    String path,
+    String content, {
+    String? profile,
+  }) async {
     return {'ok': true};
   }
 

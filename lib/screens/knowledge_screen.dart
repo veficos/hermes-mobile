@@ -13,8 +13,10 @@ import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 class KnowledgeScreen extends StatefulWidget {
   const KnowledgeScreen({super.key});
@@ -121,16 +123,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
       if (!mounted || !identical(api, connection.api)) return;
       _detailOpen = true;
       try {
-        await showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
+        await showMobileSheet<void>(
+          context,
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(HermesRadius.sheet),
-            ),
-          ),
-          builder: (_) => _NodeDetailSheet(
+          (_) => _NodeDetailSheet(
             node: node,
             detail: detail,
             ownerApi: api,
@@ -150,17 +146,15 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.configCenterKnowledgeTab),
-        actions: [
-          IconButton(
-            tooltip: l10n.commonRefresh,
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: l10n.configCenterKnowledgeTab,
+      actions: [
+        IconButton(
+          tooltip: l10n.commonRefresh,
+          onPressed: _busy ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: _buildBody(context),
     );
   }
@@ -430,9 +424,11 @@ class _NodeDetailSheetState extends State<_NodeDetailSheet> {
       requireActiveApi(context, connection, api);
       if (mounted) {
         setState(() => _editing = false);
-        ScaffoldMessenger.of(
+        showHermesToast(
           context,
-        ).showSnackBar(SnackBar(content: Text(l10n.knowledgeSaved)));
+          message: l10n.knowledgeSaved,
+          kind: HermesToastKind.success,
+        );
         widget.onChanged();
       }
     } catch (e) {
@@ -449,32 +445,16 @@ class _NodeDetailSheetState extends State<_NodeDetailSheet> {
     final connection = context.read<ConnectionStore>();
     final api = widget.ownerApi;
     final l10n = context.l10n;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.knowledgeDeleteQuestion),
-        content: Text(
-          l10n.knowledgeDeleteDescription(
-            (widget.node['label'] ?? '').toString(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.commonDelete),
-          ),
-        ],
+      title: l10n.knowledgeDeleteQuestion,
+      message: l10n.knowledgeDeleteDescription(
+        (widget.node['label'] ?? '').toString(),
       ),
+      confirmLabel: l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     setState(() => _saving = true);
     try {
       requireActiveApi(context, connection, api);
@@ -483,9 +463,11 @@ class _NodeDetailSheetState extends State<_NodeDetailSheet> {
       requireActiveApi(context, connection, api);
       if (mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(
+        showHermesToast(
           context,
-        ).showSnackBar(SnackBar(content: Text(l10n.knowledgeDeleted)));
+          message: l10n.knowledgeDeleted,
+          kind: HermesToastKind.success,
+        );
         widget.onChanged();
       }
     } catch (e) {

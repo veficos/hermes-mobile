@@ -17,6 +17,8 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart' show HermesSectionHeader;
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/session/project_dialog.dart';
 import 'chat_screen.dart';
 
@@ -166,13 +168,9 @@ class _NewSessionScreenState extends State<NewSessionScreen>
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
     var path = _cwdCtrl.text.trim().isEmpty ? '' : _cwdCtrl.text.trim();
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(HermesRadius.sheet),
-      ),
-      builder: (ctx) => StatefulBuilder(
+    await showMobileSheet<void>(
+      context,
+      (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => DraggableScrollableSheet(
           expand: false,
           initialChildSize: 0.7,
@@ -182,8 +180,10 @@ class _NewSessionScreenState extends State<NewSessionScreen>
             ownerApi: api,
             onPick: (picked) {
               if (!identical(connection.api, api)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(context.l10n.backendDisconnected)),
+                showHermesToast(
+                  context,
+                  message: context.l10n.backendDisconnected,
+                  kind: HermesToastKind.error,
                 );
                 return;
               }
@@ -369,6 +369,8 @@ class _NewSessionScreenState extends State<NewSessionScreen>
         const SizedBox(height: HermesSpacing.lg),
         HermesSectionHeader(title: l10n.configVoiceModel),
         DropdownButtonFormField<String>(
+          dropdownColor: hermesDropdownColor(context),
+          borderRadius: hermesDropdownBorderRadius,
           initialValue: _selectedModel,
           hint: Text(l10n.newSessionUseCurrentModel),
           items: [

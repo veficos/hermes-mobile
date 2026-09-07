@@ -26,6 +26,11 @@ bool parseHermesBool(dynamic value) {
   return false;
 }
 
+bool? parseHermesBoolOrNull(dynamic value) {
+  if (value == null) return null;
+  return parseHermesBool(value);
+}
+
 class ServerStatus {
   final String? hermesVersion;
   final String? runtimeKind;
@@ -140,7 +145,8 @@ class SessionGroupNode {
       label: (json['label'] ?? '').toString(),
       path: json['path']?.toString(),
       sessions: ((json['sessions'] as List?) ?? const [])
-          .map((e) => SessionRow.fromJson((e as Map).cast<String, dynamic>()))
+          .whereType<Map>()
+          .map((e) => SessionRow.fromJson(e.cast<String, dynamic>()))
           .toList(),
       isMain: json['isMain'] == true,
       isKanban: json['isKanban'] == true,
@@ -171,10 +177,8 @@ class WorkspaceTreeNode {
       label: (json['label'] ?? '').toString(),
       path: json['path']?.toString(),
       groups: ((json['groups'] as List?) ?? const [])
-          .map(
-            (e) =>
-                SessionGroupNode.fromJson((e as Map).cast<String, dynamic>()),
-          )
+          .whereType<Map>()
+          .map((e) => SessionGroupNode.fromJson(e.cast<String, dynamic>()))
           .toList(),
       sessionCount: (json['sessionCount'] as num?)?.toInt() ?? 0,
     );
@@ -230,13 +234,12 @@ class ProjectTreeNode {
       totalTokens: (json['totalTokens'] as num?)?.toInt() ?? 0,
       totalCostUsd: (json['totalCostUsd'] as num?)?.toDouble() ?? 0,
       repos: ((json['repos'] as List?) ?? const [])
-          .map(
-            (e) =>
-                WorkspaceTreeNode.fromJson((e as Map).cast<String, dynamic>()),
-          )
+          .whereType<Map>()
+          .map((e) => WorkspaceTreeNode.fromJson(e.cast<String, dynamic>()))
           .toList(),
       previewSessions: ((json['previewSessions'] as List?) ?? const [])
-          .map((e) => SessionRow.fromJson((e as Map).cast<String, dynamic>()))
+          .whereType<Map>()
+          .map((e) => SessionRow.fromJson(e.cast<String, dynamic>()))
           .toList(),
     );
   }
@@ -257,9 +260,8 @@ class ProjectTreePayload {
   factory ProjectTreePayload.fromJson(Map<String, dynamic> json) {
     return ProjectTreePayload(
       projects: ((json['projects'] as List?) ?? const [])
-          .map(
-            (e) => ProjectTreeNode.fromJson((e as Map).cast<String, dynamic>()),
-          )
+          .whereType<Map>()
+          .map((e) => ProjectTreeNode.fromJson(e.cast<String, dynamic>()))
           .toList(),
       activeId: json['active_id']?.toString(),
       scopedSessionIds: ((json['scoped_session_ids'] as List?) ?? const [])
@@ -1005,11 +1007,17 @@ class ModelInfo {
       isCurrent: json['is_current'] == true,
       models:
           (json['models'] as List?)?.map((e) => e.toString()).toList() ?? [],
-      pricing: (json['pricing'] as Map? ?? const {}).map(
-        (key, value) => MapEntry(
-          '$key',
-          ModelPricing.fromJson((value as Map).cast<String, dynamic>()),
-        ),
+      pricing: Map.fromEntries(
+        (json['pricing'] as Map? ?? const {}).entries
+            .where((entry) => entry.value is Map)
+            .map(
+              (entry) => MapEntry(
+                '${entry.key}',
+                ModelPricing.fromJson(
+                  (entry.value as Map).cast<String, dynamic>(),
+                ),
+              ),
+            ),
       ),
     );
   }
@@ -1377,13 +1385,15 @@ class SkillHubSources {
       SkillHubSources(
         sources:
             (json['sources'] as List?)
-                ?.map((e) => SkillHubSource.fromJson(e as Map<String, dynamic>))
+                ?.whereType<Map>()
+                .map((e) => SkillHubSource.fromJson(e.cast<String, dynamic>()))
                 .toList() ??
             const [],
         indexAvailable: json['index_available'] == true,
         featured:
             (json['featured'] as List?)
-                ?.map((e) => SkillHubResult.fromJson(e as Map<String, dynamic>))
+                ?.whereType<Map>()
+                .map((e) => SkillHubResult.fromJson(e.cast<String, dynamic>()))
                 .toList() ??
             const [],
         installed: _parseInstalledMap(json['installed']),
@@ -1408,7 +1418,8 @@ class SkillHubSearchResult {
       SkillHubSearchResult(
         results:
             (json['results'] as List?)
-                ?.map((e) => SkillHubResult.fromJson(e as Map<String, dynamic>))
+                ?.whereType<Map>()
+                .map((e) => SkillHubResult.fromJson(e.cast<String, dynamic>()))
                 .toList() ??
             const [],
         sourceCounts:
@@ -1528,9 +1539,9 @@ class SkillHubScanResult {
         policyReason: json['policy_reason']?.toString(),
         findings:
             (json['findings'] as List?)
-                ?.map(
-                  (e) =>
-                      SkillHubScanFinding.fromJson(e as Map<String, dynamic>),
+                ?.whereType<Map>()
+                .map(
+                  (e) => SkillHubScanFinding.fromJson(e.cast<String, dynamic>()),
                 )
                 .toList() ??
             const [],
@@ -1768,8 +1779,8 @@ class FsEntry {
       modifiedAt: parseHermesTime(
         json['modified_at'] ?? json['mtime'] ?? json['modified'],
       ),
-      readable: json['readable'] as bool?,
-      writable: json['writable'] as bool?,
+      readable: parseHermesBoolOrNull(json['readable']),
+      writable: parseHermesBoolOrNull(json['writable']),
     );
   }
 }
@@ -1940,10 +1951,8 @@ class SubagentNode {
       currentTool: json['current_tool']?.toString(),
       children:
           (json['children'] as List?)
-              ?.map(
-                (e) =>
-                    SubagentNode.fromJson((e as Map).cast<String, dynamic>()),
-              )
+              ?.whereType<Map>()
+              .map((e) => SubagentNode.fromJson(e.cast<String, dynamic>()))
               .toList() ??
           const [],
       costUsd: (json['cost_usd'] as num?)?.toDouble(),
@@ -2108,7 +2117,7 @@ class BillingUsage {
     available: json['available'] == true,
     status: json['status']?.toString(),
     planName: json['plan_name']?.toString(),
-    renewsAt: DateTime.tryParse(json['renews_at']?.toString() ?? ''),
+    renewsAt: parseHermesTime(json['renews_at']),
     renewsDisplay: json['renews_display']?.toString(),
     subscriptionRemainingDisplay: json['subscription_remaining_display']
         ?.toString(),
@@ -2471,7 +2480,7 @@ class SubscriptionState {
                   json['status'] ??
                   (canceledAtPeriodEnd ? 'canceling' : 'active'))
               .toString(),
-      currentPeriodEnd: DateTime.tryParse(end?.toString() ?? ''),
+      currentPeriodEnd: parseHermesTime(end),
       canceledAtPeriodEnd: canceledAtPeriodEnd,
       loggedIn: json['logged_in'] != false,
       isAdmin: json['is_admin'] == true,
@@ -2486,12 +2495,10 @@ class SubscriptionState {
       creditsRemaining: _asDouble(current['credits_remaining']),
       pendingDowngradeTierName: current['pending_downgrade_tier_name']
           ?.toString(),
-      pendingDowngradeAt: DateTime.tryParse(
-        current['pending_downgrade_at']?.toString() ?? '',
-      ),
+      pendingDowngradeAt: parseHermesTime(current['pending_downgrade_at']),
       pendingDowngradeDisplay: current['pending_downgrade_display']?.toString(),
-      cancellationEffectiveAt: DateTime.tryParse(
-        current['cancellation_effective_at']?.toString() ?? '',
+      cancellationEffectiveAt: parseHermesTime(
+        current['cancellation_effective_at'],
       ),
       cancellationEffectiveDisplay: current['cancellation_effective_display']
           ?.toString(),
@@ -2860,17 +2867,17 @@ class Webhook {
       enabled: json['enabled'] != false,
       secret: json['secret']?.toString(),
       createdAt: createdAt is String ? DateTime.tryParse(createdAt) : null,
-      description: (json['description'] as String?)?.trim().isNotEmpty == true
-          ? (json['description'] as String).trim()
+      description: json['description']?.toString().trim().isNotEmpty == true
+          ? json['description'].toString().trim()
           : null,
-      prompt: (json['prompt'] as String?)?.trim().isNotEmpty == true
-          ? (json['prompt'] as String).trim()
+      prompt: json['prompt']?.toString().trim().isNotEmpty == true
+          ? json['prompt'].toString().trim()
           : null,
       skills:
           (json['skills'] as List?)?.map((e) => e.toString()).toList() ??
           const [],
-      deliver: (json['deliver'] as String?)?.trim().isNotEmpty == true
-          ? (json['deliver'] as String).trim()
+      deliver: json['deliver']?.toString().trim().isNotEmpty == true
+          ? json['deliver'].toString().trim()
           : null,
     );
   }
@@ -2992,30 +2999,26 @@ class StarmapGraph {
     return StarmapGraph(
       nodes:
           (json['nodes'] as List?)
-              ?.map(
-                (e) => StarmapNode.fromJson((e as Map).cast<String, dynamic>()),
-              )
+              ?.whereType<Map>()
+              .map((e) => StarmapNode.fromJson(e.cast<String, dynamic>()))
               .toList() ??
           const [],
       edges:
           (json['edges'] as List?)
-              ?.map(
-                (e) => StarmapEdge.fromJson((e as Map).cast<String, dynamic>()),
-              )
+              ?.whereType<Map>()
+              .map((e) => StarmapEdge.fromJson(e.cast<String, dynamic>()))
               .toList() ??
           const [],
       clusters:
           (json['clusters'] as List?)
-              ?.map((e) => (e as Map).cast<String, dynamic>())
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
               .toList() ??
           const [],
       memory:
           (json['memory'] as List?)
-              ?.map(
-                (e) => StarmapMemoryCard.fromJson(
-                  (e as Map).cast<String, dynamic>(),
-                ),
-              )
+              ?.whereType<Map>()
+              .map((e) => StarmapMemoryCard.fromJson(e.cast<String, dynamic>()))
               .toList() ??
           const [],
       stats: (json['stats'] as Map?)?.cast<String, dynamic>() ?? const {},
@@ -3136,28 +3139,21 @@ class AnalyticsUsage {
     return AnalyticsUsage(
       daily:
           (json['daily'] as List?)
-              ?.map(
-                (e) => AnalyticsDailyEntry.fromJson(
-                  (e as Map).cast<String, dynamic>(),
-                ),
-              )
+              ?.whereType<Map>()
+              .map((e) => AnalyticsDailyEntry.fromJson(e.cast<String, dynamic>()))
               .toList() ??
           const [],
       byModel:
           (json['by_model'] as List?)
-              ?.map(
-                (e) => AnalyticsModelEntry.fromJson(
-                  (e as Map).cast<String, dynamic>(),
-                ),
-              )
+              ?.whereType<Map>()
+              .map((e) => AnalyticsModelEntry.fromJson(e.cast<String, dynamic>()))
               .toList() ??
           const [],
       topSkills:
           (skills?['top_skills'] as List?)
-              ?.map(
-                (e) => AnalyticsSkillEntry.fromJson(
-                  (e as Map).cast<String, dynamic>(),
-                ),
+              ?.whereType<Map>()
+              .map(
+                (e) => AnalyticsSkillEntry.fromJson(e.cast<String, dynamic>()),
               )
               .toList() ??
           const [],
@@ -3371,18 +3367,34 @@ class PathSuggestion {
   final String path;
   final String name;
   final bool isDirectory;
+  final String? text;
+  final String? display;
+  final String? meta;
 
   PathSuggestion({
     required this.path,
     required this.name,
     this.isDirectory = false,
+    this.text,
+    this.display,
+    this.meta,
   });
+
+  String get referenceText => text?.isNotEmpty == true ? text! : path;
+  String get displayName => display?.isNotEmpty == true
+      ? display!
+      : name.isNotEmpty
+      ? name
+      : path;
 
   factory PathSuggestion.fromJson(Map<String, dynamic> json) {
     return PathSuggestion(
       path: (json['path'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
       isDirectory: json['is_directory'] == true || json['isDirectory'] == true,
+      text: json['text']?.toString(),
+      display: json['display']?.toString(),
+      meta: json['meta']?.toString(),
     );
   }
 }

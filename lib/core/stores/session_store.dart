@@ -17,6 +17,7 @@ import '../../l10n/runtime_l10n.dart';
 
 import '../api_client.dart';
 import '../chat_message.dart';
+import '../client_capabilities.dart';
 import '../connections/connection_registry.dart';
 import '../gateway.dart';
 import '../models.dart';
@@ -354,6 +355,7 @@ class QueuedAttachment {
     this.localPath,
     this.url,
     this.snippetText,
+    this.detail,
   });
 
   final String kind;
@@ -363,6 +365,7 @@ class QueuedAttachment {
   final String? localPath;
   final String? url;
   final String? snippetText;
+  final Map<String, dynamic>? detail;
 
   Map<String, dynamic> toJson() => {
     'kind': kind,
@@ -372,6 +375,7 @@ class QueuedAttachment {
     if (localPath != null) 'local_path': localPath,
     if (url != null) 'url': url,
     if (snippetText != null) 'snippet_text': snippetText,
+    if (detail != null) 'detail': detail,
   };
 
   factory QueuedAttachment.fromJson(Map<String, dynamic> json) =>
@@ -383,6 +387,9 @@ class QueuedAttachment {
         localPath: json['local_path']?.toString(),
         url: json['url']?.toString(),
         snippetText: json['snippet_text']?.toString(),
+        detail: json['detail'] is Map
+            ? (json['detail'] as Map).cast<String, dynamic>()
+            : null,
       );
 }
 
@@ -456,6 +463,19 @@ class QueuedMessage {
   );
 }
 
+@immutable
+class SessionQueueSummary {
+  const SessionQueueSummary({
+    required this.count,
+    required this.parked,
+    required this.deliveryUncertain,
+  });
+
+  final int count;
+  final bool parked;
+  final bool deliveryUncertain;
+}
+
 class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   final ConnectionStore connection;
   final ChatStore chat;
@@ -463,6 +483,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   final ComposerStatusStore? composerStatus;
   final bool persistLastSession;
   final CacheStore _cache = CacheStore();
+  bool _watchMode = false;
+  bool get watchMode => _watchMode;
 
   SessionStore({
     required this.connection,
@@ -618,7 +640,11 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       final id = _durableId;
       if (id == null) return;
       if (_readOnly) {
-        unawaited(openReadOnlySession(id, profile: _profile));
+        unawaited(
+          _watchMode
+              ? openWatchSession(id, profile: _profile)
+              : openReadOnlySession(id, profile: _profile),
+        );
       } else {
         unawaited(resumeSession(id, profile: _profile));
       }
@@ -715,6 +741,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     );
     connection.sessionOwners.remember(_owner!);
     requests.rotateDurableScope(previous, next, owner.route);
+    // The send-queue bucket is keyed by durable id too — fold it over so a
+    // queue drain in flight under the old id keeps tracking this session.
+    _migrateQueueKey(_queueKey(owner.route, previous), _queueKey(owner.route, next));
     if (persistLastSession) unawaited(_saveLastSession(next));
   }
 
@@ -1313,22 +1342,102 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   static const _queueStorageKey = 'hm_session_queues_v2';
   final Map<String, List<QueuedMessage>> _sendQueues = {};
   final Set<String> _parkedQueueKeys = <String>{};
-  bool _drainingQueue = false;
-  String? _dispatchingQueueId;
+  final Set<String> _drainingQueueKeys = <String>{};
+  final Set<String> _redrainQueueKeys = <String>{};
+  final Map<String, String> _dispatchingQueueIds = <String, String>{};
+  // Maps a queue key that no longer exists to the key it was renamed to (see
+  // `_migrateQueueKey`). A brand new session (`openNewSession`) starts with
+  // no durable id, so a message queued (and possibly already draining)
+  // before `session.create` resolves lands in the placeholder,
+  // not-yet-identified-session bucket shared by every other unidentified
+  // session on that route. The same thing happens on a durable-id rotation.
+  // Once the real id is known this table lets an in-flight `_drainQueue`
+  // loop that captured the old key follow the rename and keep treating it
+  // as the SAME conversation, rather than mistaking the identity change for
+  // the user having switched to a different session (which would silently
+  // reroute the send through the background `session.resume` +
+  // `prompt.submit` path).
+  final Map<String, String> _queueKeyRenames = {};
+  int _queueMutationRevision = 0;
 
-  String get _currentQueueKey =>
-      _owner?.route.key ??
-      '${connection.activeConnectionId.value}\u0000${_activeProfile ?? ''}';
+  /// Follow `_queueKeyRenames` until reaching a key that hasn't been renamed.
+  String _resolveQueueKey(String key) {
+    var resolved = key;
+    final seen = <String>{};
+    while (_queueKeyRenames.containsKey(resolved) && seen.add(resolved)) {
+      resolved = _queueKeyRenames[resolved]!;
+    }
+    return resolved;
+  }
+
+  /// Move a queue (and its bookkeeping) from [oldKey] to [newKey] when the
+  /// same conversation's identity changes — a new session's durable id
+  /// resolving, or a durable-id rotation. Records the rename so any
+  /// `_drainQueue` loop already running against [oldKey] picks up the new
+  /// key on its next iteration instead of stranding the queue or treating
+  /// the rename as a switch to a different session.
+  void _migrateQueueKey(String oldKey, String newKey) {
+    if (oldKey == newKey) return;
+    _queueKeyRenames[oldKey] = newKey;
+    final oldQueue = _sendQueues.remove(oldKey);
+    if (oldQueue != null && oldQueue.isNotEmpty) {
+      final existing = _sendQueues[newKey];
+      if (existing == null) {
+        _sendQueues[newKey] = oldQueue;
+      } else if (!identical(existing, oldQueue)) {
+        existing.addAll(oldQueue);
+      }
+    }
+    if (_parkedQueueKeys.remove(oldKey)) _parkedQueueKeys.add(newKey);
+    final dispatchingId = _dispatchingQueueIds.remove(oldKey);
+    if (dispatchingId != null) _dispatchingQueueIds[newKey] = dispatchingId;
+    if (_drainingQueueKeys.remove(oldKey)) _drainingQueueKeys.add(newKey);
+    if (_redrainQueueKeys.remove(oldKey)) _redrainQueueKeys.add(newKey);
+    _queueMutationRevision++;
+  }
+
+  String _queueKey(OwnerRoute route, String? durableId) =>
+      '${route.key}\u0000${durableId ?? ''}';
+  String get _currentQueueKey {
+    final route =
+        _owner?.route ??
+        OwnerRoute(
+          connectionId: connection.activeConnectionId,
+          profile: _activeProfile,
+        );
+    return _queueKey(route, _durableId);
+  }
+
   List<QueuedMessage> get _sendQueue =>
       _sendQueues.putIfAbsent(_currentQueueKey, () => []);
   List<QueuedMessage> _queueForKey(String key) =>
       _sendQueues.putIfAbsent(key, () => []);
   List<QueuedMessage> get sendQueue => List.unmodifiable(
-    _sendQueue.where((item) => item.id != _dispatchingQueueId),
+    _sendQueue.where(
+      (item) => item.id != _dispatchingQueueIds[_currentQueueKey],
+    ),
   );
   int get queueCount => sendQueue.length;
   bool get hasQueued => queueCount > 0;
   bool get queueParked => _parkedQueueKeys.contains(_currentQueueKey);
+
+  SessionQueueSummary? queueSummaryFor(String durableId, {String? profile}) {
+    for (final entry in _sendQueues.entries) {
+      final rows = entry.value.where((item) => item.durableId == durableId);
+      if (rows.isEmpty) continue;
+      final route = _routeFromQueueOwner(rows.first.ownerKey);
+      if (route.connectionId != connection.activeConnectionId ||
+          profile != null && route.profile != profile) {
+        continue;
+      }
+      return SessionQueueSummary(
+        count: rows.length,
+        parked: _parkedQueueKeys.contains(entry.key),
+        deliveryUncertain: rows.any((item) => item.deliveryUncertain),
+      );
+    }
+    return null;
+  }
 
   /// Add a message to the send queue. If nothing is in flight, the message
   /// will be dispatched immediately; otherwise it waits until all earlier
@@ -1343,17 +1452,23 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       id: 'q-${DateTime.now().millisecondsSinceEpoch}-${_sendQueue.length}',
       text: text,
       createdAt: DateTime.now(),
-      ownerKey: _currentQueueKey,
+      ownerKey:
+          _owner?.route.key ??
+          OwnerRoute(
+            connectionId: connection.activeConnectionId,
+            profile: _activeProfile,
+          ).key,
       durableId: _durableId,
       displayText: displayText,
       attachments: List.unmodifiable(attachments),
     );
     _sendQueue.add(qm);
+    _queueMutationRevision++;
     // A new queued prompt is fresh intent to continue this conversation.
     _parkedQueueKeys.remove(_currentQueueKey);
     await _persistQueues();
     notifyListeners();
-    await _drainQueue();
+    await _drainQueue(_currentQueueKey);
   }
 
   Future<void> updateQueued(
@@ -1365,13 +1480,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final value = text.trim();
     if (value.isEmpty) return;
     final index = _sendQueue.indexWhere((item) => item.id == id);
-    if (index < 0 || _dispatchingQueueId == id) return;
+    if (index < 0 || _dispatchingQueueIds[_currentQueueKey] == id) return;
     _sendQueue[index] = _sendQueue[index].copyWith(
       text: value,
       deliveryUncertain: false,
       displayText: displayText,
       attachments: attachments,
     );
+    _queueMutationRevision++;
     await _persistQueues();
     notifyListeners();
   }
@@ -1381,6 +1497,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final before = _sendQueue.length;
     _sendQueue.removeWhere((m) => m.id == id);
     if (_sendQueue.length != before) {
+      _queueMutationRevision++;
       unawaited(_persistQueues());
       notifyListeners();
     }
@@ -1390,6 +1507,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   void clearQueue() {
     if (_sendQueue.isEmpty) return;
     _sendQueue.clear();
+    _queueMutationRevision++;
     _parkedQueueKeys.remove(_currentQueueKey);
     unawaited(_persistQueues());
     notifyListeners();
@@ -1413,9 +1531,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   /// Move one pending entry to the head without dispatching it yet.
   void promoteQueued(String id) {
     final index = _sendQueue.indexWhere((item) => item.id == id);
-    if (index <= 0 || _dispatchingQueueId == id) return;
+    if (index <= 0 || _dispatchingQueueIds[_currentQueueKey] == id) return;
     final item = _sendQueue.removeAt(index);
     _sendQueue.insert(0, item);
+    _queueMutationRevision++;
     unawaited(_persistQueues());
     notifyListeners();
   }
@@ -1426,45 +1545,77 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     promoteQueued(id);
     _parkedQueueKeys.remove(_currentQueueKey);
     notifyListeners();
-    await _drainQueue();
+    await _drainQueue(_currentQueueKey);
   }
 
   /// Deliver a text-only queued entry into the active turn and remove it only
   /// after the gateway accepts the steer, preserving at-most-once semantics.
   Future<void> steerQueuedNow(String id) async {
     final index = _sendQueue.indexWhere((item) => item.id == id);
-    if (index < 0 || _dispatchingQueueId == id) return;
+    if (index < 0 || _dispatchingQueueIds[_currentQueueKey] == id) return;
     final item = _sendQueue[index];
     await steer(item.text);
     final currentIndex = _sendQueue.indexWhere((entry) => entry.id == id);
-    if (currentIndex >= 0) _sendQueue.removeAt(currentIndex);
+    if (currentIndex >= 0) {
+      _sendQueue.removeAt(currentIndex);
+      _queueMutationRevision++;
+    }
     _parkedQueueKeys.remove(_currentQueueKey);
     await _persistQueues();
     notifyListeners();
   }
 
-  Future<void> _drainQueue() async {
-    if (_drainingQueue || queueParked) return;
-    final queueKey = _currentQueueKey;
+  Future<void> _drainQueue([String? requestedKey]) async {
+    var queueKey = _resolveQueueKey(requestedKey ?? _currentQueueKey);
+    if (_drainingQueueKeys.contains(queueKey) ||
+        _parkedQueueKeys.contains(queueKey)) {
+      if (!_parkedQueueKeys.contains(queueKey)) {
+        _redrainQueueKeys.add(queueKey);
+      }
+      return;
+    }
     final queue = _queueForKey(queueKey);
-    _drainingQueue = true;
+    _drainingQueueKeys.add(queueKey);
     try {
       while (queue.isNotEmpty) {
-        // Session switches never retarget an in-flight drain. Leave the old
-        // owner's remaining entries durable for its next activation.
-        if (_currentQueueKey != queueKey ||
-            _parkedQueueKeys.contains(queueKey)) {
+        // The queue's identity can be renamed mid-drain — e.g. a brand new
+        // session's durable id resolving while its first message is still
+        // in flight (see `_migrateQueueKey`). Follow any such rename before
+        // deciding the send path below, so a stale captured key doesn't get
+        // mistaken for "the user switched to a different session" and
+        // silently reroute the send through the background
+        // `session.resume`+`prompt.submit` path.
+        final renamed = _resolveQueueKey(queueKey);
+        if (renamed != queueKey) {
+          if (_drainingQueueKeys.remove(queueKey)) {
+            _drainingQueueKeys.add(renamed);
+          }
+          final dispatchingId = _dispatchingQueueIds.remove(queueKey);
+          if (dispatchingId != null) {
+            _dispatchingQueueIds[renamed] = dispatchingId;
+          }
+          if (_redrainQueueKeys.remove(queueKey)) {
+            _redrainQueueKeys.add(renamed);
+          }
+          queueKey = renamed;
+        }
+        if (_parkedQueueKeys.contains(queueKey)) {
           break;
         }
         final next = queue.first;
         if (next.deliveryUncertain) break;
-        _dispatchingQueueId = next.id;
+        _dispatchingQueueIds[queueKey] = next.id;
         notifyListeners();
         try {
-          await sendMessage(next.text);
+          if (_currentQueueKey == queueKey) {
+            await sendMessage(next.text);
+          } else {
+            await _sendQueuedInBackground(next);
+          }
           if (queue.isNotEmpty && queue.first.id == next.id) {
             queue.removeAt(0);
-            _dispatchingQueueId = null;
+            _queueMutationRevision++;
+            _dispatchingQueueIds.remove(queueKey);
             await _persistQueues();
             notifyListeners();
           }
@@ -1472,9 +1623,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
           // Keep the item durably queued. A transport error does not prove
           // whether prompt.submit reached the backend, so automatic resubmit
           // could duplicate a user turn. Reconciliation/retry is explicit.
-          _dispatchingQueueId = null;
+          _dispatchingQueueIds.remove(queueKey);
           if (queue.isNotEmpty && queue.first.id == next.id) {
             queue[0] = next.copyWith(deliveryUncertain: true);
+            _queueMutationRevision++;
             await _persistQueues();
           }
           notifyListeners();
@@ -1482,17 +1634,57 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         }
       }
     } finally {
-      _dispatchingQueueId = null;
-      _drainingQueue = false;
+      _dispatchingQueueIds.remove(queueKey);
+      _drainingQueueKeys.remove(queueKey);
+      if (_redrainQueueKeys.remove(queueKey) &&
+          queue.isNotEmpty &&
+          !_parkedQueueKeys.contains(queueKey)) {
+        unawaited(_drainQueue(queueKey));
+      }
     }
   }
 
+  Future<void> _sendQueuedInBackground(QueuedMessage item) async {
+    final durableId = item.durableId?.trim() ?? '';
+    if (durableId.isEmpty) {
+      throw StateError('Background queue item has no durable session id.');
+    }
+    final separator = item.ownerKey.indexOf('\u0000');
+    if (separator < 0) throw StateError('Background queue owner is invalid.');
+    final route = OwnerRoute(
+      connectionId: ConnectionId(item.ownerKey.substring(0, separator)),
+      profile: item.ownerKey.substring(separator + 1).isEmpty
+          ? null
+          : item.ownerKey.substring(separator + 1),
+    );
+    final resumed = await connection.requestForOwner(route, 'session.resume', {
+      'session_id': durableId,
+      'cols': 48,
+      ...hermesMobileSessionClientFields(),
+      'omit_messages': true,
+      if (route.profile != null) 'profile': route.profile,
+    });
+    final runtimeId = resumed['session_id']?.toString().trim() ?? '';
+    if (runtimeId.isEmpty) {
+      throw StateError('Background session resume failed.');
+    }
+    await connection.requestForOwner(route, 'prompt.submit', {
+      'session_id': runtimeId,
+      'text': item.text,
+    }, timeout: const Duration(minutes: 30));
+  }
+
   Future<void> restoreQueues() async {
+    final startRevision = _queueMutationRevision;
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_queueStorageKey);
     if (raw == null) return;
     try {
       final decoded = jsonDecode(raw) as Map;
+      // Constructor restoration races with a user sending immediately after
+      // startup. Never replace or park live intent created after this restore
+      // began with a stale persistence snapshot.
+      if (_queueMutationRevision != startRevision) return;
       _sendQueues
         ..clear()
         ..addAll(
@@ -1509,11 +1701,47 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
             ),
           ),
         );
+      // v2 used only route as the map key, which merged every conversation in
+      // one profile. Re-key restored rows by route + durable session.
+      final migrated = <String, List<QueuedMessage>>{};
+      for (final entries in _sendQueues.values) {
+        for (final item in entries) {
+          final key = _queueKey(
+            _routeFromQueueOwner(item.ownerKey),
+            item.durableId,
+          );
+          migrated.putIfAbsent(key, () => []).add(item);
+        }
+      }
+      _sendQueues
+        ..clear()
+        ..addAll(migrated);
+      // Restored prompts represent intent from a previous app lifetime. Keep
+      // them visible, but require an explicit Resume tap before transmission.
+      _parkedQueueKeys
+        ..clear()
+        ..addAll(
+          migrated.entries
+              .where((entry) => entry.value.isNotEmpty)
+              .map((entry) => entry.key),
+        );
       notifyListeners();
     } catch (_) {
       // Corrupt client cache is non-authoritative; leave it untouched on disk
       // for diagnostics and start with empty in-memory queues.
     }
+  }
+
+  OwnerRoute _routeFromQueueOwner(String ownerKey) {
+    final separator = ownerKey.indexOf('\u0000');
+    if (separator < 0) {
+      return OwnerRoute(connectionId: connection.activeConnectionId);
+    }
+    final profile = ownerKey.substring(separator + 1);
+    return OwnerRoute(
+      connectionId: ConnectionId(ownerKey.substring(0, separator)),
+      profile: profile.isEmpty ? null : profile,
+    );
   }
 
   Future<void> _persistQueues() async {
@@ -1720,9 +1948,13 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       connectionId: connection.activeConnectionId,
       profile: profile,
     );
+    // Captured before the round-trip below: a message enqueued (and possibly
+    // already draining) while `session.create` is in flight lands under this
+    // not-yet-identified key, since `_durableId` is still null at that point.
+    final preCreateQueueKey = _currentQueueKey;
     final result = await connection.requestForOwner(route, 'session.create', {
       'cols': 48,
-      'source': 'mobile',
+      ...hermesMobileSessionClientFields(),
       if (profile != null && profile.isNotEmpty) 'profile': profile,
       if (cwd != null && cwd.isNotEmpty) 'cwd': cwd,
       if (model != null && model.isNotEmpty) 'model': model,
@@ -1742,6 +1974,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
             )
           : null,
     );
+    // Now that the durable id is known, fold anything queued under the
+    // placeholder key into this session's real bucket (see
+    // `_migrateQueueKey`) instead of leaving it stranded.
+    _migrateQueueKey(preCreateQueueKey, _currentQueueKey);
   }
 
   Future<void> resumeSession(String durableId, {String? profile}) =>
@@ -1773,6 +2009,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   }) async {
     final gen = ++_generation;
     _readOnly = false;
+    _watchMode = false;
     final knownOwner = connection.sessionOwners.byDurable(durableId);
     final route =
         ownerRoute ??
@@ -1797,7 +2034,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
             await connection.requestForOwner(route, 'session.resume', {
               'session_id': durableId,
               'cols': 48,
-              'source': 'mobile',
+              ...hermesMobileSessionClientFields(),
               'omit_messages': true,
               if (profile != null && profile.isNotEmpty) 'profile': profile,
             }),
@@ -1845,6 +2082,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final detail = await api.sessionInfo(durableId, profile: profile);
     if (gen != _generation) return;
     _readOnly = true;
+    _watchMode = false;
     _applySession(
       durableId: durableId,
       runtimeId: null,
@@ -1864,6 +2102,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final detail = await api.sessionInfo(durableId, profile: route.profile);
     if (gen != _generation) return;
     _readOnly = true;
+    _watchMode = false;
     _applySession(
       durableId: durableId,
       runtimeId: null,
@@ -1872,6 +2111,51 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       info: SessionInfoView.fromJson(detail),
     );
     await refreshTranscript();
+  }
+
+  /// Attach a cheap, strictly read-only spectator runtime. The backend's lazy
+  /// resume mirrors a running child without constructing a second agent.
+  Future<void> openWatchSession(String durableId, {String? profile}) async {
+    final knownOwner = connection.sessionOwners.byDurable(durableId);
+    final route =
+        knownOwner?.route ??
+        OwnerRoute(
+          connectionId: connection.activeConnectionId,
+          profile: profile,
+        );
+    await openWatchOwnedSession(durableId, route);
+  }
+
+  Future<void> openWatchOwnedSession(String durableId, OwnerRoute route) async {
+    final gen = ++_generation;
+    final result = await connection.requestForOwner(route, 'session.resume', {
+      'session_id': durableId,
+      'cols': 48,
+      'lazy': true,
+      'close_on_disconnect': true,
+      ...hermesMobileSessionClientFields(),
+      if (route.profile?.isNotEmpty == true) 'profile': route.profile,
+    });
+    if (gen != _generation) return;
+    _readOnly = true;
+    _watchMode = true;
+    _applySession(
+      durableId: durableId,
+      runtimeId: result['session_id']?.toString(),
+      profile: route.profile,
+      route: route,
+      info: result['info'] is Map
+          ? SessionInfoView.fromJson(
+              (result['info'] as Map).cast<String, dynamic>(),
+            )
+          : null,
+    );
+    // Establish the persisted REST baseline before applying the resume
+    // projection. Reversing this order lets the history fetch erase the
+    // backend's in-flight mirror payload for a currently running child.
+    await refreshTranscript();
+    if (gen != _generation) return;
+    chat.applyResumeProjection(result, markBusy: result['running'] == true);
   }
 
   void _applySession({
@@ -3175,7 +3459,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     final resumed = await connection.requestForOwner(route, 'session.resume', {
       'session_id': durableId,
       'cols': 48,
-      'source': 'mobile',
+      ...hermesMobileSessionClientFields(),
       'omit_messages': true,
     });
     final runtimeId = resumed['session_id']?.toString().trim() ?? '';
@@ -3556,6 +3840,39 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     _viewedCounts[sid] = messageCount;
     await _saveStringIntMap(_sessionViewedCountsKey, _viewedCounts);
     await _clearCompletionUnread(sid);
+  }
+
+  /// Explicit user action: force a dot even when no newer server message is
+  /// present. The marker remains compatible with normal completion unread and
+  /// is cleared by opening/marking the session read.
+  Future<void> markSessionUnread(String sid, {int? messageCount}) async {
+    if (sid.isEmpty) return;
+    await _ensureUnreadStateLoaded();
+    _completionUnread[sid] = {
+      'message_count': messageCount ?? _viewedCounts[sid] ?? 0,
+      'manual': true,
+      'completed_at': DateTime.now().millisecondsSinceEpoch,
+    };
+    await _saveJsonMap(_sessionCompletionUnreadKey, _completionUnread);
+    unreadRevision.value++;
+    notifyListeners();
+  }
+
+  Future<void> markSessionRead(String sid, int messageCount) =>
+      setSessionViewedCount(sid, messageCount);
+
+  Future<void> markAllSessionsRead() async {
+    await _ensureUnreadStateLoaded();
+    for (final row in _sessions ?? const <SessionRow>[]) {
+      if (row.id.isNotEmpty) _viewedCounts[row.id] = row.messageCount ?? 0;
+    }
+    _completionUnread.clear();
+    await Future.wait([
+      _saveStringIntMap(_sessionViewedCountsKey, _viewedCounts),
+      _saveJsonMap(_sessionCompletionUnreadKey, _completionUnread),
+    ]);
+    unreadRevision.value++;
+    notifyListeners();
   }
 
   Future<void> _clearCompletionUnread(String sid) async {

@@ -16,3 +16,18 @@ import 'ws_connect_stub.dart'
 /// Open a WebSocket to [uri] using the browser API on web and dart:io elsewhere.
 WebSocketChannel connectWs(Uri uri, {Map<String, String> headers = const {}}) =>
     impl.connectWs(uri, headers: headers);
+
+/// The server rejected the WebSocket handshake before completing the
+/// protocol upgrade, carrying the HTTP status code from that rejection (e.g.
+/// 401/403 for an invalid API key). Only ever thrown on IO platforms —
+/// browsers' native WebSocket API does not expose pre-upgrade HTTP status
+/// codes to JS, so on web an invalid key still surfaces as a generic close.
+class WsHandshakeRejected implements Exception {
+  final int statusCode;
+  final String message;
+
+  WsHandshakeRejected(this.statusCode, this.message);
+
+  @override
+  String toString() => 'WsHandshakeRejected($statusCode): $message';
+}

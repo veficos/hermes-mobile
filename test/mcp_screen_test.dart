@@ -6,6 +6,7 @@ import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/profile_scope_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/mcp_screen.dart';
 import 'package:hermes_mobile/screens/mcp_config_editor_screen.dart';
 import 'package:provider/provider.dart';
@@ -58,6 +59,47 @@ class _McpContractApi extends ApiClient {
   ];
 }
 
+class _McpRepairApi extends _McpContractApi {
+  int authStarts = 0;
+  int authPolls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> mcpServers({String? profile}) async => [
+    {
+      'name': 'github',
+      'transport': 'http',
+      'url': 'https://mcp.github.example',
+      'auth': 'oauth',
+      'enabled': false,
+      'tools': null,
+    },
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> mcpCatalog({String? profile}) async => [];
+
+  @override
+  Future<Map<String, dynamic>> mcpStartAuth(
+    String name, {
+    String? profile,
+  }) async {
+    authStarts++;
+    return {
+      'flow_id': 'repair-flow',
+      'authorization_url': 'https://auth.example/repair-flow',
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> mcpAuthFlow(
+    String flowId, {
+    String? profile,
+  }) async {
+    authPolls++;
+    return const {'status': 'approved', 'tools': <dynamic>[]};
+  }
+}
+
 void main() {
   testWidgets(
     'MCP screen renders canonical server state and credential install form',
@@ -79,7 +121,12 @@ void main() {
               create: (_) => ProfileScopeStore()..bindApi(connection.api),
             ),
           ],
-          child: const MaterialApp(home: McpScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: McpScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -92,7 +139,7 @@ void main() {
       expect(find.byType(McpServerEditorScreen), findsOneWidget);
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byKey(const ValueKey('mcp-server-name')), findsOneWidget);
-      await tester.pageBack();
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
 
       // Enabled servers are probed automatically on load, so connection
@@ -122,4 +169,49 @@ void main() {
       connection.dispose();
     },
   );
+
+  testWidgets('initial repair target starts OAuth after the row loads', (
+    tester,
+  ) async {
+    final api = _McpRepairApi();
+    final connection = ConnectionStore()..api = api;
+    final sessions = SessionStore(
+      connection: connection,
+      chat: ChatStore(),
+      requests: RequestStore(),
+    );
+    addTearDown(sessions.dispose);
+    addTearDown(connection.dispose);
+    Uri? opened;
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: connection),
+          ChangeNotifierProvider.value(value: sessions),
+          ChangeNotifierProvider(
+            create: (_) => ProfileScopeStore()..bindApi(connection.api),
+          ),
+        ],
+        child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: McpScreen(
+            initialServer: 'github',
+            beginRepair: true,
+            openAuthorization: (url) async {
+              opened = url;
+              return true;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.authStarts, 1);
+    expect(api.authPolls, 1);
+    expect(opened.toString(), 'https://auth.example/repair-flow');
+  });
 }

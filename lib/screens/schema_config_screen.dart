@@ -14,9 +14,11 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 class SchemaConfigScreen extends StatefulWidget {
   final bool embedded;
@@ -57,9 +59,7 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
   ApiClient? _apiOrNotify() {
     final api = _api;
     if (api != null) return api;
-    ScaffoldMessenger.maybeOf(
-      context,
-    )?.showSnackBar(SnackBar(content: Text(context.l10n.backendDisconnected)));
+    showHermesToast(context, message: context.l10n.backendDisconnected);
     return null;
   }
 
@@ -368,28 +368,16 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
     if (api == null) return;
     final connectionId = _connectionId;
     final profile = _profile;
-    final ok = await showDialog<bool>(
+    final ok = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.configRestoreDefaultsQuestion),
-        content: Text(
-          l10n.configRestoreDefaultsDescription(
-            _profile ?? l10n.configCurrentProfile,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.configRestore),
-          ),
-        ],
+      title: l10n.configRestoreDefaultsQuestion,
+      message: l10n.configRestoreDefaultsDescription(
+        _profile ?? l10n.configCurrentProfile,
       ),
+      confirmLabel: l10n.configRestore,
+      destructive: true,
     );
-    if (ok != true || !mounted) return;
+    if (!ok || !mounted) return;
     if (connectionId != _connectionId ||
         profile != _profile ||
         !identical(api, _api)) {
@@ -477,6 +465,8 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
     final l10n = context.l10n;
     final runtimes = _connection.registry.runtimes.toList();
     final connectionPicker = DropdownButtonFormField<ConnectionId>(
+      dropdownColor: hermesDropdownColor(context),
+      borderRadius: hermesDropdownBorderRadius,
       initialValue: _connectionId,
       isExpanded: true,
       decoration: InputDecoration(
@@ -501,6 +491,8 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
       },
     );
     final profilePicker = DropdownButtonFormField<String?>(
+      dropdownColor: hermesDropdownColor(context),
+      borderRadius: hermesDropdownBorderRadius,
       initialValue: _profile,
       isExpanded: true,
       decoration: InputDecoration(
@@ -663,6 +655,8 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
       control = SizedBox(
         width: 220,
         child: DropdownButtonFormField<String>(
+          dropdownColor: hermesDropdownColor(context),
+          borderRadius: hermesDropdownBorderRadius,
           initialValue: options.contains(current) ? current : null,
           items: [
             if (schema['clearable'] == true)
@@ -854,11 +848,11 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
       if (current.isNotEmpty && !options.contains(current)) {
         options.insert(0, current);
       }
-      final selected = await showModalBottomSheet<String>(
-        context: context,
-        useSafeArea: true,
-        showDragHandle: true,
-        builder: (context) => SafeArea(
+      final selected = await showMobileSheet<String>(
+        context,
+        isScrollControlled: false,
+        avoidViewInsets: false,
+        (context) => SafeArea(
           top: false,
           child: ListView(
             shrinkWrap: true,
@@ -887,12 +881,11 @@ class _SchemaConfigScreenState extends State<SchemaConfigScreen>
       return;
     }
 
-    final raw = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) => _SchemaValueEditor(
+    final raw = await showMobileSheet<String>(
+      context,
+      // _SchemaValueEditor 已自行处理键盘避让（viewInsets 内边距）。
+      avoidViewInsets: false,
+      (context) => _SchemaValueEditor(
         path: path,
         title: description,
         initialValue: _displayValue(value),

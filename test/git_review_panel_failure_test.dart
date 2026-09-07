@@ -116,7 +116,10 @@ void main() {
 
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
-    expect(find.text('+ fixed'), findsOneWidget);
+    // The diff view renders the added line's `+` marker as a colored
+    // gutter/background rather than literal text, so only the line's
+    // content (without the leading marker) appears as text.
+    expect(find.text(' fixed'), findsOneWidget);
     expect(api.diffCalls, 2);
   });
 

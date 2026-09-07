@@ -9,6 +9,9 @@ import 'package:http/http.dart' as http;
 import '../../core/clipboard.dart';
 import '../../core/http_status_exception.dart';
 import '../../l10n/l10n.dart';
+import '../../widgets/h/hermes_states.dart';
+import '../../widgets/h/hermes_toast.dart';
+import '../../widgets/mobile/mobile_page_scaffold.dart';
 
 /// Desktop parity: `chat/zoomable-image.tsx`. Any image inside a rendered
 /// message becomes tap-to-open in a fullscreen pan/zoom viewer.
@@ -108,10 +111,9 @@ class _ZoomableInlineImage extends StatelessWidget {
   /// sheet since mobile has no context menu.
   void _showActions(BuildContext context) {
     final isNetwork = uri.scheme == 'http' || uri.scheme == 'https';
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
+    showMobileSheet<void>(
+      context,
+      (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -143,7 +145,6 @@ class _ZoomableInlineImage extends StatelessWidget {
   }
 
   Future<void> _saveToGallery(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     final savedMessage = context.l10n.imageSavedToGallery;
     try {
       Uint8List bytes;
@@ -162,15 +163,21 @@ class _ZoomableInlineImage extends StatelessWidget {
         name: 'hermes-${DateTime.now().millisecondsSinceEpoch}',
       );
       if (context.mounted) {
-        messenger.showSnackBar(SnackBar(content: Text(savedMessage)));
+        showHermesToast(
+          context,
+          message: savedMessage,
+          kind: HermesToastKind.success,
+        );
       }
     } catch (error) {
       if (context.mounted) {
         final detail = error is HttpStatusException
             ? context.l10n.httpStatusError(error.statusCode)
             : '$error';
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.imageSaveFailed(detail))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.imageSaveFailed(detail),
         );
       }
     }

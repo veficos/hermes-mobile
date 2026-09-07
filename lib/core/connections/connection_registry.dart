@@ -340,12 +340,30 @@ class ConnectionRegistry {
   final Map<ConnectionId, ConnectionRuntime> _runtimes = {};
   final StreamController<RoutedGatewayEvent> _events =
       StreamController<RoutedGatewayEvent>.broadcast();
+  final StreamController<ConnectionId> _stateChanges =
+      StreamController<ConnectionId>.broadcast();
   final Map<ConnectionId, StreamSubscription<RoutedGatewayEvent>> _subs = {};
   Future<void>? _reconnectAllFlight;
 
   ConnectionId? activeId;
 
   Stream<RoutedGatewayEvent> get events => _events.stream;
+
+  /// Broadcasts a runtime's id whenever its connectivity state changes
+  /// (dropped, reconnected, or its client identity swapped) — regardless of
+  /// whether that runtime is the currently active connection.
+  ///
+  /// [ConnectionStore] only surfaces such changes for the active connection
+  /// via `notifyListeners()`; this stream is how UI pinned to a *specific*
+  /// non-active connection (e.g. a bot's own gateway, opened by id) can react
+  /// without first having to make that connection active.
+  Stream<ConnectionId> get stateChanges => _stateChanges.stream;
+
+  /// Emits [id] on [stateChanges]. Safe to call after [dispose].
+  void notifyStateChanged(ConnectionId id) {
+    if (!_stateChanges.isClosed) _stateChanges.add(id);
+  }
+
   Iterable<ConnectionRuntime> get runtimes => _runtimes.values;
   ConnectionRuntime? get active =>
       activeId == null ? null : _runtimes[activeId!];
@@ -359,6 +377,7 @@ class ConnectionRegistry {
     _runtimes[runtime.id] = runtime;
     _subs[runtime.id] = runtime.events.listen(_events.add);
     if (makeActive || activeId == null) activeId = runtime.id;
+    notifyStateChanged(runtime.id);
   }
 
   /// Fan-out of a regained-connectivity signal to every registered
@@ -381,6 +400,7 @@ class ConnectionRegistry {
     await _subs.remove(id)?.cancel();
     if (runtime != null) await runtime.dispose();
     if (activeId == id) activeId = _runtimes.keys.firstOrNull;
+    notifyStateChanged(id);
   }
 
   /// Performs a strict two-phase reset of every registered connection:
@@ -409,6 +429,7 @@ class ConnectionRegistry {
       await remove(id);
     }
     await _events.close();
+    await _stateChanges.close();
   }
 }
 

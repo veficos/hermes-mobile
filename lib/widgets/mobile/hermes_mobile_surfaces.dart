@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/hermes_tokens.dart';
+import '../h/hermes_glass.dart';
+import '../h/hermes_status.dart';
 
 /// Shared mobile surfaces copied from the interactive prototype. Feature
 /// screens keep their existing stores and callbacks while sharing one visual
@@ -14,6 +16,10 @@ abstract final class HermesMobileMetrics {
   static const rowVertical = 12.0;
 }
 
+/// 移动端分组标签。实现已并入 [HermesSectionHeader]（同一文字样式），
+/// 此处仅做兼容委托，保留原有 padding（左右 4、可调 top），避免既有
+/// 移动端页面漂移。新代码请直接使用 [HermesSectionHeader]。
+@Deprecated('Use HermesSectionHeader from widgets/h/hermes_glass.dart instead.')
 class HermesMobileSectionLabel extends StatelessWidget {
   const HermesMobileSectionLabel({
     super.key,
@@ -27,29 +33,11 @@ class HermesMobileSectionLabel extends StatelessWidget {
   final double top;
 
   @override
-  Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(4, top, 4, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                color: palette.text3,
-                fontSize: 11.5,
-                height: 1.2,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-          ?trailing,
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => HermesSectionHeader(
+    title: title,
+    trailing: trailing,
+    padding: EdgeInsets.fromLTRB(4, top, 4, 8),
+  );
 }
 
 class HermesMobileCard extends StatelessWidget {
@@ -72,16 +60,12 @@ class HermesMobileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
     final content = Padding(padding: padding, child: child);
     return Container(
       margin: margin,
-      decoration: BoxDecoration(
-        color: color ?? palette.surface,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: palette.border),
-        boxShadow: hermesShadow(context),
-      ),
+      // 装饰统一走 hermesCardDecoration()（design-system.md §6.3）；
+      // padding/radius 默认值保持本类既有约定不变，避免调用方视觉漂移。
+      decoration: hermesCardDecoration(context, radius: radius, tint: color),
       clipBehavior: Clip.antiAlias,
       child: onTap == null
           ? content
@@ -140,6 +124,7 @@ class HermesMobileRow extends StatelessWidget {
     this.onTap,
     this.tone,
     this.iconWidget,
+    this.titleTrailing,
   });
 
   final IconData icon;
@@ -150,6 +135,7 @@ class HermesMobileRow extends StatelessWidget {
   final VoidCallback? onTap;
   final Color? tone;
   final Widget? iconWidget;
+  final Widget? titleTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -186,16 +172,26 @@ class HermesMobileRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: palette.text,
-                        fontSize: 14.5,
-                        height: 1.25,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.text,
+                              fontSize: 14.5,
+                              height: 1.25,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (titleTrailing != null) ...[
+                          const SizedBox(width: 5),
+                          titleTrailing!,
+                        ],
+                      ],
                     ),
                     if (subtitleWidget != null ||
                         subtitle?.isNotEmpty == true) ...[
@@ -226,6 +222,10 @@ class HermesMobileRow extends StatelessWidget {
   }
 }
 
+/// 移动端状态 Chip。视觉已统一到 [HermesStatusChip]（design-system.md
+/// §6.4：pill 高 24、语义色 10%(light)/18%(dark) 透明度底），此处仅做
+/// 兼容委托。新代码请直接使用 [HermesStatusChip]。
+@Deprecated('Use HermesStatusChip from widgets/h/hermes_status.dart instead.')
 class HermesMobileStatusChip extends StatelessWidget {
   const HermesMobileStatusChip({
     super.key,
@@ -239,36 +239,8 @@ class HermesMobileStatusChip extends StatelessWidget {
   final IconData? icon;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: .16),
-      borderRadius: BorderRadius.circular(HermesRadius.capsule),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (icon != null)
-          Icon(icon, size: 12, color: color)
-        else
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 11,
-            height: 1.2,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) =>
+      HermesStatusChip(color: color, label: label, icon: icon);
 }
 
 class HermesMobileQuickTile extends StatelessWidget {

@@ -13,11 +13,15 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/external_links.dart';
 import '../core/preview_bridge.dart';
+import '../core/stores/connection_store.dart';
+import '../core/stores/composer_handoff_store.dart';
 import '../core/stores/preview_store.dart';
 import '../core/stores/session_store.dart';
 import '../core/session_refs.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import 'h/hermes_states.dart';
+import 'mobile/mobile_page_scaffold.dart';
 
 /// XL rail breakpoint used when deciding in-rail vs full-screen preview.
 const double kPreviewRailBreakpoint = 840;
@@ -34,6 +38,45 @@ bool get webViewSupported {
   }
 }
 
+/// Loopback hosts — the address family that means "this machine", and so the
+/// one family whose meaning changes with which device is running the page.
+final RegExp _loopbackHostRe = RegExp(
+  r'^(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?)$',
+  caseSensitive: false,
+);
+
+/// True when [url]'s host can't mean what the agent meant: the connected
+/// gateway lives on a different machine, but a loopback address always
+/// resolves to whichever device opens it — here, not there.
+bool _isRemoteLoopbackUrl(BuildContext context, String url) {
+  ConnectionStore connection;
+  try {
+    connection = context.read<ConnectionStore>();
+  } catch (_) {
+    return false;
+  }
+  final gatewayHost = Uri.tryParse(connection.settings.baseUrl)?.host ?? '';
+  if (gatewayHost.isEmpty || _loopbackHostRe.hasMatch(gatewayHost)) {
+    return false;
+  }
+  final host = Uri.tryParse(url)?.host ?? '';
+  return host.isNotEmpty && _loopbackHostRe.hasMatch(host);
+}
+
+String _previewErrorTitle(BuildContext context, String description) {
+  final lower = description.toLowerCase();
+  if (lower.contains('module script') || lower.contains('mime type')) {
+    return context.l10n.previewAppFailedToBoot;
+  }
+  if (lower.contains('connection') ||
+      lower.contains('refused') ||
+      lower.contains('not found') ||
+      lower.contains('net::err')) {
+    return context.l10n.previewServerNotFound;
+  }
+  return context.l10n.previewFailed(description);
+}
+
 /// Open an http(s) or other URI: XL rail via [PreviewStore], phone via a page.
 Future<void> openChatLink(BuildContext context, String href) async {
   final sessionId = sessionIdFromHref(href);
@@ -42,10 +85,10 @@ Future<void> openChatLink(BuildContext context, String href) async {
       await context.read<SessionStore>().openSessionReference(sessionId);
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.previewOpenSessionFailed('$error')),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.previewOpenSessionFailed('$error'),
         );
       }
     }
@@ -89,6 +132,7 @@ class WebPreviewPane extends StatefulWidget {
   final String? html;
   final bool showHtmlTools;
   final String? previewTabId;
+  final String? restartCwd;
   final ValueChanged<double>? onContentHeightChanged;
   final Future<void> Function(String prompt)? onIntent;
 
@@ -98,6 +142,7 @@ class WebPreviewPane extends StatefulWidget {
     this.html,
     this.showHtmlTools = true,
     this.previewTabId,
+    this.restartCwd,
     this.onContentHeightChanged,
     this.onIntent,
   });
@@ -121,6 +166,7 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
   bool _scriptRunning = false;
   DateTime? _lastIntentAt;
   final List<_PreviewConsoleEntry> _console = [];
+  final Set<int> _selectedConsoleEntries = <int>{};
 
   @override
   void initState() {
@@ -183,8 +229,10 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
     } catch (error) {
       _appendConsole('error', l10n.previewActionSendFailed('$error'));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.previewActionSendFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: l10n.previewActionSendFailed('$error'),
         );
       }
     }
@@ -200,8 +248,60 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
           timestamp: DateTime.now(),
         ),
       );
-      if (_console.length > 200) _console.removeRange(0, _console.length - 200);
+      if (_console.length > 500) {
+        _console.removeRange(0, _console.length - 500);
+        _selectedConsoleEntries.clear();
+      }
     });
+  }
+
+  String _consoleText({bool selectedOnly = false}) {
+    final indexes = selectedOnly && _selectedConsoleEntries.isNotEmpty
+        ? (_selectedConsoleEntries.toList()..sort())
+        : List<int>.generate(_console.length, (index) => index);
+    return indexes
+        .where((index) => index < _console.length)
+        .map((index) {
+          final entry = _console[index];
+          return '[${entry.level}] ${entry.message}';
+        })
+        .join('\n');
+  }
+
+  Future<void> _copyConsole() async {
+    final text = _consoleText(selectedOnly: true);
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+  }
+
+  void _sendConsoleToComposer() {
+    final owner = context.read<SessionStore>().owner?.route;
+    final text = _consoleText(selectedOnly: true);
+    if (owner == null || text.isEmpty) return;
+    context.read<ComposerHandoffStore>().addText(
+      ComposerTextHandoff(
+        owner: owner,
+        kind: 'preview_console',
+        text: 'Preview console (${_address.text.trim()}):\n```text\n$text\n```',
+        metadata: {
+          'kind': 'preview_console',
+          'tab_id': widget.previewTabId,
+          'url': _address.text.trim(),
+          'entries': [
+            for (final index
+                in (_selectedConsoleEntries.isEmpty
+                    ? List<int>.generate(_console.length, (value) => value)
+                    : (_selectedConsoleEntries.toList()..sort())))
+              if (index < _console.length)
+                {
+                  'level': _console[index].level,
+                  'message': _console[index].message,
+                  'timestamp': _console[index].timestamp.toIso8601String(),
+                },
+          ],
+        },
+      ),
+    );
   }
 
   Future<void> _runScript() async {
@@ -253,6 +353,93 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
     if (uri != null) await _controller!.loadRequest(uri);
   }
 
+  Future<void> _reloadIgnoringCache() async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.clearCache();
+    await controller.clearLocalStorage();
+    await controller.reload();
+  }
+
+  Future<void> _showDomDiagnostics() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final raw = await controller.runJavaScriptReturningResult('''(() => {
+      const shown=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);
+      const elements=[...document.querySelectorAll('a,button,input,textarea,select,[contenteditable="true"],[role="button"],[tabindex]')].filter(shown).slice(0,100).map((e,index)=>({
+        ref:index+1,tag:e.tagName.toLowerCase(),type:e.getAttribute('type'),
+        role:e.getAttribute('role'),name:e.getAttribute('name'),
+        label:String(e.getAttribute('aria-label')||e.innerText||e.value||e.getAttribute('placeholder')||'').trim().slice(0,180),
+        disabled:!!e.disabled
+      }));
+      return JSON.stringify({title:document.title,url:location.href,readyState:document.readyState,activeElement:document.activeElement?.tagName?.toLowerCase()||null,viewport:{width:innerWidth,height:innerHeight,devicePixelRatio},elements});
+    })()''');
+    if (!mounted) return;
+    final diagnostics = const JsonEncoder.withIndent('  ').convert(
+      _decodeResult(raw),
+    );
+    await showMobileSheet<void>(
+      context,
+      avoidViewInsets: false,
+      (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.72,
+          child: Column(
+            children: [
+              ListTile(
+                title: const Text('DOM diagnostics'),
+                subtitle: Text(_address.text.trim(), maxLines: 1),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: SelectableText(diagnostics, style: HermesType.code),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => Clipboard.setData(
+                        ClipboardData(text: diagnostics),
+                      ),
+                      icon: const Icon(Icons.copy_outlined),
+                      label: Text(context.l10n.commonCopy),
+                    ),
+                    const Spacer(),
+                    FilledButton.icon(
+                      onPressed: () {
+                        final owner = context.read<SessionStore>().owner?.route;
+                        if (owner == null) return;
+                        context.read<ComposerHandoffStore>().addText(
+                          ComposerTextHandoff(
+                            owner: owner,
+                            kind: 'preview_dom_diagnostics',
+                            text: 'Preview DOM diagnostics:\n```json\n$diagnostics\n```',
+                            metadata: {
+                              'kind': 'preview_dom_diagnostics',
+                              'tab_id': widget.previewTabId,
+                              'url': _address.text.trim(),
+                            },
+                          ),
+                        );
+                        Navigator.of(sheetContext).pop();
+                      },
+                      icon: const Icon(Icons.send_outlined),
+                      label: Text(context.l10n.commonSend),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Future<Map<String, dynamic>> read({int? start, int? count}) async {
     final controller = _controller;
@@ -289,6 +476,12 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
     if (kind == 'reload') {
       await controller.reload();
       return {'success': true, 'acted': kind};
+    }
+    if (const {'pin', 'hold', 'unpin'}.contains(kind)) {
+      final result = await controller.runJavaScriptReturningResult(
+        previewAnnotationScript(action),
+      );
+      return _decodeResult(result);
     }
     if (defaultTargetPlatform == TargetPlatform.android &&
         const {'click', 'hover', 'type', 'press', 'scroll'}.contains(kind)) {
@@ -499,12 +692,43 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
     await launchExternalOrNotify(context, uri);
   }
 
+  Future<void> _restartPreviewServer() async {
+    final tabId = widget.previewTabId;
+    if (tabId == null) return;
+    final contextLines = <String>[
+      if (_error?.trim().isNotEmpty == true) 'Page error: ${_error!.trim()}',
+      for (final entry in _console.skip(
+        (_console.length - 80).clamp(0, _console.length),
+      ))
+        '[${entry.level}] ${entry.message}',
+    ];
+    try {
+      await context.read<PreviewStore>().restartServer(
+        tabId,
+        cwd: widget.restartCwd,
+        context: contextLines.join('\n'),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.previewFailed('$error'),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
     final errorColor = Theme.of(context).colorScheme.error;
     final url = widget.url?.trim() ?? '';
     final html = widget.html ?? '';
+    final restart = widget.previewTabId == null
+        ? const PreviewRestartStatus()
+        : context.select<PreviewStore, PreviewRestartStatus>(
+            (store) => store.restartStatus(widget.previewTabId),
+          );
     if (url.isEmpty && html.isEmpty) {
       return Center(
         child: Text(
@@ -529,9 +753,66 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
         if (_error != null)
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Text(
-              context.l10n.previewFailed('$_error'),
-              style: TextStyle(color: errorColor),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _previewErrorTitle(context, _error!),
+                  style: TextStyle(
+                    color: errorColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(_error!, style: TextStyle(color: palette.text3)),
+                if (_isRemoteLoopbackUrl(context, url)) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    context.l10n.previewRemoteLoopbackHint,
+                    style: TextStyle(color: palette.text3, fontSize: 12),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton(
+                      onPressed: _rebuild,
+                      child: Text(context.l10n.previewRetry),
+                    ),
+                    if (widget.previewTabId != null && url.isNotEmpty)
+                      FilledButton.tonalIcon(
+                        onPressed: restart.busy ? null : _restartPreviewServer,
+                        icon: restart.busy
+                            ? const SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.auto_fix_high_outlined),
+                        label: Text(
+                          restart.busy
+                              ? context.l10n.agentRestarting
+                              : context.l10n.chatPreviewRestart,
+                        ),
+                      ),
+                  ],
+                ),
+                if (restart.text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    restart.text,
+                    style: TextStyle(
+                      color: restart.phase == PreviewRestartPhase.failed
+                          ? errorColor
+                          : palette.text3,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         if (html.isNotEmpty)
@@ -576,6 +857,34 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
                   onPressed: () => _controller!.reload(),
                   icon: const Icon(Icons.refresh, size: 18),
                 ),
+                PopupMenuButton<String>(
+                  tooltip: context.l10n.commonMore,
+                  onSelected: (value) {
+                    if (value == 'hard-reload') {
+                      unawaited(_reloadIgnoringCache());
+                    } else if (value == 'diagnostics') {
+                      unawaited(_showDomDiagnostics());
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: 'hard-reload',
+                      child: ListTile(
+                        leading: const Icon(Icons.cached),
+                        title: Text(context.l10n.previewReloadWithoutCache),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'diagnostics',
+                      child: ListTile(
+                        leading: Icon(Icons.account_tree_outlined),
+                        title: Text('DOM diagnostics'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
+                ),
                 Expanded(
                   child: TextField(
                     controller: _address,
@@ -602,14 +911,26 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
               setState(() => _consoleOpen = !_consoleOpen);
             },
           ),
-        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        if (_loading || restart.busy)
+          const LinearProgressIndicator(minHeight: 2),
         Expanded(child: WebViewWidget(controller: _controller!)),
         if (html.isNotEmpty && widget.showHtmlTools && _consoleOpen)
           _PreviewConsole(
             entries: _console,
+            selected: _selectedConsoleEntries,
             scriptController: _script,
             scriptRunning: _scriptRunning,
-            onClear: () => setState(_console.clear),
+            onClear: () => setState(() {
+              _console.clear();
+              _selectedConsoleEntries.clear();
+            }),
+            onToggle: (index) => setState(() {
+              if (!_selectedConsoleEntries.add(index)) {
+                _selectedConsoleEntries.remove(index);
+              }
+            }),
+            onCopy: _copyConsole,
+            onSend: _sendConsoleToComposer,
             onRunScript: _runScript,
           ),
       ],
@@ -681,16 +1002,24 @@ class _HtmlPreviewToolbar extends StatelessWidget {
 class _PreviewConsole extends StatelessWidget {
   const _PreviewConsole({
     required this.entries,
+    required this.selected,
     required this.scriptController,
     required this.scriptRunning,
     required this.onClear,
+    required this.onToggle,
+    required this.onCopy,
+    required this.onSend,
     required this.onRunScript,
   });
 
   final List<_PreviewConsoleEntry> entries;
+  final Set<int> selected;
   final TextEditingController scriptController;
   final bool scriptRunning;
   final VoidCallback onClear;
+  final ValueChanged<int> onToggle;
+  final VoidCallback onCopy;
+  final VoidCallback onSend;
   final VoidCallback onRunScript;
 
   Color _levelColor(BuildContext context, String level) {
@@ -723,6 +1052,16 @@ class _PreviewConsole extends StatelessWidget {
                 ),
                 const Spacer(),
                 IconButton(
+                  tooltip: context.l10n.commonCopy,
+                  onPressed: entries.isEmpty ? null : onCopy,
+                  icon: const Icon(Icons.copy_outlined, size: 17),
+                ),
+                IconButton(
+                  tooltip: context.l10n.fileTreeAttachToChat,
+                  onPressed: entries.isEmpty ? null : onSend,
+                  icon: const Icon(Icons.send_outlined, size: 17),
+                ),
+                IconButton(
                   tooltip: context.l10n.previewClearConsole,
                   onPressed: entries.isEmpty ? null : onClear,
                   icon: const Icon(Icons.delete_sweep_outlined, size: 17),
@@ -745,13 +1084,30 @@ class _PreviewConsole extends StatelessWidget {
                         11,
                         19,
                       );
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: SelectableText(
-                          '$time [${entry.level}] ${entry.message}',
-                          style: HermesType.code.copyWith(
-                            color: _levelColor(context, entry.level),
-                            fontSize: 11,
+                      return InkWell(
+                        onTap: () => onToggle(index),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                selected.contains(index)
+                                    ? Icons.check_box
+                                    : Icons.check_box_outline_blank,
+                                size: 15,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: SelectableText(
+                                  '$time [${entry.level}] ${entry.message}',
+                                  style: HermesType.code.copyWith(
+                                    color: _levelColor(context, entry.level),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       );

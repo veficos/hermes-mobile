@@ -34,6 +34,7 @@ const _inputEvents = {
   'sudo.request',
   'secret.request',
   'mcp.setup.request',
+  'terminal.read.request',
   'interactive.expire',
   'interactive.expired',
 };
@@ -55,6 +56,7 @@ const _previewEvents = {
   'preview.restart.progress',
   'preview.restart.complete',
   'preview.restart.error',
+  'workspace.changed',
 };
 const _statusEvents = {
   'status.update',

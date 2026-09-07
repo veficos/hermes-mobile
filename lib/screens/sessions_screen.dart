@@ -9,11 +9,13 @@ import 'package:provider/provider.dart';
 import '../core/models.dart';
 import '../core/session_tree.dart';
 import '../core/stores/session_store.dart';
+import '../core/stores/session_tab_store.dart';
 import '../core/stores/session_appearance_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/session/project_dialog.dart';
 import '../widgets/session/session_list_meta.dart';
 import '../widgets/session/session_detail_panel.dart';
@@ -81,17 +83,30 @@ class _SessionsScreenState extends State<SessionsScreen> {
       return;
     }
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await session.resumeSession(row.id, profile: row.profile);
       if (!mounted) return;
+      final owner = session.owner;
+      if (owner != null) {
+        context.read<SessionTabStore>().open(
+          SessionTab(
+            id: row.id,
+            title: row.title?.trim().isNotEmpty == true
+                ? row.title!.trim()
+                : context.l10n.historyUntitled,
+            owner: owner.route,
+          ),
+        );
+      }
       Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionResumeFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionResumeFailed('$e'),
         );
       }
     }
@@ -274,12 +289,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
   }
 
   void _showDetails(SessionRow row) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) => FractionallySizedBox(
+    showMobileSheet<void>(
+      context,
+      (sheetContext) => FractionallySizedBox(
         heightFactor: .9,
         child: SessionDetailPanel(
           row: row,
@@ -613,10 +625,14 @@ class _SessionsScreenState extends State<SessionsScreen> {
     BuildContext context,
     List<(_SessionSort, String, IconData)> options,
   ) {
-    showModalBottomSheet<void>(
-      context: context,
+    showMobileSheet<void>(
+      context,
+      showDragHandle: false,
+      useSafeArea: false,
+      avoidViewInsets: false,
+      isScrollControlled: false,
       backgroundColor: Colors.transparent,
-      builder: (ctx) {
+      (ctx) {
         final theme = Theme.of(ctx);
         final isDark = theme.brightness == Brightness.dark;
         final surface = isDark
@@ -751,22 +767,33 @@ class _SessionsScreenState extends State<SessionsScreen> {
     final items = buildSessionTree(rows);
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(
-          HermesSpacing.md,
-          4,
-          HermesSpacing.md,
-          HermesSpacing.md,
-        ),
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(height: HermesSpacing.xs),
-        itemBuilder: (context, i) {
-          final item = items[i];
-          return Padding(
-            padding: EdgeInsets.only(left: item.depth * 20.0),
-            child: _sessionRow(context, item.row, depth: item.depth),
-          );
-        },
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              HermesSpacing.md,
+              4,
+              HermesSpacing.md,
+              HermesSpacing.md,
+            ),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate((context, i) {
+                final item = items[i];
+                final isLast = i == items.length - 1;
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: isLast ? 0 : HermesSpacing.xs,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.only(left: item.depth * 20.0),
+                    child: _sessionRow(context, item.row, depth: item.depth),
+                  ),
+                );
+              }, childCount: items.length),
+            ),
+          ),
+        ],
       ),
     );
   }

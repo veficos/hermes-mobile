@@ -60,7 +60,10 @@ void main() {
 
       expect(find.text('等待图片结果'), findsNothing);
       expect(find.text('图片生成失败'), findsNothing);
-      final imageFinder = find.byType(Image);
+      final imageFinder = find.byWidgetPredicate(
+        (widget) => widget is Image && widget.image is ResizeImage,
+        description: 'generated network image',
+      );
       expect(imageFinder, findsOneWidget);
       final image = tester.widget<Image>(imageFinder);
       final resized = image.image as ResizeImage;

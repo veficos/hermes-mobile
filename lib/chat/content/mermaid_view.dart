@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../l10n/l10n.dart';
+import '../../theme/hermes_tokens.dart';
 import '../../widgets/web_preview.dart' show webViewSupported;
 
 class MermaidPreview extends StatelessWidget {
@@ -200,7 +201,7 @@ class _MermaidFallback extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: SelectableText(
             source,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            style: HermesType.code.copyWith(fontSize: 12),
           ),
         ),
       );

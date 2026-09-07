@@ -17,6 +17,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/session/session_detail_panel.dart';
 import '../widgets/session/session_rich_card.dart';
 import 'chat_screen.dart';
@@ -105,7 +106,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   Future<void> _saveFolders(List<Map<String, dynamic>> next) async {
     if (_projectId.isEmpty || _foldersBusy) return;
     final connection = context.read<ConnectionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     final previous = _folders;
     setState(() {
@@ -123,8 +123,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _folders = previous);
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.projectSaveFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: l10n.projectSaveFailed('$e'),
         );
       }
     } finally {
@@ -229,8 +231,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.projectResumeFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.projectResumeFailed('$e'),
         );
       }
     }
@@ -239,8 +243,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   @override
   Widget build(BuildContext context) {
     if (_connectionChanged) {
-      return Scaffold(
-        appBar: AppBar(title: Text(context.l10n.projectDetailTitle)),
+      return MobilePageScaffold(
+        title: context.l10n.projectDetailTitle,
         body: HermesErrorState(
           description: context.l10n.backendDisconnected,
           alternativeLabel: context.l10n.commonBack,
@@ -248,8 +252,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
         ),
       );
     }
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.projectDetailTitle)),
+    return MobilePageScaffold(
+      title: context.l10n.projectDetailTitle,
       body: ListView(
         padding: const EdgeInsets.all(HermesSpacing.md),
         children: [

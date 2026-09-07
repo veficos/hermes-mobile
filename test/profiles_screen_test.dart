@@ -8,6 +8,7 @@ import 'package:hermes_mobile/core/stores/chat_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/profiles_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -109,7 +110,12 @@ Widget _app(ConnectionStore connection) {
       ChangeNotifierProvider.value(value: connection),
       ChangeNotifierProvider.value(value: session),
     ],
-    child: const MaterialApp(home: ProfilesScreen()),
+    child: MaterialApp(
+      locale: Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: ProfilesScreen(),
+    ),
   );
 }
 

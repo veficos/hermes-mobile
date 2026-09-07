@@ -17,13 +17,16 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/project_tree_store.dart';
 import '../core/stores/pull_request_store.dart';
 import '../core/stores/session_store.dart';
+import '../core/stores/session_tab_store.dart';
 import '../core/stores/session_appearance_store.dart';
 import '../core/stores/subagent_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_badge.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/session/session_card.dart';
@@ -87,6 +90,27 @@ class _SessionListScreenState extends State<SessionListScreen>
   int _unreadCacheKey = 0;
   int _unreadSessionRevision = -1;
   String? _openingSessionId;
+
+  void _registerSessionTab(
+    SessionStore session,
+    SessionRow row, {
+    bool readOnly = false,
+    bool watch = false,
+  }) {
+    final owner = session.owner;
+    if (owner == null) return;
+    context.read<SessionTabStore>().open(
+      SessionTab(
+        id: row.id,
+        title: row.title?.trim().isNotEmpty == true
+            ? row.title!.trim()
+            : context.l10n.sessionUntitled,
+        owner: owner.route,
+        readOnly: readOnly,
+        watch: watch,
+      ),
+    );
+  }
 
   bool _selectMode = false;
   final Set<String> _selectedIds = {};
@@ -204,6 +228,10 @@ class _SessionListScreenState extends State<SessionListScreen>
           : SessionStore.sessionPageSize;
       await session.refreshList(limit: limit);
       final rows = session.sessions ?? const <SessionRow>[];
+      if (!mounted) return;
+      context.read<SessionTabStore>().reconcile(
+        rows.map((row) => row.id).toSet(),
+      );
       final signature = rows
           .take(SessionStore.sessionPageSize)
           .map(
@@ -232,14 +260,17 @@ class _SessionListScreenState extends State<SessionListScreen>
     final session = context.read<SessionStore>();
     try {
       await session.resumeSession(row.id, profile: row.profile);
+      _registerSessionTab(session, row);
       if (!mounted) return;
       Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionResumeLastFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionResumeLastFailed('$e'),
         );
       }
     }
@@ -297,6 +328,10 @@ class _SessionListScreenState extends State<SessionListScreen>
       // manual "load more" row driven by the server's has_more flag.
       await session.refreshList(limit: SessionStore.sessionPageSize);
       final rows = session.sessions ?? const <SessionRow>[];
+      if (!mounted) return;
+      context.read<SessionTabStore>().reconcile(
+        rows.map((row) => row.id).toSet(),
+      );
       await _refreshSubagents(rows);
       unawaited(pullRequests.refreshForSessions(rows));
       _lastListLoad = DateTime.now();
@@ -326,16 +361,17 @@ class _SessionListScreenState extends State<SessionListScreen>
     setState(() => _openingSessionId = sessionId);
     try {
       await session.openReadOnlySession(sessionId, profile: child.profile);
+      _registerSessionTab(session, child, readOnly: true);
       if (!mounted) return;
       Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.sessionResumeSubagentFailed('$error')),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.sessionResumeSubagentFailed('$error'),
         );
       }
     } finally {
@@ -350,6 +386,7 @@ class _SessionListScreenState extends State<SessionListScreen>
     setState(() => _openingSessionId = row.id);
     try {
       await session.resumeSession(row.id, profile: row.profile);
+      _registerSessionTab(session, row);
       // Mark viewed: clears both the message-count unread dot and any
       // stale completion-unread entry (mirrors WebUI openSession).
       await session.setSessionViewedCount(row.id, row.messageCount ?? 0);
@@ -362,8 +399,10 @@ class _SessionListScreenState extends State<SessionListScreen>
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionResumeFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionResumeFailed('$e'),
         );
       }
     } finally {
@@ -860,31 +899,33 @@ class _SessionListScreenState extends State<SessionListScreen>
 
   /// After duplicating, resume the fresh copy and jump straight into it.
   Future<void> _openCopy(SessionRow copy) async {
-    final messenger = ScaffoldMessenger.of(context);
+    final opened = context.read<SessionStore>();
     try {
-      await context.read<SessionStore>().resumeSession(
-        copy.id,
-        profile: copy.profile,
-      );
+      await opened.resumeSession(copy.id, profile: copy.profile);
+      if (!mounted) return;
+      _registerSessionTab(opened, copy);
       if (!mounted) return;
       Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.sessionOpenCopyFailed('$e'))),
+      showHermesErrorSnackBar(
+        context,
+        e,
+        fallback: context.l10n.sessionOpenCopyFailed('$e'),
       );
     }
   }
 
   Future<void> _togglePinnedAfterSwipe(SessionRow row) async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await context.read<SessionStore>().setPinned(row.id, !row.pinned);
     } catch (error) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.sessionActionFailed('$error'),
         );
       }
     }
@@ -897,15 +938,9 @@ class _SessionListScreenState extends State<SessionListScreen>
     SessionStore store,
     PullRequestStore pullRequests,
   ) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(HermesRadius.sheet),
-        ),
-      ),
-      builder: (ctx) {
+    showMobileSheet(
+      context,
+      (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             Widget bucketTile(String bucket, String label, IconData icon) {
@@ -1080,61 +1115,30 @@ class _SessionListScreenState extends State<SessionListScreen>
     );
   }
 
-  Future<bool?> _confirmDelete(SessionRow row) {
-    return showDialog<bool>(
+  Future<bool> _confirmDelete(SessionRow row) {
+    return showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ctx.l10n.sessionDeleteTitle),
-        content: Text(
-          ctx.l10n.sessionDeleteDescription(
-            row.title ?? ctx.l10n.sessionUntitled,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(ctx.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(ctx.l10n.commonDelete),
-          ),
-        ],
+      title: context.l10n.sessionDeleteTitle,
+      message: context.l10n.sessionDeleteDescription(
+        row.title ?? context.l10n.sessionUntitled,
       ),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
   }
 
   Future<void> _confirmBatchDelete() async {
     final count = _selectedIds.length;
     if (count == 0) return;
-    final messenger = ScaffoldMessenger.of(context);
     final session = context.read<SessionStore>();
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ctx.l10n.sessionBatchDeleteTitle),
-        content: Text(ctx.l10n.sessionBatchDeleteDescription(count)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(ctx.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(ctx.l10n.sessionConfirmDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.sessionBatchDeleteTitle,
+      message: context.l10n.sessionBatchDeleteDescription(count),
+      confirmLabel: context.l10n.sessionConfirmDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     final ids = List<String>.from(_selectedIds);
     setState(() {
       _deleting = true;
@@ -1142,16 +1146,18 @@ class _SessionListScreenState extends State<SessionListScreen>
     try {
       final deletedCount = await session.deleteSessions(ids);
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.sessionDeletedCount(deletedCount)),
-          ),
+        showHermesToast(
+          context,
+          message: context.l10n.sessionDeletedCount(deletedCount),
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionDeleteFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionDeleteFailed('$e'),
         );
       }
     } finally {
@@ -1502,8 +1508,9 @@ class _SessionListScreenState extends State<SessionListScreen>
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: HermesMobileSectionLabel(
+                  child: HermesSectionHeader(
                     title: _groupTitle(context, g),
+                    padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
                   ),
                 ),
               ),
@@ -1663,8 +1670,9 @@ class _SessionListScreenState extends State<SessionListScreen>
                   if (!context.mounted) return;
                   final after = session.sessions?.length ?? 0;
                   if (!session.listHasMore || after == before) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(context.l10n.gitEndOfLog)),
+                    showHermesToast(
+                      context,
+                      message: context.l10n.gitEndOfLog,
                     );
                   }
                 },
@@ -2616,11 +2624,9 @@ class _SessionListScreenState extends State<SessionListScreen>
     var requestVersion = 0;
     ApiClient? resultsApi;
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetCtx) => StatefulBuilder(
+    showMobileSheet<void>(
+      context,
+      (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, setSheet) {
           Future<void> search() async {
             final query = ctrl.text.trim();
@@ -2872,9 +2878,9 @@ class _SessionListScreenState extends State<SessionListScreen>
     required String query,
   }) async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await session.resumeSession(row.id, profile: row.profile);
+      _registerSessionTab(session, row);
       await session.setSessionViewedCount(row.id, row.messageCount ?? 0);
       if (!mounted) return;
       await Navigator.of(context).push(
@@ -2887,8 +2893,10 @@ class _SessionListScreenState extends State<SessionListScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.sessionSearchFailed('$e'))),
+      showHermesErrorSnackBar(
+        context,
+        e,
+        fallback: context.l10n.sessionSearchFailed('$e'),
       );
     }
   }

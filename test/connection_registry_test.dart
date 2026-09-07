@@ -42,6 +42,7 @@ class _Gateway extends GatewayClient {
   Completer<void>? disconnectGate;
   int connectCount = 0;
   int disconnectCount = 0;
+  Map<String, dynamic> Function(Map<String, dynamic>)? resumeResponder;
 
   _Gateway(String name)
     : super(serverBaseUrl: 'http://$name.invalid', apiKey: 'test-key');
@@ -74,6 +75,9 @@ class _Gateway extends GatewayClient {
     calls.add((method, params));
     if (method == 'session.resume' && resumeGate != null) {
       return resumeGate!.future;
+    }
+    if (method == 'session.resume' && resumeResponder != null) {
+      return resumeResponder!(params);
     }
     return {'ok': true};
   }
@@ -582,7 +586,86 @@ void main() {
     await restored.restoreQueues();
     expect(restored.queueCount, 1);
     expect(restored.sendQueue.single.text, 'do not duplicate');
+    expect(restored.queueParked, isTrue);
   });
+
+  test(
+    'live watch resumes lazily, remains read only, and advertises v2',
+    () async {
+      final gateway = _Gateway('watch')
+        ..resumeResponder = (params) => {
+          'session_id': 'watch-runtime',
+          'running': true,
+          'info': {'message_count': 0, 'running': true},
+        };
+      final connection = ConnectionStore();
+      connection.registry.add(_runtime('watch', gateway), makeActive: true);
+      final session = SessionStore(
+        connection: connection,
+        chat: ChatStore(),
+        requests: RequestStore(),
+      );
+      addTearDown(session.dispose);
+      addTearDown(connection.dispose);
+
+      await session.openWatchOwnedSession(
+        'child-1',
+        const OwnerRoute(connectionId: ConnectionId('watch')),
+      );
+
+      final call = gateway.calls.singleWhere(
+        (call) => call.$1 == 'session.resume',
+      );
+      expect(call.$2['lazy'], isTrue);
+      expect(call.$2['close_on_disconnect'], isTrue);
+      expect((call.$2['client_capabilities'] as Map)['version'], 2);
+      expect(session.readOnly, isTrue);
+      expect(session.watchMode, isTrue);
+      expect(session.runtimeId, 'watch-runtime');
+    },
+  );
+
+  test(
+    'queue continues on its original session after foreground switch',
+    () async {
+      final gateway = _Gateway('remote')
+        ..resumeResponder = (params) => {
+          'session_id': 'runtime-${params['session_id']}',
+          'info': {'message_count': 0},
+        };
+      final connection = ConnectionStore();
+      connection.registry.add(_runtime('remote', gateway), makeActive: true);
+      final session = _GatedSessionStore(
+        connection: connection,
+        chat: ChatStore(),
+        requests: RequestStore(),
+      );
+      addTearDown(session.dispose);
+      addTearDown(connection.dispose);
+      const route = OwnerRoute(connectionId: ConnectionId('remote'));
+
+      await session.resumeOwnedSession('A', route);
+      final first = session.enqueueMessage('A-first');
+      await Future<void>.delayed(Duration.zero);
+      await session.enqueueMessage('A-second');
+      await session.resumeOwnedSession('B', route);
+      session.firstSend.complete();
+      await first;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(session.durableId, 'B');
+      final backgroundResume = gateway.calls.lastWhere(
+        (call) => call.$1 == 'session.resume' && call.$2['session_id'] == 'A',
+      );
+      expect(backgroundResume.$2['omit_messages'], isTrue);
+      final submit = gateway.calls.singleWhere(
+        (call) => call.$1 == 'prompt.submit',
+      );
+      expect(submit.$2, containsPair('session_id', 'runtime-A'));
+      expect(submit.$2, containsPair('text', 'A-second'));
+      expect(session.sendQueue, isEmpty);
+    },
+  );
 
   test('parked queue keeps later prompts until explicit resume', () async {
     final connection = ConnectionStore();
@@ -627,10 +710,20 @@ void main() {
         displayText: '/skill review',
         attachments: const [
           QueuedAttachment(
-            kind: 'file',
-            label: 'main.dart',
+            kind: 'review',
+            label: 'main.dart:42',
             occurrenceId: 'occ-1',
             path: '/main.dart',
+            url: 'https://github.com/acme/repo/pull/7#discussion_r42',
+            snippetText: 'final answer = 42;',
+            detail: {
+              'owner': 'acme',
+              'repo': 'repo',
+              'pull_number': 7,
+              'comment_id': 42,
+              'side': 'RIGHT',
+              'line': 42,
+            },
           ),
         ],
       );
@@ -647,6 +740,13 @@ void main() {
         restored.sendQueue.single.attachments.single.occurrenceId,
         'occ-1',
       );
+      final attachment = restored.sendQueue.single.attachments.single;
+      expect(attachment.kind, 'review');
+      expect(attachment.url, contains('discussion_r42'));
+      expect(attachment.snippetText, 'final answer = 42;');
+      expect(attachment.detail, containsPair('owner', 'acme'));
+      expect(attachment.detail, containsPair('pull_number', 7));
+      expect(attachment.detail, containsPair('comment_id', 42));
     },
   );
 }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../core/stores/terminal_store.dart';
 import '../l10n/l10n.dart';
+import '../widgets/h/hermes_states.dart';
 import '../widgets/terminal/terminal_workspace.dart';
 import '../widgets/terminal/terminal_visuals.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
@@ -24,13 +25,14 @@ class _TerminalScreenState extends State<TerminalScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final store = context.read<TerminalStore>();
-      final messenger = ScaffoldMessenger.of(context);
       try {
         await store.init();
       } catch (error) {
         if (mounted) {
-          messenger.showSnackBar(
-            SnackBar(content: Text(context.l10n.terminalStartFailed('$error'))),
+          showHermesErrorSnackBar(
+            context,
+            error,
+            fallback: context.l10n.terminalStartFailed('$error'),
           );
         }
       }

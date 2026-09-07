@@ -14,6 +14,7 @@ import '../core/models.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
@@ -288,8 +289,7 @@ class _BillingScreenState extends State<BillingScreen>
                       const SizedBox(height: 12),
                       SelectableText(
                         userCode!,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
+                        style: HermesType.code.copyWith(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
@@ -700,24 +700,15 @@ class _BillingScreenState extends State<BillingScreen>
   Future<void> _cancelSubscription() async {
     final api = _loadedApi;
     if (api == null || !_ownsTarget(api, _mutationGeneration)) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.billingCancelAtPeriodEndQuestion),
-        content: Text(context.l10n.billingCancelAtPeriodEndDescription),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(context.l10n.commonBack),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(context.l10n.billingConfirmCancellation),
-          ),
-        ],
-      ),
+      title: context.l10n.billingCancelAtPeriodEndQuestion,
+      message: context.l10n.billingCancelAtPeriodEndDescription,
+      confirmLabel: context.l10n.billingConfirmCancellation,
+      cancelLabel: context.l10n.commonBack,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     await _runSubscriptionMutation(
       (api) => api.subscriptionChange({'cancel_at_period_end': true}),
       context.l10n.billingCancelFailed,

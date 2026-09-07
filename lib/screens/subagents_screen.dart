@@ -17,6 +17,9 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
+import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/session/session_rich_card.dart';
 import 'chat_screen.dart';
 
@@ -68,17 +71,15 @@ class _SubagentsScreenState extends State<SubagentsScreen> {
 
     final hasAny = ids.any((id) => store.forSession(id).isNotEmpty);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.featureSubagents),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _refreshAll,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.featureSubagents,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _refreshAll,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: store.error != null
           ? HermesErrorState(
               description: context.l10n.subagentsLoadFailed('${store.error}'),
@@ -465,9 +466,9 @@ class _SubagentTile extends StatelessWidget {
 
     void showActions() {
       final l10n = context.l10n;
-      showModalBottomSheet<void>(
-        context: context,
-        builder: (ctx) => SafeArea(
+      showMobileSheet<void>(
+        context,
+        (ctx) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -480,23 +481,24 @@ class _SubagentTile extends StatelessWidget {
                   title: Text(l10n.subagentsInterrupt),
                   onTap: () async {
                     Navigator.of(ctx).pop();
-                    final messenger = ScaffoldMessenger.of(context);
                     try {
                       await context.read<SubagentStore>().interrupt(
                         node.id,
                         ownerRoute: owner,
                       );
                       if (context.mounted) {
-                        messenger.showSnackBar(
-                          SnackBar(content: Text(l10n.subagentsInterruptSent)),
+                        showHermesToast(
+                          context,
+                          message: l10n.subagentsInterruptSent,
+                          kind: HermesToastKind.success,
                         );
                       }
                     } catch (e) {
                       if (context.mounted) {
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(l10n.subagentsInterruptFailed('$e')),
-                          ),
+                        showHermesErrorSnackBar(
+                          context,
+                          e,
+                          fallback: l10n.subagentsInterruptFailed('$e'),
                         );
                       }
                     }
@@ -517,12 +519,10 @@ class _SubagentTile extends StatelessWidget {
                     await session.openReadOnlyOwnedSession(sid, childOwner);
                   } catch (error) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            l10n.subagentsOpenSessionFailed('$error'),
-                          ),
-                        ),
+                      showHermesErrorSnackBar(
+                        context,
+                        error,
+                        fallback: l10n.subagentsOpenSessionFailed('$error'),
                       );
                     }
                     return;
@@ -643,7 +643,7 @@ class _StreamTail extends StatelessWidget {
                     : entry.kind == 'summary'
                     ? theme.colorScheme.onSurface
                     : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                fontFamily: 'monospace',
+                fontFamilyFallback: HermesFonts.mono,
                 fontStyle: entry.kind == 'thinking' ? FontStyle.italic : null,
               ),
               maxLines: 1,
@@ -712,7 +712,7 @@ class _NodeMeta extends StatelessWidget {
               parts.join(' · '),
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
-                fontFamily: 'monospace',
+                fontFamilyFallback: HermesFonts.mono,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -788,23 +788,8 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final (label, color) = _statusStyle(context, status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(HermesRadius.capsule),
-        border: Border.all(color: color.withValues(alpha: 0.32)),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+    return HermesStatusChip(color: color, label: label);
   }
 
   (String, Color) _statusStyle(BuildContext context, String status) {

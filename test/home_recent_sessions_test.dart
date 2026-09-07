@@ -14,6 +14,7 @@ import 'package:hermes_mobile/core/stores/plugin_contribution_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_appearance_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/home_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -161,7 +162,12 @@ void main() {
           ),
           ChangeNotifierProvider<NotificationStore>.value(value: notifications),
         ],
-        child: const MaterialApp(home: HomeScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HomeScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -213,7 +219,12 @@ void main() {
           ),
           ChangeNotifierProvider<NotificationStore>.value(value: notifications),
         ],
-        child: const MaterialApp(home: HomeScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HomeScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -270,7 +281,12 @@ void main() {
           ),
           ChangeNotifierProvider<NotificationStore>.value(value: notifications),
         ],
-        child: const MaterialApp(home: HomeScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HomeScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -342,7 +358,12 @@ void main() {
           ),
           ChangeNotifierProvider<NotificationStore>.value(value: notifications),
         ],
-        child: const MaterialApp(home: HomeScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HomeScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -380,6 +401,9 @@ void main() {
           ChangeNotifierProvider<NotificationStore>.value(value: notifications),
         ],
         child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(
               context,
@@ -424,7 +448,12 @@ void main() {
               value: notifications,
             ),
           ],
-          child: const MaterialApp(home: HomeScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: HomeScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -480,7 +509,12 @@ void main() {
           ),
           ChangeNotifierProvider<NotificationStore>.value(value: notifications),
         ],
-        child: const MaterialApp(home: HomeScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HomeScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -542,7 +576,12 @@ void main() {
           ),
           ChangeNotifierProvider<NotificationStore>.value(value: notifications),
         ],
-        child: const MaterialApp(home: HomeScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HomeScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();

@@ -21,7 +21,15 @@ enum WorkspacePaneKind {
   preview,
 }
 
-enum WorkspaceLayoutPreset { defaultLayout, focus, terminalDeck, quad }
+enum WorkspaceLayoutPreset {
+  defaultLayout,
+  focus,
+  balanced,
+  mainWide,
+  toolsWide,
+  terminalDeck,
+  quad,
+}
 
 @immutable
 class WorkspacePane {
@@ -32,6 +40,9 @@ class WorkspacePane {
     required this.title,
     required this.owner,
     this.readOnly = false,
+    this.repositoryRoot,
+    this.byteSize,
+    this.mimeType,
   });
 
   final String id;
@@ -40,6 +51,9 @@ class WorkspacePane {
   final String title;
   final OwnerRoute owner;
   final bool readOnly;
+  final String? repositoryRoot;
+  final int? byteSize;
+  final String? mimeType;
 
   WorkspacePane copyWith({String? title}) => WorkspacePane(
     id: id,
@@ -48,6 +62,9 @@ class WorkspacePane {
     title: title ?? this.title,
     owner: owner,
     readOnly: readOnly,
+    repositoryRoot: repositoryRoot,
+    byteSize: byteSize,
+    mimeType: mimeType,
   );
 
   Map<String, dynamic> toJson() => {
@@ -58,6 +75,9 @@ class WorkspacePane {
     'connection_id': owner.connectionId.value,
     if (owner.profile?.isNotEmpty == true) 'profile': owner.profile,
     if (readOnly) 'read_only': true,
+    if (repositoryRoot?.isNotEmpty == true) 'repository_root': repositoryRoot,
+    if (byteSize != null && byteSize! >= 0) 'byte_size': byteSize,
+    if (mimeType?.isNotEmpty == true) 'mime_type': mimeType,
   };
 
   static WorkspacePane? fromJson(Object? raw) {
@@ -67,6 +87,9 @@ class WorkspacePane {
     final referenceId = json['reference_id']?.toString().trim() ?? '';
     final title = json['title']?.toString().trim() ?? '';
     final connectionId = json['connection_id']?.toString().trim() ?? '';
+    final repositoryRoot = json['repository_root']?.toString().trim();
+    final mimeType = json['mime_type']?.toString().trim();
+    final byteSize = (json['byte_size'] as num?)?.toInt();
     final kind = WorkspacePaneKind.values
         .where((value) => value.name == json['kind']?.toString())
         .firstOrNull;
@@ -80,6 +103,17 @@ class WorkspacePane {
         kind == null) {
       return null;
     }
+    // Oversized or malformed optional metadata should not discard the whole
+    // pane (and with it the user's open preview) — just drop that one field.
+    final safeRepositoryRoot =
+        (repositoryRoot != null && repositoryRoot.isNotEmpty && repositoryRoot.length <= 4096)
+        ? repositoryRoot
+        : null;
+    final safeMimeType =
+        (mimeType != null && mimeType.isNotEmpty && mimeType.length <= 256)
+        ? mimeType
+        : null;
+    final safeByteSize = (byteSize != null && byteSize >= 0) ? byteSize : null;
     return WorkspacePane(
       id: id,
       kind: kind,
@@ -90,6 +124,9 @@ class WorkspacePane {
         profile: json['profile']?.toString(),
       ),
       readOnly: json['read_only'] == true,
+      repositoryRoot: safeRepositoryRoot,
+      byteSize: safeByteSize,
+      mimeType: safeMimeType,
     );
   }
 }
@@ -240,6 +277,9 @@ class PaneWorkspaceStore extends ChangeNotifier {
     String referenceId = 'default',
     PaneDropPosition position = PaneDropPosition.right,
     String? targetPaneId,
+    String? repositoryRoot,
+    int? byteSize,
+    String? mimeType,
   }) async {
     if (kind == WorkspacePaneKind.session || kind == WorkspacePaneKind.plugin) {
       throw ArgumentError.value(kind, 'kind', 'Expected a core pane kind');
@@ -255,6 +295,9 @@ class PaneWorkspaceStore extends ChangeNotifier {
         referenceId: normalizedReference,
         title: title.trim().isEmpty ? kind.name : title.trim(),
         owner: owner,
+        repositoryRoot: repositoryRoot,
+        byteSize: byteSize,
+        mimeType: mimeType,
       ),
       position: position,
       targetPaneId: targetPaneId,
@@ -321,6 +364,33 @@ class PaneWorkspaceStore extends ChangeNotifier {
     unawaited(_persist());
   }
 
+  void closeOthers(String paneId) {
+    final pane = _panes[paneId];
+    if (pane == null || _panes.length == 1) return;
+    _tree = PaneGroup(id: _nextId('group'), panes: [paneId], active: paneId);
+    _panes = Map.unmodifiable({paneId: pane});
+    _focusedPaneId = paneId;
+    notifyListeners();
+    unawaited(_persist());
+  }
+
+  void closeToRight(String paneId) {
+    final group = paneGroupFor(_tree, paneId);
+    if (group == null) return;
+    final index = group.panes.indexOf(paneId);
+    if (index < 0 || index == group.panes.length - 1) return;
+    final ids = group.panes.sublist(index + 1).toList(growable: false);
+    for (final id in ids) {
+      _tree = removePaneFromTree(_tree, id);
+    }
+    _panes = Map.unmodifiable(
+      {..._panes}..removeWhere((id, _) => ids.contains(id)),
+    );
+    if (ids.contains(_focusedPaneId)) _focusedPaneId = paneId;
+    notifyListeners();
+    unawaited(_persist());
+  }
+
   void move(String paneId, String targetPaneId, PaneDropPosition position) {
     final current = _tree;
     final target = paneGroupFor(current, targetPaneId);
@@ -357,6 +427,9 @@ class PaneWorkspaceStore extends ChangeNotifier {
     final active = ids.contains(_focusedPaneId) ? _focusedPaneId! : ids.first;
     final next = switch (preset) {
       WorkspaceLayoutPreset.focus => _presetGroup('preset-focus', ids, active),
+      WorkspaceLayoutPreset.balanced => _ratioPreset(ids, active, 1, 1),
+      WorkspaceLayoutPreset.mainWide => _ratioPreset(ids, active, 2, 1),
+      WorkspaceLayoutPreset.toolsWide => _ratioPreset(ids, active, 1, 2),
       WorkspaceLayoutPreset.defaultLayout => _defaultPreset(ids, active),
       WorkspaceLayoutPreset.terminalDeck => _terminalDeckPreset(ids, active),
       WorkspaceLayoutPreset.quad => _quadPreset(ids, active),
@@ -365,6 +438,24 @@ class PaneWorkspaceStore extends ChangeNotifier {
     _focusedPaneId = active;
     notifyListeners();
     unawaited(_persist());
+  }
+
+  PaneNode _ratioPreset(
+    List<String> ids,
+    String active,
+    double firstWeight,
+    double secondWeight,
+  ) {
+    if (ids.length < 2) return _presetGroup('preset-ratio', ids, active);
+    return PaneSplit(
+      id: 'preset-ratio-root',
+      axis: PaneSplitAxis.horizontal,
+      children: [
+        _presetGroup('preset-ratio-main', [ids.first], active),
+        _presetGroup('preset-ratio-rest', ids.skip(1).toList(), active),
+      ],
+      weights: [firstWeight, secondWeight],
+    );
   }
 
   PaneNode _defaultPreset(List<String> ids, String active) {

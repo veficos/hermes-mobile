@@ -10,6 +10,7 @@ import '../../core/stores/pull_request_store.dart';
 import '../../core/server_path.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../h/hermes_states.dart';
 
 /// Basename of a server path for compact list display.
 String sessionPathBasename(String? path) {
@@ -102,10 +103,10 @@ class SessionMetaBadges extends StatelessWidget {
                       mode: LaunchMode.externalApplication,
                     );
                     if (!launched && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(context.l10n.sessionPrOpenFailed),
-                        ),
+                      showHermesErrorSnackBar(
+                        context,
+                        StateError(pr.url),
+                        fallback: context.l10n.sessionPrOpenFailed,
                       );
                     }
                   },

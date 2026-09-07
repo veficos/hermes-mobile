@@ -175,9 +175,11 @@ class MobilePluginContribution {
   final String? titleKey, descriptionKey;
   final MobileContributionArea area;
   final int order;
+  final String slot;
   final Map<String, dynamic> action;
   final Set<String> platforms;
   final OwnerRoute owner;
+  final List<MobileContributionHook> hooks;
 
   /// One of HermesSemantic's named tones (green/orange/red/blue/gray/purple)
   /// — lets a contribution signal category/severity without a raw color.
@@ -200,9 +202,11 @@ class MobilePluginContribution {
     this.descriptionKey,
     this.icon = 'extension',
     this.order = 0,
+    this.slot = 'leading',
     this.action = const {},
     this.platforms = const {},
     required this.owner,
+    this.hooks = const [],
     this.color,
     this.badgeAction,
     this.view = const MobilePluginView(),
@@ -240,11 +244,33 @@ class MobilePluginContribution {
       descriptionKey: json['description_key']?.toString(),
       icon: json['icon']?.toString() ?? 'extension',
       order: (json['order'] as num?)?.toInt() ?? 0,
+      slot:
+          const {
+            'leading',
+            'top',
+            'bottom',
+            'actions',
+            'micro_action',
+            'attachment_provider',
+            'at_completion',
+            'prepare',
+          }.contains(json['slot']?.toString())
+          ? json['slot'].toString()
+          : 'leading',
       action: (json['action'] as Map?)?.cast<String, dynamic>() ?? const {},
       platforms: (json['platforms'] as List? ?? const [])
           .map((e) => '$e')
           .toSet(),
       owner: owner,
+      hooks: (json['hooks'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (value) =>
+                MobileContributionHook.fromJson(value.cast<String, dynamic>()),
+          )
+          .where((value) => value != null)
+          .cast<MobileContributionHook>()
+          .toList(growable: false),
       color: json['color']?.toString(),
       badgeAction: (json['badge_action'] as Map?)?.cast<String, dynamic>(),
       view: MobilePluginView.fromJson(json['view']),
@@ -274,6 +300,58 @@ class MobilePluginContribution {
       }),
     );
   }
+}
+
+class MobileContributionHook {
+  const MobileContributionHook({
+    required this.event,
+    required this.action,
+    required this.order,
+    required this.timeout,
+  });
+
+  final String event;
+  final Map<String, dynamic> action;
+  final int order;
+  final Duration timeout;
+
+  static MobileContributionHook? fromJson(Map<String, dynamic> json) {
+    final event = json['event']?.toString();
+    final action = (json['action'] as Map?)?.cast<String, dynamic>();
+    if (event != 'composer.prepare' || action == null) return null;
+    final rawTimeout = (json['timeout_ms'] as num?)?.toInt() ?? 4000;
+    return MobileContributionHook(
+      event: event!,
+      action: Map.unmodifiable(action),
+      order: ((json['order'] as num?)?.toInt() ?? 0).clamp(-10000, 10000),
+      timeout: Duration(milliseconds: rawTimeout.clamp(250, 10000)),
+    );
+  }
+}
+
+@immutable
+class ComposerPrepareResult {
+  const ComposerPrepareResult({required this.text, this.blockedMessage});
+  final String text;
+  final String? blockedMessage;
+  bool get blocked => blockedMessage != null;
+}
+
+@immutable
+class PluginComposerCompletion {
+  const PluginComposerCompletion({
+    required this.id,
+    required this.title,
+    required this.insertText,
+    required this.trigger,
+    this.description,
+  });
+
+  final String id;
+  final String title;
+  final String insertText;
+  final String trigger;
+  final String? description;
 }
 
 /// Safe declarative adapter: plugins contribute metadata and host-mediated
@@ -364,6 +442,149 @@ class PluginContributionStore extends ChangeNotifier {
                     item.platforms.contains('mobile')),
           )
           .toList(growable: false);
+
+  /// Runs bounded, declarative composer completion providers. Providers only
+  /// receive draft text and routing metadata; their response can insert plain
+  /// text but cannot execute client code or mutate Flutter state.
+  Future<List<PluginComposerCompletion>> completeComposer({
+    required String text,
+    required String sessionId,
+    required OwnerRoute owner,
+  }) async {
+    final query = text.trim();
+    if (query.length < 3 || utf8.encode(query).length > 16 * 1024) {
+      return const [];
+    }
+    final output = <PluginComposerCompletion>[];
+    for (final item in forArea(MobileContributionArea.composer)) {
+      if (item.slot != 'at_completion' || item.owner != owner) continue;
+      try {
+        final result = await invokeAction(
+          item,
+          item.action,
+          inputs: {
+            'query': query,
+            'session_id': sessionId,
+            'owner': owner.key,
+            'limit': 5,
+          },
+          rememberResult: false,
+        ).timeout(const Duration(seconds: 4));
+        final rows = result['items'];
+        if (rows is! List) continue;
+        for (final raw in rows.whereType<Map>().take(5)) {
+          final insertText = raw['insert_text']?.toString() ?? '';
+          final title = raw['title']?.toString() ?? '';
+          if (insertText.isEmpty ||
+              insertText.length > 4096 ||
+              title.isEmpty ||
+              title.length > 160) {
+            continue;
+          }
+          output.add(
+            PluginComposerCompletion(
+              id: '${item.namespacedId}:${raw['id'] ?? output.length}',
+              title: title,
+              insertText: insertText,
+              trigger: item.title,
+              description: switch (raw['description']?.toString()) {
+                final value? when value.length <= 320 => value,
+                _ => null,
+              },
+            ),
+          );
+          if (output.length == 8) return List.unmodifiable(output);
+        }
+      } catch (_) {
+        // Completion is assistive: one unavailable plugin must not interrupt
+        // typing or suppress the built-in completion providers.
+      }
+    }
+    return List.unmodifiable(output);
+  }
+
+  /// Runs only explicitly declared pre-submit hooks. The host exposes bounded
+  /// metadata, never attachment bytes, local secrets, or arbitrary Flutter
+  /// objects. Each hook receives the previous hook's complete text result.
+  Future<ComposerPrepareResult> prepareComposer({
+    required String text,
+    required List<Map<String, dynamic>> attachments,
+    required String? sessionId,
+    required OwnerRoute? owner,
+  }) async {
+    const maxTextBytes = 64 * 1024;
+    if (utf8.encode(text).length > maxTextBytes) {
+      throw StateError(runtimeL10n.pluginComposerTextTooLarge);
+    }
+    var prepared = text;
+    final hooks =
+        <({MobilePluginContribution item, MobileContributionHook hook})>[
+          for (final item in forArea(MobileContributionArea.composer))
+            for (final hook in item.hooks)
+              if (hook.event == 'composer.prepare') (item: item, hook: hook),
+        ]..sort((a, b) {
+          final order = a.hook.order.compareTo(b.hook.order);
+          return order != 0
+              ? order
+              : a.item.namespacedId.compareTo(b.item.namespacedId);
+        });
+    for (final entry in hooks) {
+      final item = entry.item;
+      final hook = entry.hook;
+      if (owner != null && item.owner != owner) {
+        continue;
+      }
+      final result = await invokeAction(
+        item,
+        hook.action,
+        inputs: {
+          'text': prepared,
+          'attachments': attachments
+              .take(32)
+              .map(
+                (item) => {
+                  'kind': item['kind']?.toString(),
+                  'name': item['name']?.toString(),
+                  'url': item['url']?.toString(),
+                  'path': item['path']?.toString(),
+                },
+              )
+              .toList(growable: false),
+          'session_id': sessionId,
+          'owner': owner?.key,
+        },
+        rememberResult: false,
+      ).timeout(hook.timeout);
+      final status = result['status']?.toString();
+      if (status != null &&
+          !const {'unchanged', 'transformed', 'blocked'}.contains(status)) {
+        throw StateError(runtimeL10n.pluginComposerInvalidResponse);
+      }
+      if (result['blocked'] == true || status == 'blocked') {
+        return ComposerPrepareResult(
+          text: prepared,
+          blockedMessage:
+              result['message']?.toString().trim().isNotEmpty == true
+              ? result['message'].toString().trim()
+              : runtimeL10n.pluginComposerBlocked,
+        );
+      }
+      final transformed = result['text'];
+      if (transformed != null && transformed is! String) {
+        throw StateError(runtimeL10n.pluginComposerInvalidResponse);
+      }
+      if (status == 'transformed' && transformed == null) {
+        throw StateError(runtimeL10n.pluginComposerInvalidResponse);
+      }
+      if (transformed is String) {
+        if (utf8.encode(transformed).length > maxTextBytes) {
+          throw StateError(runtimeL10n.pluginComposerTextTooLarge);
+        }
+        prepared = transformed;
+      }
+    }
+    return ComposerPrepareResult(text: prepared);
+  }
 
   void adaptPluginInventory(
     List<Map<String, dynamic>> plugins, {

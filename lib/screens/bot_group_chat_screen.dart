@@ -4,10 +4,12 @@ import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/bot_avatar.dart' show botAppearance;
 import '../core/clarify_choice.dart';
 import '../core/stores/bot_store.dart';
 import '../core/stores/request_store.dart';
 import '../l10n/l10n.dart';
+import '../widgets/bot_avatar.dart';
 import '../widgets/h/hermes_toast.dart';
 
 /// Full-screen Bot Group chat. Replaces the old height-capped modal dialog
@@ -314,9 +316,10 @@ class _BotGroupChatScreenState extends State<BotGroupChatScreen> {
         : store.bots.where((b) => b.displayName == message.author).firstOrNull;
     final bubbleColor = mine
         ? theme.colorScheme.primaryContainer
-        : (bot != null ? botAvatarColor(bot.metadata) : null)?.withValues(
-              alpha: 0.16,
-            ) ??
+        : (bot != null
+                  ? botAppearance(bot.profile, bot.metadata).color
+                  : null)
+              ?.withValues(alpha: 0.16) ??
           theme.colorScheme.surfaceContainerHigh;
     final selected = _replyThreadId == message.threadId;
     return Padding(
@@ -327,16 +330,16 @@ class _BotGroupChatScreenState extends State<BotGroupChatScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!mine) ...[
-            CircleAvatar(
-              radius: 14,
-              backgroundColor:
-                  (bot != null ? botAvatarColor(bot.metadata) : null) ??
-                  theme.colorScheme.secondaryContainer,
-              child: Text(
-                displayName.isEmpty ? '?' : displayName[0].toUpperCase(),
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
+            bot != null
+                ? BotAvatar(name: bot.profile, metadata: bot.metadata, size: 28)
+                : CircleAvatar(
+                    radius: 14,
+                    backgroundColor: theme.colorScheme.secondaryContainer,
+                    child: Text(
+                      displayName.isEmpty ? '?' : displayName[0].toUpperCase(),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
             const SizedBox(width: 8),
           ],
           Flexible(

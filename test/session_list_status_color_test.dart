@@ -9,11 +9,13 @@ import 'package:hermes_mobile/core/stores/pull_request_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_appearance_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/core/stores/session_tab_store.dart';
 import 'package:hermes_mobile/core/stores/subagent_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/session_list_screen.dart';
 import 'package:hermes_mobile/theme/hermes_tokens.dart';
-import 'package:hermes_mobile/widgets/mobile/hermes_mobile_surfaces.dart';
+import 'package:hermes_mobile/widgets/h/hermes_status.dart';
 import 'package:hermes_mobile/widgets/session/session_card.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -95,6 +97,14 @@ void main() {
         MultiProvider(
           providers: [
             ChangeNotifierProvider<ConnectionStore>.value(value: connection),
+            ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
+              create: (_) => SessionTabStore(),
+              update: (_, connection, tabs) =>
+                  (tabs ?? SessionTabStore())..attachRoutedEvents(
+                    connection.routedEvents,
+                    owners: connection.sessionOwners,
+                  ),
+            ),
             ChangeNotifierProvider<ChatStore>.value(value: chat),
             ChangeNotifierProvider<RequestStore>.value(value: requests),
             ChangeNotifierProvider<SessionStore>.value(value: sessions),
@@ -106,7 +116,12 @@ void main() {
             ChangeNotifierProvider<SubagentStore>.value(value: subagents),
             ChangeNotifierProvider<PullRequestStore>.value(value: pullRequests),
           ],
-          child: const MaterialApp(home: SessionListScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SessionListScreen(),
+          ),
         ),
       );
       await tester.pump(const Duration(milliseconds: 100));
@@ -117,13 +132,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('已归档的旧会话'), findsOneWidget);
-      final chip = tester.widget<HermesMobileStatusChip>(
-        find.byType(HermesMobileStatusChip),
+      final chip = tester.widget<HermesStatusChip>(
+        find.byType(HermesStatusChip),
       );
       expect(chip.label, '已归档');
       final dark =
           Theme.of(
-            tester.element(find.byType(HermesMobileStatusChip)),
+            tester.element(find.byType(HermesStatusChip)),
           ).brightness ==
           Brightness.dark;
       expect(chip.color, dark ? HermesSemanticDark.gray : HermesSemantic.gray);
@@ -140,6 +155,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: Column(
             children: [
@@ -162,7 +180,7 @@ void main() {
     );
 
     final chips = tester
-        .widgetList<HermesMobileStatusChip>(find.byType(HermesMobileStatusChip))
+        .widgetList<HermesStatusChip>(find.byType(HermesStatusChip))
         .toList();
     expect(chips.map((chip) => chip.label), containsAll(['空闲', '已完成']));
   });

@@ -139,6 +139,9 @@ class _UploadApi extends ApiClient {
     uploads.add(path);
     return {'path': '/remote$path'};
   }
+
+  @override
+  Future<String> fsDefaultCwd() async => '/workspace';
 }
 
 Future<void> _waitUntil(bool Function() condition) async {
@@ -343,7 +346,10 @@ void main() {
           .map((call) => call.$2['text'].toString())
           .toList();
       expect(prompts, hasLength(2));
-      expect(prompts, everyElement(contains('@image:/remote/hm-attachments/')));
+      expect(
+        prompts,
+        everyElement(contains('@image:/remote/workspace/group_')),
+      );
       expect(prompts, everyElement(contains('[Attached files: /remote/')));
       expect(store.messagesFor(group.id).single.text, contains('screen.png'));
     },
@@ -368,7 +374,9 @@ void main() {
       ]);
       final replies = harness.store
           .messagesFor(harness.group.id)
-          .where((message) => message.author != 'You' && message.author != 'System')
+          .where(
+            (message) => message.author != 'You' && message.author != 'System',
+          )
           .toList();
       expect(replies, hasLength(4));
       expect(replies.map((message) => message.author), [

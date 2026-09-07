@@ -14,9 +14,12 @@ import '../core/connection_reload_mixin.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_button.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 // Desktop refreshes the job list on a live `$cronChangeTick` gateway event;
 // mobile has no equivalent event wired yet, so this polls instead — same
@@ -48,7 +51,9 @@ String _cronStateLabel(BuildContext context, String state) => switch (state) {
 };
 
 class CronScreen extends StatefulWidget {
-  const CronScreen({super.key});
+  const CronScreen({super.key, this.initialPrompt});
+
+  final String? initialPrompt;
 
   @override
   State<CronScreen> createState() => _CronScreenState();
@@ -68,6 +73,12 @@ class _CronScreenState extends State<CronScreen>
     super.initState();
     _load();
     _refreshTimer = Timer.periodic(_autoRefreshInterval, (_) => _load());
+    final prefill = widget.initialPrompt;
+    if (prefill != null && prefill.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openEditor(null, null, prefill);
+      });
+    }
   }
 
   @override
@@ -164,7 +175,11 @@ class _CronScreenState extends State<CronScreen>
     }
   }
 
-  Future<void> _openEditor([CronJob? job, ApiClient? ownerApi]) async {
+  Future<void> _openEditor([
+    CronJob? job,
+    ApiClient? ownerApi,
+    String? initialPrompt,
+  ]) async {
     final connection = context.read<ConnectionStore>();
     final api = ownerApi ?? (job == null ? connection.api : _loadedApi);
     if (api == null || !identical(connection.api, api)) {
@@ -181,7 +196,8 @@ class _CronScreenState extends State<CronScreen>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(HermesRadius.sheet),
       ),
-      builder: (_) => _CronEditorSheet(job: job, ownerApi: api),
+      builder: (_) =>
+          _CronEditorSheet(job: job, ownerApi: api, initialPrompt: initialPrompt),
     );
     if (saved == true && mounted && identical(connection.api, api)) _load();
   }
@@ -189,17 +205,15 @@ class _CronScreenState extends State<CronScreen>
   @override
   Widget build(BuildContext context) {
     final jobs = _jobs;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.cronTitle),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.cronTitle,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       floatingActionButton: FloatingActionButton(
         heroTag: 'new-cron',
         onPressed: () => _openEditor(),
@@ -325,7 +339,6 @@ class _CronScreenState extends State<CronScreen>
   void _showMenu(CronJob job) {
     final ownerApi = _loadedApi;
     if (ownerApi == null) return;
-    final messenger = ScaffoldMessenger.of(context);
     showModalBottomSheet(
       context: context,
       shape: RoundedRectangleBorder(
@@ -368,16 +381,18 @@ class _CronScreenState extends State<CronScreen>
                 try {
                   await ownerApi.cronTrigger(job.id);
                   if (mounted && identical(connection.api, ownerApi)) {
-                    messenger.showSnackBar(
-                      SnackBar(content: Text(context.l10n.cronTriggered)),
+                    showHermesToast(
+                      context,
+                      message: context.l10n.cronTriggered,
+                      kind: HermesToastKind.success,
                     );
                   }
                 } catch (e) {
                   if (mounted && identical(connection.api, ownerApi)) {
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text(context.l10n.cronTriggerFailed('$e')),
-                      ),
+                    showHermesErrorSnackBar(
+                      context,
+                      e,
+                      fallback: context.l10n.cronTriggerFailed('$e'),
                     );
                   }
                 }
@@ -394,30 +409,14 @@ class _CronScreenState extends State<CronScreen>
               ),
               onTap: () async {
                 Navigator.of(ctx).pop();
-                final confirmed = await showDialog<bool>(
+                final confirmed = await showHermesConfirmDialog(
                   context: context,
-                  builder: (dctx) => AlertDialog(
-                    title: Text(context.l10n.cronDeleteQuestion),
-                    content: Text(
-                      context.l10n.cronDeletePrompt(job.name ?? job.id),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(dctx).pop(false),
-                        child: Text(context.l10n.commonCancel),
-                      ),
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: HermesSemantic.red,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () => Navigator.of(dctx).pop(true),
-                        child: Text(context.l10n.commonDelete),
-                      ),
-                    ],
-                  ),
+                  title: context.l10n.cronDeleteQuestion,
+                  message: context.l10n.cronDeletePrompt(job.name ?? job.id),
+                  confirmLabel: context.l10n.commonDelete,
+                  destructive: true,
                 );
-                if (confirmed == true) {
+                if (confirmed) {
                   if (!mounted) return;
                   final connection = context.read<ConnectionStore>();
                   if (!identical(connection.api, ownerApi)) {
@@ -435,10 +434,10 @@ class _CronScreenState extends State<CronScreen>
                     }
                   } catch (e) {
                     if (mounted && identical(connection.api, ownerApi)) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(context.l10n.cronDeleteFailed('$e')),
-                        ),
+                      showHermesErrorSnackBar(
+                        context,
+                        e,
+                        fallback: context.l10n.cronDeleteFailed('$e'),
                       );
                     }
                   }
@@ -585,10 +584,7 @@ class _CronScreenState extends State<CronScreen>
                   const SizedBox(height: 2),
                   SelectableText(
                     output,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                    ),
+                    style: HermesType.code.copyWith(fontSize: 12),
                   ),
                 ],
               ],
@@ -642,7 +638,8 @@ class _CronStateBadge extends StatelessWidget {
 class _CronEditorSheet extends StatefulWidget {
   final CronJob? job;
   final ApiClient ownerApi;
-  const _CronEditorSheet({this.job, required this.ownerApi});
+  final String? initialPrompt;
+  const _CronEditorSheet({this.job, required this.ownerApi, this.initialPrompt});
 
   @override
   State<_CronEditorSheet> createState() => _CronEditorSheetState();
@@ -653,7 +650,7 @@ class _CronEditorSheetState extends State<_CronEditorSheet> {
     text: widget.job?.name ?? '',
   );
   late final TextEditingController _promptCtrl = TextEditingController(
-    text: widget.job?.prompt ?? '',
+    text: widget.job?.prompt ?? widget.initialPrompt ?? '',
   );
   late final TextEditingController _cronCtrl = TextEditingController(
     text: widget.job?.schedule ?? '0 9 * * *',
@@ -977,6 +974,8 @@ class _CronEditorSheetState extends State<_CronEditorSheet> {
             if (widget.job == null &&
                 (_loadingBlueprints || _blueprints.isNotEmpty)) ...[
               DropdownButtonFormField<String>(
+                dropdownColor: hermesDropdownColor(context),
+                borderRadius: hermesDropdownBorderRadius,
                 initialValue: _blueprint?.key ?? '__custom__',
                 decoration: InputDecoration(
                   labelText: context.l10n.cronStartFromTemplate,
@@ -1040,19 +1039,11 @@ class _CronEditorSheetState extends State<_CronEditorSheet> {
               ],
               SizedBox(
                 width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _saving ? null : _saveBlueprint,
-                  icon: _saving
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.schedule_send_outlined),
-                  label: Text(
-                    _saving
-                        ? context.l10n.cronScheduling
-                        : context.l10n.cronScheduleAutomation,
-                  ),
+                child: HermesButton(
+                  onPressed: _saveBlueprint,
+                  loading: _saving,
+                  icon: Icons.schedule_send_outlined,
+                  label: context.l10n.cronScheduleAutomation,
                 ),
               ),
             ] else ...[
@@ -1071,7 +1062,7 @@ class _CronEditorSheetState extends State<_CronEditorSheet> {
                   controller: _scriptCtrl,
                   maxLines: 10,
                   minLines: 4,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                  style: HermesType.code,
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     isDense: true,
@@ -1099,6 +1090,8 @@ class _CronEditorSheetState extends State<_CronEditorSheet> {
                   key: ValueKey(
                     'cron-model:$_modelChoice:${_modelProviders.length}',
                   ),
+                  dropdownColor: hermesDropdownColor(context),
+                  borderRadius: hermesDropdownBorderRadius,
                   initialValue: _modelChoice,
                   decoration: InputDecoration(
                     labelText: context.l10n.cronTaskModel,
@@ -1193,18 +1186,11 @@ class _CronEditorSheetState extends State<_CronEditorSheet> {
               ],
               SizedBox(
                 width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _saving ? null : _save,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save_outlined),
-                  label: Text(
-                    _saving ? context.l10n.cronSaving : context.l10n.commonSave,
-                  ),
+                child: HermesButton(
+                  onPressed: _save,
+                  loading: _saving,
+                  icon: Icons.save_outlined,
+                  label: context.l10n.commonSave,
                 ),
               ),
             ],
@@ -1258,6 +1244,8 @@ class _BlueprintFieldControl extends StatelessWidget {
     if (field.type == 'enum' || field.type == 'weekdays') {
       control = DropdownButtonFormField<String>(
         key: ValueKey('${field.name}:$safeValue'),
+        dropdownColor: hermesDropdownColor(context),
+        borderRadius: hermesDropdownBorderRadius,
         initialValue: safeValue,
         decoration: InputDecoration(labelText: field.label),
         items: [

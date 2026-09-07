@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/chat/composer/background_process_sheet.dart';
 import 'package:hermes_mobile/core/stores/composer_status_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 /// Tapping a background-process row in the composer status stack must open
@@ -51,6 +52,9 @@ void main() {
       ChangeNotifierProvider<ComposerStatusStore>.value(
         value: composer,
         child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
@@ -101,9 +105,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(rpc.killed, ['proc-1']);
-    // The row is gone from the store — the sheet reactively falls back to
-    // the "process no longer exists" state instead of showing stale data.
-    expect(find.text('该进程已结束并被移除'), findsOneWidget);
+    // terminal.close removes only the read-only view. It must dismiss the
+    // sheet without issuing another kill or keeping stale output visible.
+    expect(find.text('npm run build'), findsNothing);
+    expect(find.text('open'), findsOneWidget);
   });
 
   testWidgets('a finished process shows its exit code and a dismiss action', (

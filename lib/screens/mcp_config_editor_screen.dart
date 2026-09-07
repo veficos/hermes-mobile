@@ -229,6 +229,8 @@ class _McpServerEditorScreenState extends State<McpServerEditorScreen> {
             ] else ...[
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
+                dropdownColor: hermesDropdownColor(context),
+                borderRadius: hermesDropdownBorderRadius,
                 initialValue: _auth,
                 decoration: InputDecoration(
                   labelText: context.l10n.mcpAuthentication,

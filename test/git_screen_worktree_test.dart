@@ -5,6 +5,7 @@ import 'package:hermes_mobile/core/stores/chat_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/git_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -132,7 +133,12 @@ Future<_WorktreeApi> _pump(WidgetTester tester) async {
         ChangeNotifierProvider<ConnectionStore>.value(value: connection),
         ChangeNotifierProvider<SessionStore>.value(value: session),
       ],
-      child: const MaterialApp(home: GitScreen(initialPath: '/repo')),
+      child: MaterialApp(
+        locale: Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: GitScreen(initialPath: '/repo'),
+      ),
     ),
   );
   await tester.pumpAndSettle();

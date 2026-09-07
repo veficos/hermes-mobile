@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/hermes_tokens.dart';
+
 /// Renders text that may contain ANSI SGR escape sequences (`\x1B[…m`) as
 /// coloured spans. Desktop parity: `components/assistant-ui/ansi-text.tsx`.
 /// Unsupported / malformed sequences are dropped so raw `\x1B[` noise never
@@ -22,7 +24,9 @@ class AnsiText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = (style ?? const TextStyle()).copyWith(fontFamily: 'monospace');
+    final base = (style ?? const TextStyle()).copyWith(
+      fontFamilyFallback: HermesFonts.mono,
+    );
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final span = TextSpan(children: parseAnsi(text, base, isDark));
     return selectable ? SelectableText.rich(span) : Text.rich(span);

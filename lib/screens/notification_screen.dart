@@ -13,10 +13,14 @@ import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_badge.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import 'chat_screen.dart';
 import 'kanban_canonical_screen.dart';
+import 'mcp_screen.dart';
 import 'request_sheet.dart';
 
 class NotificationScreen extends StatelessWidget {
@@ -46,24 +50,14 @@ class NotificationScreen extends StatelessWidget {
     BuildContext context,
     NotificationStore store,
   ) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.notificationClearConfirmTitle),
-        content: Text(context.l10n.notificationClearConfirmBody),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.notificationClear),
-          ),
-        ],
-      ),
+      title: context.l10n.notificationClearConfirmTitle,
+      message: context.l10n.notificationClearConfirmBody,
+      confirmLabel: context.l10n.notificationClear,
+      destructive: true,
     );
-    if (confirmed == true) store.clear();
+    if (confirmed) store.clear();
   }
 
   Future<void> _open(BuildContext context, NotificationItem n) async {
@@ -93,6 +87,12 @@ class NotificationScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const KanbanCanonicalScreen()),
             );
           }
+        case 'mcp':
+          if (context.mounted) {
+            await Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const McpScreen()));
+          }
         default:
           return;
       }
@@ -121,8 +121,10 @@ class NotificationScreen extends StatelessWidget {
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.notificationOpenFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.notificationOpenFailed('$e'),
         );
       }
     }
@@ -161,23 +163,21 @@ class NotificationScreen extends StatelessWidget {
         : width >= 600
         ? 720.0
         : double.infinity;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.notificationTitle),
-        actions: [
-          if (items.isNotEmpty)
-            TextButton(
-              onPressed: store.markAllRead,
-              child: Text(context.l10n.notificationMarkAllRead),
-            ),
-          if (items.isNotEmpty)
-            IconButton(
-              tooltip: context.l10n.notificationClear,
-              onPressed: () => _confirmClear(context, store),
-              icon: const Icon(Icons.delete_sweep_outlined),
-            ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.notificationTitle,
+      actions: [
+        if (items.isNotEmpty)
+          TextButton(
+            onPressed: store.markAllRead,
+            child: Text(context.l10n.notificationMarkAllRead),
+          ),
+        if (items.isNotEmpty)
+          IconButton(
+            tooltip: context.l10n.notificationClear,
+            onPressed: () => _confirmClear(context, store),
+            icon: const Icon(Icons.delete_sweep_outlined),
+          ),
+      ],
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
@@ -202,7 +202,10 @@ class NotificationScreen extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 32),
       children: [
         for (final section in sections.entries) ...[
-          HermesMobileSectionLabel(title: section.key),
+          HermesSectionHeader(
+            title: section.key,
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          ),
           HermesMobileGroup(
             children: [
               for (final item in section.value) _notificationRow(context, item),

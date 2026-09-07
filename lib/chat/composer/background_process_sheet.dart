@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 import '../../core/stores/composer_status_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../widgets/h/hermes_states.dart';
 import '../../widgets/h/hermes_status.dart';
 import '../../widgets/h/hermes_tool.dart';
 
@@ -78,7 +79,6 @@ class _BackgroundProcessViewState extends State<_BackgroundProcessView> {
 
   Future<void> _stop(String sessionId, String id) async {
     setState(() => _stopping = true);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await context.read<ComposerStatusStore>().stopBackgroundProcess(
         sessionId,
@@ -86,8 +86,10 @@ class _BackgroundProcessViewState extends State<_BackgroundProcessView> {
       );
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.backgroundStopFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.backgroundStopFailed('$e'),
         );
       }
     } finally {
@@ -109,20 +111,12 @@ class _BackgroundProcessViewState extends State<_BackgroundProcessView> {
         .firstOrNull;
 
     if (item == null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle_outline, size: 32, color: palette.text3),
-            const SizedBox(height: 8),
-            Text(
-              context.l10n.backgroundProcessRemoved,
-              style: TextStyle(color: palette.text3),
-            ),
-          ],
-        ),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      });
+      return const SizedBox(height: 1);
     }
 
     _followOutput(item.output);

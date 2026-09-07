@@ -38,9 +38,13 @@ class Settings:
     api_key: str = field(default_factory=lambda: _generate_api_key())
     #: Interface the mobile-facing HTTP server binds to. ``0.0.0.0`` lets the
     #: phone reach the server over the LAN.
-    host: str = "127.0.0.1"
+    # Bind on all interfaces by default so a physical phone or LAN browser
+    # can reach the mobile server. Operators who require local-only access
+    # can set HERMES_MOBILE_HOST=127.0.0.1 (or pass --host explicitly).
+    host: str = "0.0.0.0"
     #: Port of the mobile-facing HTTP server.
-    port: int = 8877
+    # Keep the documented mobile-server port as the default.
+    port: int = 9001
     #: Host the local Hermes backend is told to bind.
     backend_host: str = "127.0.0.1"
     #: Port for the local Hermes backend; ``0`` asks the OS for a free port.
@@ -173,8 +177,8 @@ def load_settings() -> Settings:
 
     return Settings(
         api_key=_resolve_api_key(),
-        host=_env_str("HERMES_MOBILE_HOST", "127.0.0.1"),
-        port=_env_int("HERMES_MOBILE_PORT", 8877),
+        host=_env_str("HERMES_MOBILE_HOST", "0.0.0.0"),
+        port=_env_int("HERMES_MOBILE_PORT", 9001),
         backend_host=_env_str("HERMES_MOBILE_SERVE_HOST", "127.0.0.1"),
         backend_port=_env_int("HERMES_MOBILE_SERVE_PORT", 0),
         hermes_root_override=hermes_root,

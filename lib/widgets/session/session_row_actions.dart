@@ -2,8 +2,8 @@
 ///
 /// Provides the desktop-compatible row actions for a single [SessionRow]:
 /// reference, rename, pin, project move, archive, branch, stop, export/delete.
-/// Errors are surfaced via [ScaffoldMessenger] SnackBars so callers don't need
-/// to catch and report individually.
+/// Errors are surfaced via `showHermesErrorSnackBar` and confirmations via
+/// `showHermesToast` so callers don't need to catch and report individually.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/models.dart';
 import '../../core/clipboard.dart';
@@ -22,6 +23,10 @@ import '../../core/stores/session_store.dart';
 import '../../l10n/l10n.dart';
 import '../../screens/pane_workspace_screen.dart';
 import '../../theme/hermes_tokens.dart';
+import '../h/hermes_confirm_dialog.dart';
+import '../h/hermes_states.dart';
+import '../h/hermes_toast.dart';
+import '../mobile/mobile_page_scaffold.dart';
 import 'io_export.dart';
 import 'project_dialog.dart';
 
@@ -70,11 +75,13 @@ class SessionRowActions extends StatelessWidget {
     }
     final resolvedSupportsSharing =
         supportsSharing ?? sessionStore?.api?.supportsSessionSharing ?? true;
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
+    return showMobileSheet<void>(
+      context,
+      showDragHandle: false,
+      useSafeArea: false,
+      avoidViewInsets: false,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => SessionRowActions(
+      (ctx) => SessionRowActions(
         session: session,
         onRefreshed: onRefreshed,
         onOpenCopy: onOpenCopy,
@@ -158,6 +165,13 @@ class SessionRowActions extends StatelessWidget {
                       label: context.l10n.chatCopySessionId,
                       showChevron: false,
                       onTap: () => _copyId(actionContext),
+                    ),
+                    _tile(
+                      context,
+                      icon: Icons.mark_chat_unread_outlined,
+                      label: context.l10n.sessionActionMarkUnread,
+                      showChevron: false,
+                      onTap: () => _markUnread(actionContext),
                     ),
                     const Divider(height: 1),
                     _tile(
@@ -371,15 +385,13 @@ class SessionRowActions extends StatelessWidget {
         readOnly: session.readOnly,
       );
       if (!context.mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const PaneWorkspaceScreen()),
-      );
+      await openWorkspaceScreen(Navigator.of(context));
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.workspaceOpenSessionFailed('$error')),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.workspaceOpenSessionFailed('$error'),
         );
       }
     }
@@ -455,7 +467,6 @@ class SessionRowActions extends StatelessWidget {
   }
 
   Future<void> _rename(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     final sessionStore = context.read<SessionStore>();
     final ctrl = TextEditingController(text: session.title ?? '');
     final ok = await showDialog<bool>(
@@ -487,67 +498,82 @@ class SessionRowActions extends StatelessWidget {
       await onRefreshed?.call();
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionRenameFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionActionRenameFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _toggleArchive(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     final sessionStore = context.read<SessionStore>();
     try {
       await sessionStore.setArchived(session.id, !isArchived);
       await sessionStore.refreshList();
       await onRefreshed?.call();
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              isArchived
-                  ? context.l10n.sessionActionUnarchived
-                  : context.l10n.sessionActionArchived,
-            ),
-          ),
+        showHermesToast(
+          context,
+          message: isArchived
+              ? context.l10n.sessionActionUnarchived
+              : context.l10n.sessionActionArchived,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionActionFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _togglePin(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     final sessionStore = context.read<SessionStore>();
     try {
       await sessionStore.setPinned(session.id, !session.pinned);
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              session.pinned
-                  ? context.l10n.sessionActionUnpinned
-                  : context.l10n.sessionActionPinned,
-            ),
-          ),
+        showHermesToast(
+          context,
+          message: session.pinned
+              ? context.l10n.sessionActionUnpinned
+              : context.l10n.sessionActionPinned,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionActionFailed('$e'),
         );
       }
     }
   }
 
+  Future<void> _markUnread(BuildContext context) async {
+    final store = context.read<SessionStore>();
+    await store.markSessionUnread(
+      session.id,
+      messageCount: session.messageCount ?? 0,
+    );
+    if (!context.mounted) return;
+    // Toast before popping the sheet: the overlay outlives this route.
+    showHermesToast(
+      context,
+      message: context.l10n.sessionMarkedUnread,
+      kind: HermesToastKind.success,
+    );
+    Navigator.maybePop(context);
+  }
+
   Future<void> _moveToProject(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     final sessionStore = context.read<SessionStore>();
     final project = await ProjectDialog.showMoveTarget(
       context,
@@ -561,38 +587,41 @@ class SessionRowActions extends StatelessWidget {
       await sessionStore.moveStoredSession(session.id, projectId);
       await onRefreshed?.call();
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionMoved)),
+        showHermesToast(
+          context,
+          message: context.l10n.sessionActionMoved,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionMoveFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionActionMoveFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _branch(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     final sessionStore = context.read<SessionStore>();
     try {
       final branch = await sessionStore.branchStoredSession(session.id);
       await onRefreshed?.call();
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              context.l10n.sessionActionBranchCreated(_fmtId(branch.id)),
-            ),
-          ),
+        showHermesToast(
+          context,
+          message: context.l10n.sessionActionBranchCreated(_fmtId(branch.id)),
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatBranchFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatBranchFailed('$e'),
         );
       }
     }
@@ -606,6 +635,7 @@ class SessionRowActions extends StatelessWidget {
       await onRefreshed?.call();
       if (!context.mounted) return;
       final openCopy = onOpenCopy;
+      // Kept as a SnackBar: the "open copy" action needs a real action button.
       messenger.showSnackBar(
         SnackBar(
           content: Text(context.l10n.sessionActionCopyCreated),
@@ -619,16 +649,18 @@ class SessionRowActions extends StatelessWidget {
       );
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.sessionActionDuplicateFailed('$e')),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionActionDuplicateFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _share(BuildContext context) async {
+    // Kept as a messenger SnackBar: the action sheet is also presented
+    // standalone in tests/embedders where no Overlay exists above the route.
     final messenger = ScaffoldMessenger.of(context);
     final sessionStore = context.read<SessionStore>();
     try {
@@ -677,27 +709,32 @@ class SessionRowActions extends StatelessWidget {
       );
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionShareFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionActionShareFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _stopResponse(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await context.read<SessionStore>().stopStoredSession(session);
       await onRefreshed?.call();
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionStopRequested)),
+        showHermesToast(
+          context,
+          message: context.l10n.sessionActionStopRequested,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatStopProcessFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatStopProcessFailed('$e'),
         );
       }
     }
@@ -729,7 +766,6 @@ class SessionRowActions extends StatelessWidget {
       ),
     );
     if (format == null || !context.mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final result = await context.read<SessionStore>().exportStoredSession(
         session.id,
@@ -749,66 +785,86 @@ class SessionRowActions extends StatelessWidget {
       final exportDirectoryPath = p.join(directory.path, 'Hermes Exports');
       // Deferred dart:io usage via path_provider directory create through XFile write
       // is not available; use conditional import helper below.
+      final filename = (result['filename'] ?? 'hermes-${session.id}.$format')
+          .toString();
       final savedPath = await writeExportFile(
         exportDirectoryPath,
-        (result['filename'] ?? 'hermes-${session.id}.$format').toString(),
+        filename,
         content,
       );
       if (!context.mounted) return;
-      await copyTextOrNotify(
-        context,
-        savedPath,
-        successMessage: context.l10n.sessionActionExported(savedPath),
+      final shareResult = await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile(
+              savedPath,
+              mimeType: format == 'json' ? 'application/json' : 'text/html',
+              name: filename,
+            ),
+          ],
+        ),
       );
+      if (!context.mounted) return;
+      switch (shareResult.status) {
+        case ShareResultStatus.success:
+          showHermesToast(
+            context,
+            message: context.l10n.sessionActionExported(savedPath),
+            kind: HermesToastKind.success,
+          );
+        case ShareResultStatus.dismissed:
+          // The user closed the OS share sheet without picking a target.
+          // The file is already saved on disk; there is nothing more to
+          // tell them, so stay silent rather than surfacing a clipboard
+          // "copied"/"exported" message for an action they cancelled.
+          break;
+        case ShareResultStatus.unavailable:
+          await copyTextOrNotify(
+            context,
+            savedPath,
+            successMessage: context.l10n.sessionActionExported(savedPath),
+          );
+      }
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionActionExportFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionActionExportFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     final sessionStore = context.read<SessionStore>();
     final title = session.title?.isNotEmpty == true
         ? session.title!
         : context.l10n.sessionUntitled;
-    final ok = await showDialog<bool>(
+    final ok = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.sessionDeleteTitle),
-        content: Text(context.l10n.sessionDeleteDescription(title)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.sessionDeleteTitle,
+      message: context.l10n.sessionDeleteDescription(title),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (ok != true || !context.mounted) return;
+    if (!ok || !context.mounted) return;
     try {
       await sessionStore.delete(session.id);
       await onRefreshed?.call();
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionDeletedCount(1))),
+        showHermesToast(
+          context,
+          message: context.l10n.sessionDeletedCount(1),
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.sessionDeleteFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.sessionDeleteFailed('$e'),
         );
       }
     }

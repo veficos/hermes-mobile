@@ -662,6 +662,44 @@ class RequestStore extends ChangeNotifier {
     }
   }
 
+  /// Settle a request that was completed by a client-surface bridge instead
+  /// of the interactive sheet (for example an automatic terminal read).
+  ///
+  /// The request event is delivered to this store before the bridge handler,
+  /// so retaining the resolution here also lets the transcript's embedded
+  /// interaction row render a deterministic settled state. Replayed gateway
+  /// events are idempotent: an already-settled request remains settled.
+  bool resolveLocallyById(
+    String requestId, {
+    required Map<String, dynamic> result,
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+    RequestKind? kind,
+  }) {
+    final index = _queue.indexWhere(
+      (request) => _matches(
+        request,
+        requestId,
+        ownerRoute: ownerRoute,
+        sessionId: sessionId,
+        kind: kind,
+      ),
+    );
+    if (index < 0) {
+      return resolution(
+            requestId,
+            ownerRoute: ownerRoute,
+            sessionId: sessionId,
+            kind: kind,
+          ) !=
+          null;
+    }
+    final request = _queue.removeAt(index);
+    _recordResolution(request, result);
+    notifyListeners();
+    return true;
+  }
+
   /// Remove only requests owned by one session. Closing a foreground session
   /// must not discard approvals belonging to background sessions.
   void clearScope({required OwnerRoute ownerRoute, required String sessionId}) {

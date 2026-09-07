@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/chat/tools/tool_dismiss_store.dart';
 import 'package:hermes_mobile/core/chat_message.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/widgets/message_bubble.dart';
 import 'package:provider/provider.dart';
 
@@ -30,6 +31,9 @@ void main() {
       ChangeNotifierProvider(
         create: (_) => ToolDismissStore(),
         child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: SingleChildScrollView(
               child: MessageBubble(message: message, showFooter: false),

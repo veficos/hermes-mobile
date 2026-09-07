@@ -5,6 +5,7 @@ import '../core/model_catalog.dart';
 import '../core/models.dart';
 import '../l10n/l10n.dart';
 import 'h/hermes_toast.dart';
+import 'mobile/mobile_page_scaffold.dart';
 
 class ModelPickerSheet extends StatefulWidget {
   final ApiClient api;
@@ -53,10 +54,10 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
 
   Future<void> _editVisibility() async {
     final edited = Set<String>.from(_visibleKeys);
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
+    final saved = await showMobileSheet<bool>(
+      context,
+      avoidViewInsets: false,
+      (context) => StatefulBuilder(
         builder: (context, setEditor) => SafeArea(
           child: SizedBox(
             height: MediaQuery.sizeOf(context).height * .8,

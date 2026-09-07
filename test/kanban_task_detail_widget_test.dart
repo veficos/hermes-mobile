@@ -4,6 +4,7 @@ import 'package:hermes_mobile/kanban/api.dart';
 import 'package:hermes_mobile/kanban/models.dart';
 import 'package:hermes_mobile/kanban/store.dart';
 import 'package:hermes_mobile/core/api_client.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/kanban_task_detail_screen.dart';
 
 void main() {
@@ -25,6 +26,9 @@ void main() {
     });
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: KanbanTaskDetailScreen(initial: detail, store: store),
         ),
@@ -52,6 +56,9 @@ void main() {
       MediaQuery(
         data: const MediaQueryData(viewInsets: EdgeInsets.only(bottom: 300)),
         child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: KanbanTaskDetailScreen(initial: detail, store: store),
           ),
@@ -70,6 +77,9 @@ void main() {
     final detail = _detail();
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: KanbanTaskDetailScreen(initial: detail, store: store),
         ),
@@ -130,6 +140,9 @@ void main() {
     });
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: KanbanTaskDetailScreen(initial: detail, store: store),
         ),

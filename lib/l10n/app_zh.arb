@@ -276,6 +276,21 @@
   "appearanceHighContrastDesc": "增强文字和边框对比度",
   "appearanceKeepAwake": "保持屏幕常亮",
   "appearanceKeepAwakeDesc": "打开对话时防止屏幕自动锁定",
+  "embedPrivacySettingsTitle": "外部内容隐私",
+  "embedPrivacySettingsDescription": "控制消息预览是否可以连接 YouTube、Spotify 等第三方服务。",
+  "embedModeAsk": "每次询问",
+  "embedModeAlways": "始终加载",
+  "embedModeOff": "关闭",
+  "embedClearAllowed": "清除已允许的服务（{count}）",
+  "@embedClearAllowed": {"placeholders": {"count": {"type": "int"}}},
+  "richLinkPrivacyTitle": "加载来自 {provider} 的内容？",
+  "@richLinkPrivacyTitle": {"placeholders": {"provider": {"type": "String"}}},
+  "richLinkPrivacyDescription": "加载此预览会连接第三方，可能暴露你的 IP 地址、来源页面或 Cookie。",
+  "richLinkLoadOnce": "仅本次加载",
+  "richLinkAlwaysAllow": "始终允许 {provider}",
+  "@richLinkAlwaysAllow": {"placeholders": {"provider": {"type": "String"}}},
+  "richLinkOpenOnly": "仅打开链接",
+  "richLinkCloseAnotherPreview": "请先关闭其他实时预览",
   "appearanceModeDark": "深色",
   "appearanceModeLight": "浅色",
   "appearanceModeSystem": "跟随系统",
@@ -591,9 +606,23 @@
   "chatSaveCurrentInput": "保存当前输入",
   "chatSavePromptFailed": "保存提示词失败：{error}",
   "chatSavedPrompts": "已保存的提示词",
+  "chatRecentInputs": "最近输入",
+  "chatPluginPrepareFailed": "插件无法处理这条消息：{error}",
+  "chatPasteImage": "粘贴图片",
+  "workspaceLayoutBalanced": "双栏 · 1:1",
+  "workspaceLayoutMainWide": "主视图优先 · 2:1",
+  "workspaceLayoutToolsWide": "工具视图优先 · 1:2",
+  "chatClipboardHasNoImage": "剪贴板中没有图片",
+  "chatClipboardImageFailed": "无法粘贴剪贴板图片：{error}",
+  "@chatClipboardImageFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@chatPluginPrepareFailed": {"placeholders": {"error": {"type": "String"}}},
   "chatSavedPromptsLoadFailed": "加载已保存的提示词失败：{error}",
   "chatScrollToBottom": "回到底部",
   "chatSearchLoadedHistory": "搜索已加载的历史记录",
+  "chatHistoryLocatorPartial": "还有更早的消息未加载，搜索结果可能不完整",
+  "chatLoadAllHistory": "加载全部历史",
+  "chatLoadingAllHistory": "正在加载全部历史…",
+  "chatLoadAllHistoryFailed": "加载历史记录失败：{error}",
   "chatSelectFilesFailed": "选择文件失败：{error}",
   "chatSelectFolder": "选择文件夹",
   "chatSelectFolderFailed": "选择文件夹失败：{error}",
@@ -1171,6 +1200,11 @@
   "previewOpenConsole": "打开控制台",
   "previewOpenSessionFailed": "无法打开会话：{error}",
   "previewRefresh": "刷新预览",
+  "previewReloadWithoutCache": "不使用缓存重新加载",
+  "previewRetry": "重试",
+  "previewServerNotFound": "无法访问该服务器",
+  "previewAppFailedToBoot": "应用加载失败",
+  "previewRemoteLoopbackHint": "该地址指向的是本机不存在的机器——智能体的开发服务器很可能运行在所连接的电脑上，而不是这台设备上。请尝试在那台电脑上打开。",
   "previewRunJavascript": "运行 JavaScript",
   "previewRunScript": "运行脚本",
   "previewTitle": "预览",
@@ -1667,6 +1701,7 @@
   "historyNoMatches": "没有匹配的会话",
   "historyLoadMore": "加载更多",
   "historyLoadMoreCount": "加载更多（{loaded}/{total}）",
+  "historyEndOfList": "— 到底了 —",
   "historyPinned": "置顶",
   "historyToday": "今天",
   "historyYesterday": "昨天",
@@ -1803,6 +1838,14 @@
   "profilesEditTitle": "编辑配置文件",
   "profilesProvider": "提供者",
   "profilesModel": "模型",
+  "profilesModelChangeWarningTitle": "有定时任务锁定了旧模型",
+  "profilesModelChangeWarningBody": "{profile} 下有 {count} 个定时任务设置了自己的模型覆盖，不会自动切换。仍要保存吗？",
+  "@profilesModelChangeWarningBody": {"placeholders":{"count":{"type":"int"},"profile":{"type":"String"}}},
+  "profilesModelChangeViewRoutines": "查看定时任务",
+  "profilesModelChangeSaveAnyway": "仍要保存",
+  "profilesModelChangeCheckFailedTitle": "无法检查定时任务",
+  "profilesModelChangeCheckFailedBody": "我们无法确认 {profile} 下是否有定时任务设置了自己的模型覆盖，因此无法判断此更改是否会影响它们。仍要保存吗？",
+  "@profilesModelChangeCheckFailedBody": {"placeholders":{"profile":{"type":"String"}}},
   "profilesSystemPrompt": "系统提示词",
   "profilesDescriptionOptional": "描述（可选）",
   "profilesTools": "工具开关",
@@ -1881,6 +1924,7 @@
   "agentGroupMemberCount": "已选择 {count}/{max} 位",
   "agentSearchBots": "搜索机器人",
   "agentSearchNoMatches": "没有匹配的机器人",
+  "agentBotUnreachable": "无法访问",
   "agentGroupSaveFailed": "群聊保存失败：{error}",
   "agentBotThinking": "{name} 正在思考",
   "agentBotPaused": "{name} 已暂停",
@@ -1936,6 +1980,28 @@
   "agentBotOperationFailed": "Bot 操作失败：{error}",
   "agentDuplicateBot": "复制 Bot",
   "agentDeleteBot": "删除 Bot",
+  "agentEditAvatarMenuItem": "编辑头像",
+  "avatarEditorShapeLabel": "形状",
+  "avatarEditorColorLabel": "颜色",
+  "avatarEditorRandomize": "随机",
+  "avatarEditorUploadPhoto": "上传照片",
+  "avatarEditorRemovePhoto": "移除照片",
+  "avatarEditorImageTooLarge": "图片过大（最大 15MB）",
+  "avatarEditorGenerate": "AI 生成",
+  "avatarEditorGenerateHint": "描述你想要的样子（可选）",
+  "avatarEditorGenerateFailed": "生成失败：{error}",
+  "avatarEditorChoosePet": "选择宠物",
+  "avatarEditorPetSearchHint": "搜索宠物",
+  "avatarEditorPetLoadFailed": "宠物图鉴加载失败",
+  "avatarEditorSaved": "头像已更新",
+  "avatarEditorSaveFailed": "更新头像失败：{error}",
+  "agentBotMcpMenuItem": "MCP 服务器",
+  "agentBotModelMenuItem": "模型与工具",
+  "agentHiddenBotsSection": "已隐藏",
+  "agentHideBot": "隐藏",
+  "agentUnhideBot": "取消隐藏",
+  "agentPinBot": "置顶",
+  "agentUnpinBot": "取消置顶",
   "agentGateway": "网关",
   "agentActiveAgents": "活跃 Agent",
   "agentBusy": "繁忙",
@@ -1978,6 +2044,11 @@
   "botRoutineNext": "下次 {time}",
   "botRoutineLegacyPaused": "旧版任务，已安全暂停",
   "botRoutineDelete": "删除任务",
+  "botRoutineEdit": "编辑",
+  "botRoutineEditTitle": "编辑任务 · {name}",
+  "botRoutineSaving": "保存中...",
+  "botRoutineSave": "保存修改",
+  "botRoutineLoadFailed": "加载任务详情失败：{error}",
   "botRoutineScheduleOnce": "一次性 · {duration} 后",
   "botRoutineScheduleEvery": "每 {duration}",
   "botRoutineScheduleHourly": "每小时整点",
@@ -2022,6 +2093,12 @@
   "botRoutineCreate": "创建任务",
   "mcpTitle": "MCP 服务器",
   "mcpOperationFailed": "操作失败：{error}",
+  "mcpHealthNeedsAuthTitle": "{name} 需要重新授权",
+  "@mcpHealthNeedsAuthTitle": {"placeholders": {"name": {"type": "String"}}},
+  "mcpHealthNeedsAuthBody": "后台巡检发现该服务器的连接已过期，请重新连接以继续使用。",
+  "mcpHealthErrorTitle": "{name} 无法访问",
+  "@mcpHealthErrorTitle": {"placeholders": {"name": {"type": "String"}}},
+  "mcpHealthErrorBody": "后台巡检无法访问该服务器，请打开 MCP 设置查看详情。",
   "mcpPersistenceFailed": "服务器未能持久化 MCP 配置变更。",
   "mcpTestSuccess": "连接成功：{tools} 个工具、{prompts} 个提示、{resources} 个资源",
   "mcpTestConnectionFailed": "连接失败：{error}",
@@ -2292,7 +2369,7 @@
   "requestHermesQuestion":"Hermes 询问", "requestPending":"待处理请求", "requestAlwaysAllowQuestion":"总是允许？", "requestAlwaysAllowDescription":"这会把该操作写入配置为永久允许规则，之后同类操作将不再询问。", "requestAlwaysAllowDetail":"这会把「{detail}」写入配置为永久允许规则，之后同类操作将不再询问。", "requestNoActiveSession":"没有活动会话", "requestConnectionUnavailable":"请求所属连接不可用", "requestRespondFailed":"响应失败：{error}", "requestAnswerFailed":"回答发送失败，请稍后重试", "requestMcpNameMissing":"请求未包含 MCP 服务器名称", "requestOAuthTimeout":"OAuth 授权超时", "requestMcpTestFailed":"MCP 连接测试失败", "requestMcpSetupFailed":"MCP 配置失败", "requestConfigureMcp":"配置 {name}",
   "requestCloseQuestion":"关闭请求？", "requestCloseDescription":"关闭后该请求将无法恢复，agent 将保持等待。", "requestProcessed":"已处理", "requestInteractionProcessed":"交互请求已处理", "requestServer":"服务器：{name}", "requestSubmitAllAnswers":"提交全部回答", "requestConfigureLater":"暂不配置", "requestConfiguring":"正在配置…", "requestInstallEnable":"安装并启用", "requestEnterContent":"输入内容", "requestEnterText":"输入…", "requestMorePending":"还有 {count} 个待处理", "requestAllowOnce":"允许一次", "requestAllowSession":"本次会话允许", "requestSubmitSelected":"提交（已选 {count}）", "requestCustomAnswer":"其他（自定义回答）", "requestRecommended":"推荐",
   "messagingLoadFailed":"加载消息平台失败：{error}", "messagingPlatformEnabled":"{name} 已启用", "messagingPlatformDisabled":"{name} 已停用", "messagingUpdateFailed":"更新失败：{error}", "messagingTestPassed":"{name} 连接测试通过", "messagingTestNotPassed":"连接测试未通过", "messagingTestFailed":"测试失败：{error}", "messagingConfigSaved":"{name} 配置已保存，可重启 Gateway 应用连接变更", "messagingSaveFailed":"保存失败：{error}", "messagingApproved":"已批准 {name}", "messagingApproveFailed":"批准失败：{error}", "messagingRevokeTitle":"撤销授权", "messagingRevokeQuestion":"确定撤销 {name} 的消息访问权限？", "messagingRevoke":"撤销", "messagingRevoked":"授权已撤销", "messagingRevokeFailed":"撤销失败：{error}", "messagingRestartQuestion":"重启 Gateway？", "messagingRestartWarning":"这会中断所有连接到该 Gateway 的会话和客户端，操作完成后会自动重新连接。", "messagingRestarting":"Gateway 正在重启", "messagingRestartFailed":"Gateway 重启失败：{error}",
-  "messagingTitle":"消息平台", "messagingRestartGateway":"重启 Gateway", "messagingLoading":"读取消息平台…", "messagingPendingApproval":"待批准", "messagingPlatforms":"平台", "messagingEmpty":"暂无消息平台", "messagingEmptyDescription":"服务器未返回可配置的消息平台", "messagingAuthorizedUsers":"已授权用户", "messagingConfigure":"配置", "messagingTest":"测试", "messagingOpenDocs":"打开文档", "messagingUnknownUser":"未知用户", "messagingApprove":"批准", "messagingStateDisabled":"已停用", "messagingStateGatewayStopped":"已配置，Gateway 未运行", "messagingStateFatal":"严重错误", "messagingStateStartupFailed":"启动失败", "messagingStateConfigured":"已配置", "messagingStateNeedsConfig":"需要配置", "messagingPlatformConfig":"{name} 配置", "messagingNoEditableConfig":"此平台没有可编辑的配置项。", "messagingAdvancedSettings":"高级设置", "messagingSetLeaveBlank":"已设置，留空则保持不变", "messagingEnterNewValue":"输入新值", "messagingShow":"显示", "messagingClearSavedValue":"清除已保存的值", "fileTreeListView":"列表视图", "fileTreeTreeView":"树视图", "fileTreeAttachToChat":"附加到聊天",
+  "messagingTitle":"消息平台", "messagingRestartGateway":"重启 Gateway", "messagingLoading":"读取消息平台…", "messagingPendingApproval":"待批准", "messagingPlatforms":"平台", "messagingEmpty":"暂无消息平台", "messagingEmptyDescription":"服务器未返回可配置的消息平台", "messagingAuthorizedUsers":"已授权用户", "messagingConfigure":"配置", "messagingTest":"测试", "messagingOpenDocs":"打开文档", "messagingUnknownUser":"未知用户", "messagingApprove":"批准", "messagingStateDisabled":"已停用", "messagingStateGatewayStopped":"已配置，Gateway 未运行", "messagingStateFatal":"严重错误", "messagingStateStartupFailed":"启动失败", "messagingStateConfigured":"已配置", "messagingStateNeedsConfig":"需要配置", "messagingPlatformConfig":"{name} 配置", "messagingNoEditableConfig":"此平台没有可编辑的配置项。", "messagingAdvancedSettings":"高级设置", "messagingSetLeaveBlank":"已设置，留空则保持不变", "messagingEnterNewValue":"输入新值", "messagingShow":"显示", "messagingClearSavedValue":"清除已保存的值", "fileTreeListView":"列表视图", "fileTreeTreeView":"树视图", "fileTreeAttachToChat":"附加到聊天", "sessionActionMarkUnread":"标记为未读", "sessionMarkedUnread":"已标记为未读",
   "projectAddFolder":"添加文件夹", "projectFolderPath":"文件夹路径", "projectFolderLabelOptional":"标签（可选）",
   "projectCreate":"创建项目", "projectLoading":"加载项目…", "projectEmpty":"还没有项目", "projectEmptyDescription":"创建项目来组织工作目录与会话", "projectWorkspace":"项目工作区", "projectEditAppearance":"编辑外观", "projectColor":"颜色", "projectIcon":"图标", "projectAppearanceSaveFailed":"保存外观失败：{error}", "projectRename":"重命名", "projectRenameTitle":"重命名项目", "projectName":"项目名称", "projectRenameFailed":"重命名项目失败：{error}", "projectDeleteQuestion":"删除 {name}？", "projectDeleteDescription":"项目本身会被删除，但其中的会话和文件不受影响。此操作不可恢复。", "projectDeleteFailed":"删除项目失败：{error}", "projectCreateFailed":"创建项目失败：{error}", "projectManagement":"项目管理", "projectLoadFailed":"加载项目失败", "projectNoMoveTargets":"没有其他可移动的项目", "projectNoMoveTargetsDescription":"项目需要配置有效的工作目录后才能接收会话", "projectNew":"新建项目", "projectEditTitle":"编辑项目", "projectPrimaryPath":"主工作目录路径", "projectPrimaryPathHint":"例如 /home/user/projects/my-app", "projectDescriptionOptional":"描述（可选）", "projectRequiredFields":"请填写项目名称和工作目录", "projectCreated":"项目已创建", "projectUpdated":"项目已更新", "projectSaveFailed":"保存项目失败：{error}", "projectDeleteTitle":"删除项目？", "projectDeleteNamedDescription":"项目「{name}」将被删除。关联的会话不会被删除。", "projectDeleted":"项目已删除",
   "subagentsLoadFailed":"子代理加载失败：{error}", "subagentsEmpty":"无子代理活动", "subagentsOpenSessionDescription":"打开一个会话以查看其子代理树", "subagentsCurrentSessionEmpty":"当前会话没有正在运行的子代理", "subagentsCurrentSession":"当前会话", "subagentsSession":"会话 {id}", "subagentsCount":"{count} 个子代理", "subagentsRunningCount":"运行中 {count}", "subagentsFailedCount":"失败 {count}", "subagentsToolCalls":"{count} 次工具调用", "subagentsFiles":"{count} 个文件", "subagentsInterrupt":"中断", "subagentsInterruptSent":"已发送中断信号", "subagentsInterruptFailed":"中断失败：{error}", "subagentsOpenSession":"打开会话", "subagentsOpenSessionFailed":"打开子代理会话失败：{error}", "subagentsCurrentTool":"工具：{name}", "subagentsTools":"{count} 次工具", "subagentsFilesRead":"读 {count}", "subagentsFilesWritten":"写 {count}", "subagentsStatusQueued":"排队中", "subagentsStatusInterrupted":"已中断", "subagentsStatusUnknown":"未知",
@@ -2300,7 +2377,7 @@
   "petCenterTitle":"宠物中心", "petRename":"重命名", "petDisable":"禁用宠物", "petRenameFailed":"重命名失败：{error}", "petDisableFailed":"禁用失败：{error}", "petRenameTitle":"重命名宠物", "petRenameHint":"输入新名字…", "petUntitled":"未命名", "petStatus":"状态：{status}", "petGallery":"画廊", "petGalleryEmpty":"暂无可用宠物", "petGenerateNew":"生成新宠物", "petStateWave":"打招呼", "petStateJump":"跳跃", "petStateCelebrate":"庆祝", "credentialsDisconnectQuestion":"断开 {name}？", "credentialsDisconnectDescription":"保存的凭证将从 Hermes 服务器移除，之后可以重新添加。",
   "starmapLoadDetailFailed":"读取节点详情失败：{error}", "starmapRestoreMine":"还原为我的星图", "starmapShareImport":"分享或导入", "starmapResetView":"还原视图", "starmapLoading":"读取星图…", "starmapNoData":"暂无数据", "starmapEmpty":"星图为空", "starmapEmptyDescription":"在 Hermes 中积累更多知识后，节点会出现在此图中。", "starmapShareTitle":"分享星图", "starmapShareDescription":"复制下方代码分享你的星图；粘贴别人的代码后点击加载即可查看。", "starmapShareCodeHint":"星图分享代码", "starmapCopy":"复制", "starmapLoad":"加载", "starmapInvalidShareCode":"星图分享代码无效。", "starmapPause":"暂停", "starmapPlay":"播放", "starmapSkillLegend":"技能", "starmapMemoryLegend":"记忆", "starmapChronologyLegend":"中心：最旧 · 外圈：最新", "starmapOpenNode":"打开 {name}", "starmapSaved":"已保存", "starmapSaveFailed":"保存节点失败：{error}", "starmapDeleteQuestion":"删除节点？", "starmapDeleteDescription":"「{name}」将从星图中移除。", "starmapDeleted":"节点已删除", "starmapDeleteFailed":"删除节点失败：{error}", "starmapUseCount":"使用 {count} 次", "starmapContent":"内容", "starmapSaving":"保存中…", "starmapCreatedBy":"创建者：{value}", "starmapSource":"来源：{value}", "starmapStateArchived":"已归档",
   "configCenterLoadFailed":"加载能力数据失败：{error}", "configCenterKnowledgeTab":"知识", "configCenterTitle":"能力管理", "configCenterLoadErrorTitle":"加载能力失败", "configCenterMcpEmptyDescription":"添加 MCP 服务器以连接外部工具和数据。", "configCenterUrlOrCommand":"URL 或命令", "configCenterTransport":"传输方式", "configCenterLocalStdio":"Stdio（本地进程）", "configCenterMutationFailed":"应用更改失败：{error}", "configCenterKnowledgeTitle":"知识来源", "configCenterKnowledgeEmpty":"暂无知识来源", "configCenterKnowledgeEmptyDescription":"添加文件、文件夹或 URL 作为知识来源。", "configCenterDatabase":"数据库", "configCenterKnowledgeMeta":"{type} · {count} 个分块 · {status}", "configCenterIndexed":"已索引", "configCenterNotIndexed":"未索引", "configCenterSkillsEmpty":"暂无技能", "configCenterSkillsEmptyDescription":"服务器未返回当前配置文件的技能。", "configCenterConfiguration":"配置", "configCenterInstallPlugin":"安装插件", "configCenterPluginsEmpty":"暂无插件", "configCenterPluginsEmptyDescription":"安装插件以扩展 Hermes。", "configCenterInstall":"安装", "configCenterPluginUrl":"插件 URL 或标识符",
-  "fileEditorDiscardQuestion":"放弃未保存的修改？", "fileEditorDiscardDescription":"返回将丢失当前编辑内容。", "fileEditorKeepEditing":"继续编辑", "fileEditorDiscard":"放弃", "fileEditorDisk":"磁盘", "fileEditorEditor":"编辑器", "fileEditorConflictDescription":"磁盘上的文件已变化。可覆盖保存、重载磁盘版本，或取消。", "fileEditorConflictTitle":"文件已在外部修改", "fileEditorOverwriteSave":"覆盖保存", "fileEditorReloaded":"已重载磁盘版本", "fileEditorSaved":"已保存", "fileEditorSaveFailed":"保存文件失败：{error}", "fileEditorSaving":"保存中…", "fileEditorUnsavedTitle":"{name}，有未保存的修改", "fileEditorEmpty":"（空）", "fileEditorBinaryTitle":"该文件无法以文本方式编辑", "fileEditorBinaryDescription":"这看起来是一个二进制文件（图片、压缩包或可执行文件）。用文本编辑器打开并保存会损坏原文件，因此已禁用编辑——请改为下载到设备。", "kanbanTaskCreatedLinkFailed":"任务已创建，但添加父任务链接失败：{error}",
+  "fileEditorDiscardQuestion":"放弃未保存的修改？", "fileEditorDiscardDescription":"返回将丢失当前编辑内容。", "fileEditorKeepEditing":"继续编辑", "fileEditorDiscard":"放弃", "fileEditorDisk":"磁盘", "fileEditorEditor":"编辑器", "fileEditorConflictDescription":"磁盘上的文件已变化。可覆盖保存、重载磁盘版本，或取消。", "fileEditorConflictTitle":"文件已在外部修改", "fileEditorOverwriteSave":"覆盖保存", "fileEditorReloaded":"已重载磁盘版本", "fileEditorSaved":"已保存", "fileEditorSaveFailed":"保存文件失败：{error}", "fileEditorSaving":"保存中…", "fileEditorUnsavedTitle":"{name}，有未保存的修改", "fileEditorEmpty":"（空）", "fileEditorBinaryTitle":"该文件无法以文本方式编辑", "fileEditorBinaryDescription":"这看起来是一个二进制文件（图片、压缩包或可执行文件）。用文本编辑器打开并保存会损坏原文件，因此已禁用编辑——请改为下载到设备。", "kanbanTaskCreatedLinkFailed":"任务已创建，但添加父任务链接失败：{error}", "fileEditorFindReplaceTitle":"查找和替换", "fileEditorFindLabel":"查找", "fileEditorReplaceWithLabel":"替换为", "fileEditorReplaceAll":"全部替换", "fileEditorNoMatches":"未找到匹配项", "fileEditorReplacedCount":"已替换 {count} 处", "fileEditorNoChanges":"无变更",
   "kanbanTaskContentSection": "任务内容",
   "kanbanTaskArrangementSection": "任务安排",
   "kanbanTaskRuntimeSection": "运行配置",
@@ -2331,5 +2408,113 @@
   "@terminalErrorMessage":{"placeholders":{"error":{"type":"String"}}}, "@sessionCopyTitle":{"placeholders":{"title":{"type":"String"}}},
   "notificationChannelErrors":"错误", "notificationChannelWarnings":"警告", "notificationChannelSuccess":"成功", "notificationChannelApprovals":"审批", "notificationChannelInfo":"信息", "memoryCuratorTitle":"内容整理器", "messageSourceServer":"服务器", "messageSourceMobile":"移动端", "kanbanRunQueued":"排队中", "kanbanRunCompleted":"已完成", "kanbanRunFailed":"失败", "kanbanRunCancelled":"已取消", "kanbanEventTaskCreated":"任务已创建", "kanbanEventTaskUpdated":"任务已更新", "kanbanEventTaskDeleted":"任务已删除", "kanbanEventRunStarted":"运行已开始", "kanbanEventRunCompleted":"运行已完成", "kanbanEventRunFailed":"运行失败", "kanbanEventRunCancelled":"运行已取消", "kanbanEventCommentCreated":"已添加评论", "kanbanEventAttachmentAdded":"已添加附件", "kanbanEventAttachmentDeleted":"已删除附件", "cloudRoleOwner":"所有者", "cloudRoleAdmin":"管理员", "cloudRoleMember":"成员", "cloudRoleViewer":"查看者", "chatStatusToolDrafting":"正在准备工具调用", "chatStatusProvider":"提供商状态", "previewScriptError":"脚本错误", "previewUnhandledPromiseRejection":"未处理的 Promise 拒绝：", "botGroupSessionTitle":"群组：{roomId}", "@botGroupSessionTitle":{"placeholders":{"roomId":{"type":"String"}}}, "errorExpectedObjectResponse":"服务器返回了无效的对象响应", "errorTtsNoAudio":"文本转语音未返回音频", "errorInvalidDataUrl":"服务器返回了无效的数据 URL", "errorExportDirectoryMissing":"服务器未提供导出目录", "errorImportDirectoryMissing":"服务器未提供导入目录", "errorRawConfigInvalid":"服务器返回了无效的原始配置", "errorPluginToggleRejected":"后端拒绝了插件变更", "errorConnectionNotConfigured":"连接尚未配置", "errorSessionOwnerUnknown":"会话所有者未知：{sessionId}", "errorRemotePushUnavailable":"此连接不支持远程推送", "@errorSessionOwnerUnknown":{"placeholders":{"sessionId":{"type":"String"}}}, "sshCommandTimedOut":"SSH 命令超时", "sshRemoteHomeUnsafe":"远程 Hermes 主目录不安全", "sshOwnershipVerificationFailed":"无法验证远程 Hermes 进程的所有权", "sshOwnershipProbeFailed":"远程所有权探测失败（{status}）", "sshHelperInvalidJson":"远程辅助程序返回了无效 JSON", "sshWindowsOwnershipVerificationFailed":"无法验证远程 Windows 进程的所有权", "sshRemotePathInvalid":"远程 Hermes 路径必须是绝对路径或以 ~/ 开头", "sshExecutableNotFound":"在远程主机上找不到配置的 Hermes 可执行文件", "sshHermesNotInstalled":"远程主机未安装 Hermes", "sshBootstrapFlagsUnsupported":"远程 Hermes 必须支持安全 SSH 所有权引导参数", "sshWindowsIdentityInvalid":"远程 Windows 后端返回了无效身份", "sshWindowsExitedBeforeReady":"远程 Windows 后端在就绪前退出", "sshWindowsOwnershipProofFailed":"远程 Windows 所有权证明失败", "sshProcessIdMissing":"远程 Hermes 未返回进程 ID", "sshExitedBeforeReady":"远程 Hermes 在就绪前退出", "sshOwnershipProofFailed":"远程 Hermes 所有权证明失败", "@sshOwnershipProbeFailed":{"placeholders":{"status":{"type":"String"}}},
   "errorSessionBranchIdMissing":"Hermes 未返回分支会话的持久 ID", "errorDuplicateImportFailed":"Hermes 未能导入复制的会话", "errorSessionNoTitleableMessages":"会话中没有可用于生成标题的消息", "errorTitleGeneratorEmpty":"标题生成器返回了空标题", "errorProjectIdRequired":"请选择项目", "errorProjectWorkingFolderMissing":"目标项目没有工作目录", "errorDownloadFailed":"下载失败", "errorMessagingPlatformNotFound":"找不到消息平台", "errorBotGroupSessionStartFailed":"{name} 的群组会话未能启动", "@errorBotGroupSessionStartFailed":{"placeholders":{"name":{"type":"String"}}}, "sshRemoteCommandFailed":"远程命令失败（{code}）", "sshHostAndUserRequired":"SSH 主机和用户不能为空", "sshPortInvalid":"SSH 端口必须在 1 到 65535 之间", "sshHostKeyChanged":"{host} 的 SSH 主机密钥已更改。预期为 {expected}，实际为 {received}", "sshProfileInvalid":"远程配置档案名称无效", "@sshRemoteCommandFailed":{"placeholders":{"code":{"type":"String"}}}, "@sshHostKeyChanged":{"placeholders":{"host":{"type":"String"},"expected":{"type":"String"},"received":{"type":"String"}}},
-  "errorDirectGatewayFeatureUnavailable":"此功能需要 Hermes Mobile Server，直接 Gateway 连接无法使用", "errorOperationFailedWithDetail":"操作失败：{error}", "@errorOperationFailedWithDetail":{"placeholders":{"error":{"type":"String"}}}, "gatewayOauthRejected":"Gateway 拒绝登录：{error}", "gatewayOauthCodeMissing":"Gateway 回调缺少授权码", "gatewayOauthStateMismatch":"Gateway 回调状态不匹配。为确保安全，登录已取消。", "gatewayOauthRefreshTokenMissing":"Gateway 会话已过期且没有刷新令牌", "gatewayOauthTicketMissing":"Gateway 未返回 WebSocket 票据", "gatewayOauthAccessTokenMissing":"Gateway 令牌响应未包含访问令牌", "gatewayOauthTimedOut":"Gateway 登录超时", "gatewayOauthNativeUnsupported":"此平台不支持原生 Gateway OAuth", "@gatewayOauthRejected":{"placeholders":{"error":{"type":"String"}}}, "updateManifestInvalid":"更新清单无效", "sshRemotePlatformUnsupported":"不支持远程平台：{error}", "sshWebUnsupported":"Web 端不支持原生 SSH 连接", "@sshRemotePlatformUnsupported":{"placeholders":{"error":{"type":"String"}}}, "filesDownloadPlatformUnsupported":"此平台不支持下载到本地文件", "sessionExportPlatformUnsupported":"此平台不支持导出到本地文件", "errorPluginCanonicalKeyRequired":"此插件需要规范键才能更改", "connectGatewayToken":"Gateway 令牌", "modelMoaTitle":"多智能体混合", "insightsTokens":"Token", "messageWebFallback":"网页", "mcpLogsSourceStdio":"stdio", "mcpLogsSourceAgent":"智能体", "projectPrimaryFolder":"主目录", "botGroupNameRequired":"请输入群组名称", "botGroupMembersMinimum":"群组至少需要两个 Bot", "botGroupMembersRange":"群组需要 2～{max} 个 Bot", "botGroupMembersMaximum":"群组最多支持 {max} 个 Bot", "botGroupMemberUnavailable":"没有可用的群组成员", "botProfileNameUnavailable":"没有可用的配置档案名称", "botDefaultProfileDeleteForbidden":"无法删除默认配置档案", "botConnectionUnavailable":"Bot 连接不可用", "botTurnFailed":"Bot 回合失败", "@botGroupMembersRange":{"placeholders":{"max":{"type":"int"}}}, "@botGroupMembersMaximum":{"placeholders":{"max":{"type":"int"}}}, "mcpInvalidJsonSyntax":"JSON 语法无效", "mcpJsonObjectRequired":"JSON 顶层内容必须是对象", "voiceWakeMicStreamEnded":"唤醒词麦克风流意外结束", "httpStatusError":"服务器返回 HTTP {statusCode}", "@httpStatusError":{"placeholders":{"statusCode":{"type":"int"}}}
+  "errorDirectGatewayFeatureUnavailable":"此功能需要 Hermes Mobile Server，直接 Gateway 连接无法使用", "errorOperationFailedWithDetail":"操作失败：{error}", "@errorOperationFailedWithDetail":{"placeholders":{"error":{"type":"String"}}}, "gatewayOauthRejected":"Gateway 拒绝登录：{error}", "gatewayOauthCodeMissing":"Gateway 回调缺少授权码", "gatewayOauthStateMismatch":"Gateway 回调状态不匹配。为确保安全，登录已取消。", "gatewayOauthRefreshTokenMissing":"Gateway 会话已过期且没有刷新令牌", "gatewayOauthTicketMissing":"Gateway 未返回 WebSocket 票据", "gatewayOauthAccessTokenMissing":"Gateway 令牌响应未包含访问令牌", "gatewayOauthTimedOut":"Gateway 登录超时", "gatewayOauthNativeUnsupported":"此平台不支持原生 Gateway OAuth", "@gatewayOauthRejected":{"placeholders":{"error":{"type":"String"}}}, "updateManifestInvalid":"更新清单无效", "sshRemotePlatformUnsupported":"不支持远程平台：{error}", "sshWebUnsupported":"Web 端不支持原生 SSH 连接", "@sshRemotePlatformUnsupported":{"placeholders":{"error":{"type":"String"}}}, "filesDownloadPlatformUnsupported":"此平台不支持下载到本地文件", "sessionExportPlatformUnsupported":"此平台不支持导出到本地文件", "errorPluginCanonicalKeyRequired":"此插件需要规范键才能更改", "connectGatewayToken":"Gateway 令牌", "modelMoaTitle":"多智能体混合", "insightsTokens":"Token", "messageWebFallback":"网页", "mcpLogsSourceStdio":"stdio", "mcpLogsSourceAgent":"智能体", "projectPrimaryFolder":"主目录", "botGroupNameRequired":"请输入群组名称", "botGroupMembersMinimum":"群组至少需要两个 Bot", "botGroupMembersRange":"群组需要 2～{max} 个 Bot", "botGroupMembersMaximum":"群组最多支持 {max} 个 Bot", "botGroupMemberUnavailable":"没有可用的群组成员", "botProfileNameUnavailable":"没有可用的配置档案名称", "botProfileNameInvalid":"名称必须以字母或数字开头，且只能包含小写字母、数字、- 或 _", "botCreateTitle":"创建 Bot", "botCreateNameHelper":"小写字母、数字、- 或 _", "botCreateNameTaken":"名为“{name}”的 Bot 已存在", "@botCreateNameTaken":{"placeholders":{"name":{"type":"String"}}},"botCreateRoleLabel":"角色（可选）", "botCreateMissionLabel":"使命（可选）", "botCreateCloneFromLabel":"克隆自", "botCreateCustomSoulLabel":"自定义 SOUL", "botCreateCustomSoulHint":"用你自己的话描述这个 Bot 的身份", "botCreateSuccess":"Bot 已创建", "botDefaultProfileDeleteForbidden":"无法删除默认配置档案", "botConnectionUnavailable":"Bot 连接不可用", "botTurnFailed":"Bot 回合失败", "@botGroupMembersRange":{"placeholders":{"max":{"type":"int"}}}, "@botGroupMembersMaximum":{"placeholders":{"max":{"type":"int"}}}, "mcpInvalidJsonSyntax":"JSON 语法无效", "mcpJsonObjectRequired":"JSON 顶层内容必须是对象", "voiceWakeMicStreamEnded":"唤醒词麦克风流意外结束", "httpStatusError":"服务器返回 HTTP {statusCode}", "@httpStatusError":{"placeholders":{"statusCode":{"type":"int"}}}
+  ,"voiceMuteMicrophone": "将麦克风静音",
+  "voiceMicrophoneMuted": "麦克风已静音",
+  "voiceRecordingDroppedMuted": "麦克风已静音，录音已中断并丢弃",
+  "keybindsTitle": "键盘快捷键",
+  "settingsKeybindsDesc": "自定义物理键盘的快捷键",
+  "keybindActionChatUndo": "撤销",
+  "keybindActionChatFind": "查找",
+  "keybindChange": "更改",
+  "keybindReset": "重置",
+  "keybindResetAll": "全部重置",
+  "keybindCustomizedBadge": "已自定义",
+  "keybindCapturePrompt": "请按下按键组合……",
+  "keybindCaptureModifierRequired": "需要包含一个修饰键（Ctrl、⌘、Alt 或 Shift）",
+  "keybindConflictWith": "已被“{action}”占用",
+  "@keybindConflictWith": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "keybindNoHardwareKeyboardHint": "仅当设备连接了物理键盘时，快捷键才会生效",
+  "previewSource": "源码",
+  "previewRendered": "预览",
+  "previewDiff": "更改",
+  "previewLargeFileTitle": "已暂停大文件预览",
+  "previewLargeFileDescription": "加载此文件可能占用较多内存，请仅在需要完整预览时继续。",
+  "pluginComposerBlocked": "插件已阻止发送此消息。",
+  "pluginComposerInvalidResponse": "输入处理插件返回了无效响应",
+  "pluginComposerTextTooLarge": "输入处理插件生成的消息过大",
+  "workspaceRenameTab": "重命名标签",
+  "workspaceCloseOtherTabs": "关闭其他标签",
+  "workspaceCloseTabsToRight": "关闭右侧标签",
+  "chatReadingAttachments": "正在读取附件…",
+  "chatSendingEllipsis": "正在发送…",
+  "chatUploadingPercent": "正在上传 {percent}%",
+  "@chatUploadingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "chatUploadingEllipsis": "正在上传…",
+  "chatPreparingAttachments": "正在准备附件…",
+  "chatUploadingProgress": "正在上传 {current}/{total}",
+  "@chatUploadingProgress": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "chatUploadingProgressPercent": "正在上传 · {percent}%",
+  "@chatUploadingProgressPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "chatSendCancelledRetry": "发送已取消，可重试",
+  "chatSuggestionUseSkill": "使用技能：{id}",
+  "@chatSuggestionUseSkill": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "chatSuggestionConfigureGithub": "配置 GitHub 能力",
+  "chatSuggestionConnectMcp": "连接 {id} MCP",
+  "@chatSuggestionConnectMcp": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "chatSuggestionRepairMcp": "修复 {id} MCP 连接",
+  "@chatSuggestionRepairMcp": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "chatSuggestionTriggerReason": "因为草稿或当前会话提到了 {trigger}",
+  "@chatSuggestionTriggerReason": {
+    "placeholders": {
+      "trigger": {
+        "type": "String"
+      }
+    }
+  },
+  "chatInvalidPublicUrl": "请输入有效的公网 http/https 地址",
+  "messageBubbleAttachmentSendFailed": "附件发送失败，可重试",
+  "messageBubbleAttachmentUploading": "正在上传附件 {percent}",
+  "@messageBubbleAttachmentUploading": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  }
 }

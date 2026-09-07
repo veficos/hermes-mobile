@@ -9,6 +9,7 @@ import 'package:hermes_mobile/core/models.dart';
 import 'package:hermes_mobile/core/session_tree.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/subagent_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/widgets/h/hermes_composer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -502,6 +503,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: HermesComposer(
             controller: controller,

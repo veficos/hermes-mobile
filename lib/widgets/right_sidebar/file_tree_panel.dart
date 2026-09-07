@@ -15,8 +15,11 @@ import '../../core/stores/connection_store.dart';
 import '../../core/stores/file_tree_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../h/hermes_confirm_dialog.dart';
 import '../h/hermes_states.dart';
+import '../h/hermes_toast.dart';
 import '../mobile/hermes_adaptive_menu.dart';
+import '../mobile/mobile_page_scaffold.dart';
 
 class FileTreePanel extends StatefulWidget {
   /// 附加文件到 composer 的回调（Shift+Click 或菜单选择）
@@ -426,14 +429,11 @@ class _FileTreePanelState extends State<FileTreePanel>
     final l10n = context.l10n;
     final connection = context.read<ConnectionStore>();
     final expectedApi = connection.api;
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(HermesRadius.sheet),
-        ),
-      ),
-      builder: (ctx) => SafeArea(
+    showMobileSheet(
+      context,
+      isScrollControlled: false,
+      avoidViewInsets: false,
+      (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -473,7 +473,6 @@ class _FileTreePanelState extends State<FileTreePanel>
                 title: Text(context.l10n.filesRevealOnServer),
                 onTap: () async {
                   Navigator.of(ctx).pop();
-                  final messenger = ScaffoldMessenger.of(context);
                   try {
                     if (expectedApi == null) {
                       throw StateError(l10n.backendDisconnected);
@@ -481,9 +480,11 @@ class _FileTreePanelState extends State<FileTreePanel>
                     requireActiveApi(context, connection, expectedApi);
                     await store.revealInExplorer(entry);
                   } catch (e) {
-                    if (mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text(l10n.filesRevealFailed('$e'))),
+                    if (context.mounted) {
+                      showHermesErrorSnackBar(
+                        context,
+                        e,
+                        fallback: l10n.filesRevealFailed('$e'),
                       );
                     }
                   }
@@ -510,10 +511,9 @@ class _FileTreePanelState extends State<FileTreePanel>
               ),
               onTap: () async {
                 Navigator.of(ctx).pop();
-                final messenger = ScaffoldMessenger.of(this.context);
                 final confirmed = await _confirmDelete(this.context, entry);
                 if (!mounted) return;
-                if (confirmed == true) {
+                if (confirmed) {
                   try {
                     if (expectedApi == null) {
                       throw StateError(l10n.backendDisconnected);
@@ -522,8 +522,10 @@ class _FileTreePanelState extends State<FileTreePanel>
                     await store.deleteEntry(entry);
                   } catch (e) {
                     if (mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text(l10n.filesDeleteFailed('$e'))),
+                      showHermesErrorSnackBar(
+                        this.context,
+                        e,
+                        fallback: l10n.filesDeleteFailed('$e'),
                       );
                     }
                   }
@@ -540,33 +542,22 @@ class _FileTreePanelState extends State<FileTreePanel>
     BuildContext context,
     FsEntry entry,
   ) async {
-    final ok = await showDialog<bool>(
+    return showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.filesFolderDownloadQuestion),
-        content: Text(context.l10n.filesFolderDownloadDescription(entry.name)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.filesArchiveDownload),
-          ),
-        ],
-      ),
+      title: context.l10n.filesFolderDownloadQuestion,
+      message: context.l10n.filesFolderDownloadDescription(entry.name),
+      confirmLabel: context.l10n.filesArchiveDownload,
     );
-    return ok == true;
   }
 
   Future<void> _downloadEntry(BuildContext context, FsEntry entry) async {
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     final api = context.read<ConnectionStore>().api;
     if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatServerNotConnected)),
+      showHermesToast(
+        context,
+        message: context.l10n.chatServerNotConnected,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -590,38 +581,24 @@ class _FileTreePanelState extends State<FileTreePanel>
       );
     } catch (e) {
       if (context.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.filesDownloadFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: l10n.filesDownloadFailed('$e'),
         );
       }
     }
   }
 
-  Future<bool?> _confirmDelete(BuildContext context, FsEntry entry) {
-    return showDialog<bool>(
+  Future<bool> _confirmDelete(BuildContext context, FsEntry entry) {
+    return showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.filesConfirmDelete),
-        content: Text(
-          entry.isDirectory
-              ? context.l10n.filesDeleteFolderDescription(entry.name)
-              : context.l10n.filesDeleteFileDescription(entry.name),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.filesConfirmDelete,
+      message: entry.isDirectory
+          ? context.l10n.filesDeleteFolderDescription(entry.name)
+          : context.l10n.filesDeleteFileDescription(entry.name),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
   }
 
@@ -630,7 +607,6 @@ class _FileTreePanelState extends State<FileTreePanel>
     FileTreeStore store,
   ) async {
     final controller = TextEditingController();
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     final connection = context.read<ConnectionStore>();
     final api = connectedApiOrNotify(context, connection);
@@ -666,9 +642,11 @@ class _FileTreePanelState extends State<FileTreePanel>
         requireActiveApi(context, connection, api);
         await store.createDirectory(controller.text.trim());
       } catch (e) {
-        if (mounted) {
-          messenger.showSnackBar(
-            SnackBar(content: Text(l10n.filesCreateFolderFailed('$e'))),
+        if (context.mounted) {
+          showHermesErrorSnackBar(
+            context,
+            e,
+            fallback: l10n.filesCreateFolderFailed('$e'),
           );
         }
       }

@@ -6,13 +6,26 @@ import '../kanban/models.dart';
 import '../kanban/store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_segmented_control.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/kanban_board_sheet.dart';
 import '../widgets/kanban_new_task_sheet.dart';
 import 'kanban_task_detail_screen.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
+
+/// 列表/看板切换控件的最大宽度（保持旧 190px 视觉）。
+const double _kViewToggleMaxWidth = 190;
+
+/// 看板列宽自适应：列宽 = clamp(可用宽 × [_kBoardColumnWidthFactor],
+/// [_kBoardColumnMinWidth], [_kBoardColumnMaxWidth])，保证窄屏上至少露出
+/// 下一列的边缘，提示可横向滚动。
+const double _kBoardColumnMinWidth = 190;
+const double _kBoardColumnMaxWidth = 260;
+const double _kBoardColumnWidthFactor = 0.72;
 
 class KanbanCanonicalScreen extends StatefulWidget {
   final String? initialProjectId;
@@ -85,7 +98,6 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
     KanbanApi api,
   ) async {
     final noBoardMessage = context.l10n.projectNoKanbanBoard;
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await store.loadBoards(expectedApi: api);
       store.requireApi(api);
@@ -101,7 +113,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       });
       return;
     }
-    if (!_ownsInitialProjectTarget(api, generation)) return;
+    if (!mounted || !_ownsInitialProjectTarget(api, generation)) return;
     final matches = store.boardList
         .where((board) => board.projectId == projectId)
         .toList();
@@ -111,7 +123,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
         _projectBoardMissing = true;
         _projectBoardError = null;
       });
-      messenger.showSnackBar(SnackBar(content: Text(noBoardMessage)));
+      showHermesToast(context, message: noBoardMessage);
       return;
     }
     final selected = matches.firstWhere(
@@ -191,7 +203,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(HermesSpacing.xl),
                 child: Text(error, textAlign: TextAlign.center),
               ),
               FilledButton.icon(
@@ -211,7 +223,12 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            padding: const EdgeInsets.fromLTRB(
+              HermesMobileMetrics.pagePadding,
+              HermesSpacing.sm,
+              HermesMobileMetrics.pagePadding,
+              HermesSpacing.sm,
+            ),
             child: Column(
               children: [
                 Row(
@@ -322,54 +339,15 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   }
 
   Widget _viewToggle() {
-    final palette = HermesPalette.of(context);
-    Widget option({
-      required String label,
-      required bool selected,
-      required VoidCallback onTap,
-    }) => Expanded(
-      child: Material(
-        color: selected ? palette.surface : Colors.transparent,
-        borderRadius: BorderRadius.circular(9),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(9),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: selected ? palette.text : palette.text3,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 190),
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: palette.codeBg,
-        borderRadius: BorderRadius.circular(11),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          option(
-            label: context.l10n.taskListView,
-            selected: !_columns,
-            onTap: () => setState(() => _columns = false),
-          ),
-          option(
-            label: context.l10n.taskBoardView,
-            selected: _columns,
-            onTap: () => setState(() => _columns = true),
-          ),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: _kViewToggleMaxWidth),
+      child: HermesSegmentedControl<bool>(
+        options: [
+          HermesSegment(value: false, label: context.l10n.taskListView),
+          HermesSegment(value: true, label: context.l10n.taskBoardView),
         ],
+        selected: _columns,
+        onChanged: (v) => setState(() => _columns = v),
       ),
     );
   }
@@ -387,32 +365,31 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
               Expanded(
                 child: Text(
                   context.l10n.taskWeeklyDelivery,
-                  style: const TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: HermesType.body.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: HermesSpacing.xs,
+                  vertical: HermesSpacing.xxs,
+                ),
                 decoration: BoxDecoration(
                   color: palette.accent,
                   borderRadius: BorderRadius.circular(HermesRadius.capsule),
                 ),
                 child: Text(
                   '$done/$total',
-                  style: TextStyle(
+                  style: HermesType.caption.copyWith(
                     color: Theme.of(context).colorScheme.onPrimary,
-                    fontSize: 10,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: HermesSpacing.xs),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(HermesRadius.smallCard),
             child: LinearProgressIndicator(
               minHeight: 7,
               value: progress,
@@ -426,49 +403,64 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   }
 
   Widget _listView(KanbanStore s, List<KanbanTask> tasks) => ListView(
-    padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+    padding: const EdgeInsets.fromLTRB(
+      HermesMobileMetrics.pagePadding,
+      0,
+      HermesMobileMetrics.pagePadding,
+      HermesSpacing.xl,
+    ),
     children: [for (final task in tasks) _card(task, s)],
   );
-  Widget _columnView(KanbanStore s, List<KanbanTask> tasks) =>
-      SingleChildScrollView(
+  Widget _columnView(KanbanStore s, List<KanbanTask> tasks) => LayoutBuilder(
+    builder: (context, constraints) {
+      final columnWidth = (constraints.maxWidth * _kBoardColumnWidthFactor)
+          .clamp(_kBoardColumnMinWidth, _kBoardColumnMaxWidth)
+          .toDouble();
+      return SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+        padding: const EdgeInsets.fromLTRB(
+          HermesMobileMetrics.pagePadding,
+          0,
+          HermesMobileMetrics.pagePadding,
+          HermesSpacing.xl,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final c in s.boardData?.columns ?? const <KanbanColumn>[])
               Container(
-                width: 190,
-                margin: const EdgeInsets.only(right: 9),
-                padding: const EdgeInsets.all(9),
+                width: columnWidth,
+                margin: const EdgeInsets.only(right: HermesSpacing.xs),
+                padding: const EdgeInsets.all(HermesSpacing.xs),
                 decoration: BoxDecoration(
                   color: HermesPalette.of(context).codeBg,
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(HermesRadius.card),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _statusLabel(c.name),
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
+                    Semantics(
+                      header: true,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _statusLabel(c.name),
+                              style: HermesType.subheadline.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                        ),
-                        Text(
-                          '${tasks.where((t) => t.status == c.name).length}',
-                          style: TextStyle(
-                            color: HermesPalette.of(context).text4,
-                            fontSize: 11,
+                          Text(
+                            '${tasks.where((t) => t.status == c.name).length}',
+                            style: HermesType.caption.copyWith(
+                              color: HermesPalette.of(context).text4,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: HermesSpacing.xs),
                     for (final task in tasks.where((t) => t.status == c.name))
                       _card(task, s),
                   ],
@@ -477,80 +469,96 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
           ],
         ),
       );
+    },
+  );
   Widget _card(KanbanTask task, KanbanStore store) {
     final palette = HermesPalette.of(context);
     final selected = store.selectedIds.contains(task.id);
     final statusColor = _statusColor(task.status);
     final priorityColor = _priorityColor(task.priority);
-    return HermesMobileCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      color: selected ? palette.accentBg : null,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${task.title} · ${_statusLabel(task.status)}',
       onTap: () => store.selectedIds.isNotEmpty
           ? store.toggleSelected(task.id)
           : _detail(context, task, store),
-      child: GestureDetector(
-        onLongPress: () => store.toggleSelected(task.id),
-        behavior: HitTestBehavior.opaque,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      onLongPress: () => store.toggleSelected(task.id),
+      child: ExcludeSemantics(
+        child: HermesMobileCard(
+          margin: const EdgeInsets.only(bottom: HermesSpacing.sm),
+          color: selected ? palette.accentBg : null,
+          onTap: () => store.selectedIds.isNotEmpty
+              ? store.toggleSelected(task.id)
+              : _detail(context, task, store),
+          child: GestureDetector(
+            onLongPress: () => store.toggleSelected(task.id),
+            behavior: HitTestBehavior.opaque,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    task.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: HermesType.body.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: HermesSpacing.xs),
+                    HermesStatusChip(
+                      label: _statusLabel(task.status),
+                      color: statusColor,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        [
+                          context.l10n.taskPriorityMeta(
+                            _priorityLabel(task.priority),
+                          ),
+                          task.assignee ?? context.l10n.taskUnassigned,
+                          context.l10n.taskCommentCount(task.commentCount),
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: HermesType.footnote.copyWith(
+                          color: palette.text3,
+                        ),
+                      ),
+                    ),
+                    HermesStatusChip(
+                      label: _priorityLabel(task.priority),
+                      color: priorityColor,
+                      icon: task.warnings != null ? Icons.warning_amber : null,
+                    ),
+                  ],
+                ),
+                if (_taskProgress(task) case final progress?) ...[
+                  const SizedBox(height: 9),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                      HermesRadius.smallCard,
+                    ),
+                    child: LinearProgressIndicator(
+                      minHeight: 7,
+                      value: progress,
+                      color: palette.accent,
+                      backgroundColor: palette.codeBg,
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                HermesMobileStatusChip(
-                  label: _statusLabel(task.status),
-                  color: statusColor,
-                ),
+                ],
               ],
             ),
-            const SizedBox(height: 7),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    [
-                      context.l10n.taskPriorityMeta(
-                        _priorityLabel(task.priority),
-                      ),
-                      task.assignee ?? context.l10n.taskUnassigned,
-                      context.l10n.taskCommentCount(task.commentCount),
-                    ].join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: palette.text3, fontSize: 12),
-                  ),
-                ),
-                HermesMobileStatusChip(
-                  label: _priorityLabel(task.priority),
-                  color: priorityColor,
-                  icon: task.warnings != null ? Icons.warning_amber : null,
-                ),
-              ],
-            ),
-            if (_taskProgress(task) case final progress?) ...[
-              const SizedBox(height: 9),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  minHeight: 7,
-                  value: progress,
-                  color: palette.accent,
-                  backgroundColor: palette.codeBg,
-                ),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -614,23 +622,32 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       children: [
         Text(context.l10n.taskSelectedCount(s.selectedIds.length)),
         const Spacer(),
-        IconButton(
-          tooltip: context.l10n.kanbanMoveSelected,
-          onPressed: () => _moveSelected(c, s),
-          icon: const Icon(Icons.drive_file_move),
+        Semantics(
+          button: true,
+          label: context.l10n.kanbanMoveSelected,
+          child: IconButton(
+            tooltip: context.l10n.kanbanMoveSelected,
+            onPressed: () => _moveSelected(c, s),
+            icon: const Icon(Icons.drive_file_move),
+          ),
         ),
-        IconButton(
-          tooltip: context.l10n.kanbanClearSelection,
-          onPressed: s.clearSelection,
-          icon: const Icon(Icons.close),
+        Semantics(
+          button: true,
+          label: context.l10n.kanbanClearSelection,
+          child: IconButton(
+            tooltip: context.l10n.kanbanClearSelection,
+            onPressed: s.clearSelection,
+            icon: const Icon(Icons.close),
+          ),
         ),
       ],
     ),
   );
   Future<void> _moveSelected(BuildContext c, KanbanStore s) async {
-    final status = await showModalBottomSheet<String>(
-      context: c,
-      builder: (_) => ListView(
+    final status = await showMobileSheet<String>(
+      c,
+      isScrollControlled: false,
+      (_) => ListView(
         children: [
           for (final col in s.boardData?.columns ?? const <KanbanColumn>[])
             ListTile(
@@ -643,8 +660,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
     if (status == null) return;
     final failed = await s.bulkPatch(s.selectedIds, {'status': status});
     if (c.mounted && failed.isNotEmpty) {
-      ScaffoldMessenger.of(c).showSnackBar(
-        SnackBar(content: Text(c.l10n.taskBulkFailed(failed.length))),
+      showHermesToast(
+        c,
+        message: c.l10n.taskBulkFailed(failed.length),
+        kind: HermesToastKind.error,
       );
     }
   }
@@ -662,9 +681,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   Future<void> _showBoards(BuildContext c, KanbanStore s) =>
       showKanbanBoardSheet(c, s);
   Future<void> _showFilters(BuildContext c, KanbanStore s) async {
-    await showModalBottomSheet<void>(
-      context: c,
-      builder: (sheet) => StatefulBuilder(
+    await showMobileSheet<void>(
+      c,
+      isScrollControlled: false,
+      (sheet) => StatefulBuilder(
         builder: (_, setSheet) => ListView(
           children: [
             ListTile(title: Text(context.l10n.taskFilter)),
@@ -685,9 +705,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                 ),
               ),
               onTap: () async {
-                final a = await showModalBottomSheet<String>(
-                  context: sheet,
-                  builder: (_) => ListView(
+                final a = await showMobileSheet<String>(
+                  sheet,
+                  isScrollControlled: false,
+                  (_) => ListView(
                     children: [
                       ListTile(
                         title: Text(context.l10n.taskAll),
@@ -717,9 +738,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                 ),
               ),
               onTap: () async {
-                final a = await showModalBottomSheet<String>(
-                  context: sheet,
-                  builder: (_) => ListView(
+                final a = await showMobileSheet<String>(
+                  sheet,
+                  isScrollControlled: false,
+                  (_) => ListView(
                     children: [
                       ListTile(
                         title: Text(context.l10n.taskAll),
@@ -753,7 +775,6 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   }
 
   Future<void> _showOrchestration(BuildContext c, KanbanStore s) async {
-    final messenger = ScaffoldMessenger.of(c);
     late final KanbanApi api;
     late final Map<String, dynamic> raw;
     late final Map<String, dynamic> profileRaw;
@@ -764,8 +785,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       s.requireApi(api);
     } catch (error) {
       if (c.mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(c.l10n.kanbanOperationFailed('$error'))),
+        showHermesErrorSnackBar(
+          c,
+          error,
+          fallback: c.l10n.kanbanOperationFailed('$error'),
         );
       }
       return;
@@ -780,9 +803,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
     var orchestrator = settings.orchestratorProfile;
     var assignee = settings.defaultAssignee;
     final busyProfiles = <String>{};
-    await showModalBottomSheet<void>(
-      context: c,
-      builder: (sheet) => AnimatedBuilder(
+    await showMobileSheet<void>(
+      c,
+      isScrollControlled: false,
+      (sheet) => AnimatedBuilder(
         animation: s,
         builder: (_, _) {
           try {
@@ -795,16 +819,17 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
           }
           return StatefulBuilder(
             builder: (_, setSheet) => ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(HermesSpacing.md),
               children: [
                 Text(
                   context.l10n.taskOrchestration,
-                  style: const TextStyle(
-                    fontSize: 20,
+                  style: HermesType.title.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 DropdownButtonFormField<String>(
+                  dropdownColor: hermesDropdownColor(context),
+                  borderRadius: hermesDropdownBorderRadius,
                   initialValue: orchestrator,
                   decoration: InputDecoration(
                     labelText: context.l10n.taskOrchestratorProfile,
@@ -822,6 +847,8 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                   onChanged: (v) => setSheet(() => orchestrator = v ?? ''),
                 ),
                 DropdownButtonFormField<String>(
+                  dropdownColor: hermesDropdownColor(context),
+                  borderRadius: hermesDropdownBorderRadius,
                   initialValue: assignee,
                   decoration: InputDecoration(
                     labelText: context.l10n.taskDefaultAssignee,
@@ -854,10 +881,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                       if (sheet.mounted) Navigator.pop(sheet);
                     } catch (e) {
                       if (sheet.mounted) {
-                        ScaffoldMessenger.of(sheet).showSnackBar(
-                          SnackBar(
-                            content: Text(sheet.l10n.commonOperationFailed),
-                          ),
+                        showHermesErrorSnackBar(
+                          sheet,
+                          e,
+                          fallback: sheet.l10n.commonOperationFailed,
                         );
                       }
                     }
@@ -879,16 +906,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                     ),
                     onTap: () async {
                       final ctl = TextEditingController(text: p.description);
-                      final value = await showModalBottomSheet<String>(
-                        context: sheet,
-                        isScrollControlled: true,
-                        builder: (edit) => Padding(
-                          padding: EdgeInsets.only(
-                            left: 16,
-                            right: 16,
-                            top: 16,
-                            bottom: MediaQuery.viewInsetsOf(edit).bottom + 16,
-                          ),
+                      final value = await showMobileSheet<String>(
+                        sheet,
+                        (edit) => Padding(
+                          padding: const EdgeInsets.all(HermesSpacing.md),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -934,17 +955,17 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                         setSheet(() {});
                       } catch (e) {
                         if (sheet.mounted) {
-                          ScaffoldMessenger.of(sheet).showSnackBar(
-                            SnackBar(
-                              content: Text(sheet.l10n.commonOperationFailed),
-                            ),
+                          showHermesErrorSnackBar(
+                            sheet,
+                            e,
+                            fallback: sheet.l10n.commonOperationFailed,
                           );
                         }
                       }
                     },
                     trailing: busyProfiles.contains(p.name)
                         ? const Padding(
-                            padding: EdgeInsets.all(8),
+                            padding: EdgeInsets.all(HermesSpacing.xs),
                             child: SizedBox(
                               width: 20,
                               height: 20,
@@ -977,12 +998,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                                 }
                               } catch (e) {
                                 if (sheet.mounted) {
-                                  ScaffoldMessenger.of(sheet).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        sheet.l10n.commonOperationFailed,
-                                      ),
-                                    ),
+                                  showHermesErrorSnackBar(
+                                    sheet,
+                                    e,
+                                    fallback: sheet.l10n.commonOperationFailed,
                                   );
                                 }
                               } finally {

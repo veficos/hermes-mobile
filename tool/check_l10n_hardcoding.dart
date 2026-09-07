@@ -31,10 +31,16 @@ const _forbiddenUiCopy = <String>{
   'Mermaid parse error',
   'Hermes Pet',
   'Desktop Session',
-  'background process',
   'Terminal error:',
   'Max Tokens',
 };
+
+// 'background process' was a user-facing fallback literal, but the phrase is
+// also a common domain term in agent prompts and comments, so only the exact
+// string literal is forbidden.
+final _forbiddenUiCopyExactLiterals = <RegExp>[
+  RegExp(r'''['"]background process['"]'''),
+];
 
 final _forbiddenEmbeddedCopy = <RegExp>[
   RegExp(r'''button\(["']Back["']'''),
@@ -59,7 +65,9 @@ const _forbiddenEscapedCopy = <String>{
   "'invalid minimum supported version'",
 };
 
-// Linguistic data used to derive a pet name, never rendered as UI copy.
+// Linguistic data that is never rendered as translatable UI copy: pet-name
+// derivation, schedule parsing, and voice stop-phrase matching (input text,
+// not display text).
 const _allowedHanDataLiterals = {
   '一个',
   '一只',
@@ -69,6 +77,16 @@ const _allowedHanDataLiterals = {
   r'每(?:天(?:早上|晚上|中午)?|日|周[一二三四五六日天]?|星期[一二三四五六日天]?|月|年|小时|分钟|次)',
   '停止对话',
   '结束对话',
+  '停止',
+  // Native language names and badge glyphs in the language picker. Standard
+  // practice is to show each language in its own script, so these must not
+  // be translated.
+  '简',
+  '繁',
+  '日',
+  '简体中文',
+  '繁體中文',
+  '日本語',
 };
 
 void main(List<String> args) {
@@ -149,6 +167,7 @@ List<String> _scanEscapedUiLiterals() {
       final line = lines[index];
       final code = line.split('//').first;
       if (_forbiddenUiCopy.any(code.contains) ||
+          _forbiddenUiCopyExactLiterals.any((pattern) => pattern.hasMatch(code)) ||
           _forbiddenEmbeddedCopy.any((pattern) => pattern.hasMatch(line)) ||
           _forbiddenEscapedCopy.any(code.contains)) {
         findings.add('${file.path}:${index + 1}: ${line.trim()}');

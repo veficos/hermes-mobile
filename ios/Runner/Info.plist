@@ -52,6 +52,8 @@
 	<string>Hermes Mobile needs local network access to connect to your local hermes-mobile-server.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Hermes Mobile uses the microphone for voice input and, while the app is in the foreground, to listen for the Hermes wake word when enabled.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Hermes Mobile needs access to your photo library so you can attach images to chat messages.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

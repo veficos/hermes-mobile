@@ -5,6 +5,7 @@ import 'package:hermes_mobile/core/pane_tree.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/pane_workspace_store.dart';
 import 'package:hermes_mobile/core/stores/plugin_contribution_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/pane_workspace_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,7 +52,12 @@ Future<({PaneWorkspaceStore workspace, PluginContributionStore plugins})> _pump(
         ChangeNotifierProvider.value(value: plugins),
         ChangeNotifierProvider.value(value: workspace),
       ],
-      child: const MaterialApp(home: PaneWorkspaceScreen()),
+      child: MaterialApp(
+        locale: Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: PaneWorkspaceScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();

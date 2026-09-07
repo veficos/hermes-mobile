@@ -75,7 +75,47 @@ def _path(value: str) -> Path:
         raw = raw.replace("/", "\\")
     else:
         raw = raw.replace("\\", "/")
-    resolved = Path(raw).expanduser().resolve(strict=False)
+    candidate = Path(raw).expanduser()
+    # Chat/tool payloads sometimes contain a workspace-relative artifact name
+    # (for example `stretched-3840-2160-1098155`) rather than the absolute
+    # path returned by the upload API. Resolve such names against the same
+    # shared workspace used by the file browser, not the server process
+    # directory. Absolute paths retain their existing behavior.
+    if not candidate.is_absolute():
+        configured = os.environ.get("HERMES_MOBILE_WORKSPACE", "").strip()
+        workspace = Path(configured).expanduser() if configured else Path.home() / "workspace"
+        workspace_candidate = workspace / candidate
+        # Prefer the shared workspace, but keep compatibility with artifacts
+        # created in the server's current directory by older agent versions.
+        if workspace_candidate.is_file() or workspace_candidate.is_dir():
+            candidate = workspace_candidate
+        else:
+            # Older Hermes image tools sometimes return a bare artifact name
+            # while writing the file in the server/project working tree. Try
+            # the process directory and its parent before falling back to the
+            # process directory (which preserves the existing error shape).
+            for root in (Path.cwd(), Path.cwd().parent):
+                rooted = root / candidate
+                if rooted.is_file() or rooted.is_dir():
+                    candidate = rooted
+                    break
+            else:
+                # Image generators may omit the extension from a returned
+                # artifact token (for example `stretched-3840-2160-1098155`,
+                # while the file on disk is `.png`). Resolve an exact basename
+                # plus a single extension within known workspace roots.
+                roots = [workspace, Path.cwd(), Path.cwd().parent]
+                for root in roots:
+                    if not root.is_dir():
+                        continue
+                    try:
+                        matches = list(root.glob(f"{candidate.name}.*"))
+                    except OSError:
+                        matches = []
+                    if len(matches) == 1 and matches[0].is_file():
+                        candidate = matches[0]
+                        break
+    resolved = candidate.resolve(strict=False)
     _check_allowed(resolved)
     return resolved
 
@@ -359,10 +399,42 @@ def write_data_url(value: str, data_url: str, *, overwrite: bool = False) -> dic
     try:
         data = base64.b64decode(data_url.split(",", 1)[1], validate=True)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
+        # Write atomically so readers never observe a partially uploaded file.
+        temp = path.with_name(f".{path.name}.uploading")
+        temp.write_bytes(data)
+        if temp.stat().st_size != len(data):
+            raise OSError("uploaded byte count does not match")
+        temp.replace(path)
     except (OSError, ValueError) as exc:
         raise WorkspaceError(f"cannot upload file: {exc}") from exc
     return {"path": str(path), "size": len(data), "modified_at": _timestamp(path)}
+
+
+def write_stream(value: str, chunks: Any, *, overwrite: bool = False, max_bytes: int = 100 * 1024 * 1024) -> dict[str, Any]:
+    """Write an iterable of byte chunks without buffering the upload."""
+    path = _path(value)
+    if path.exists() and not overwrite:
+        raise WorkspaceError(f"destination already exists: {path}")
+    total = 0
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_name(f".{path.name}.uploading")
+        with temp.open("wb") as output:
+            for chunk in chunks:
+                total += len(chunk)
+                if total > max_bytes:
+                    raise WorkspaceError("file is too large")
+                output.write(chunk)
+    except (OSError, WorkspaceError):
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    temp.replace(path)
+    if not path.is_file() or path.stat().st_size != total:
+        raise WorkspaceError("upload completed without a complete file on disk")
+    return {"path": str(path), "size": total, "modified_at": _timestamp(path)}
 
 
 def mkdir(value: str) -> dict[str, str]:

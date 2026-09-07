@@ -763,6 +763,78 @@ abstract class AppLocalizations {
   /// **'Prevent the screen from sleeping while a chat is open'**
   String get appearanceKeepAwakeDesc;
 
+  /// No description provided for @embedPrivacySettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'External content privacy'**
+  String get embedPrivacySettingsTitle;
+
+  /// No description provided for @embedPrivacySettingsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Control whether message previews may contact services such as YouTube or Spotify.'**
+  String get embedPrivacySettingsDescription;
+
+  /// No description provided for @embedModeAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask'**
+  String get embedModeAsk;
+
+  /// No description provided for @embedModeAlways.
+  ///
+  /// In en, this message translates to:
+  /// **'Always'**
+  String get embedModeAlways;
+
+  /// No description provided for @embedModeOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get embedModeOff;
+
+  /// No description provided for @embedClearAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear allowed services ({count})'**
+  String embedClearAllowed(int count);
+
+  /// No description provided for @richLinkPrivacyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Load content from {provider}?'**
+  String richLinkPrivacyTitle(String provider);
+
+  /// No description provided for @richLinkPrivacyDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading this preview contacts a third party and may reveal your IP address, referrer, or cookies.'**
+  String get richLinkPrivacyDescription;
+
+  /// No description provided for @richLinkLoadOnce.
+  ///
+  /// In en, this message translates to:
+  /// **'Load once'**
+  String get richLinkLoadOnce;
+
+  /// No description provided for @richLinkAlwaysAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Always allow {provider}'**
+  String richLinkAlwaysAllow(String provider);
+
+  /// No description provided for @richLinkOpenOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link only'**
+  String get richLinkOpenOnly;
+
+  /// No description provided for @richLinkCloseAnotherPreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Close another live preview first.'**
+  String get richLinkCloseAnotherPreview;
+
   /// No description provided for @appearanceModeDark.
   ///
   /// In en, this message translates to:
@@ -2653,6 +2725,54 @@ abstract class AppLocalizations {
   /// **'Saved prompts'**
   String get chatSavedPrompts;
 
+  /// No description provided for @chatRecentInputs.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent inputs'**
+  String get chatRecentInputs;
+
+  /// No description provided for @chatPluginPrepareFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'A plugin could not prepare the message: {error}'**
+  String chatPluginPrepareFailed(String error);
+
+  /// No description provided for @chatPasteImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste image'**
+  String get chatPasteImage;
+
+  /// No description provided for @workspaceLayoutBalanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Two panes · 1:1'**
+  String get workspaceLayoutBalanced;
+
+  /// No description provided for @workspaceLayoutMainWide.
+  ///
+  /// In en, this message translates to:
+  /// **'Main wide · 2:1'**
+  String get workspaceLayoutMainWide;
+
+  /// No description provided for @workspaceLayoutToolsWide.
+  ///
+  /// In en, this message translates to:
+  /// **'Tools wide · 1:2'**
+  String get workspaceLayoutToolsWide;
+
+  /// No description provided for @chatClipboardHasNoImage.
+  ///
+  /// In en, this message translates to:
+  /// **'The clipboard does not contain an image'**
+  String get chatClipboardHasNoImage;
+
+  /// No description provided for @chatClipboardImageFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not paste the clipboard image: {error}'**
+  String chatClipboardImageFailed(String error);
+
   /// No description provided for @chatSavedPromptsLoadFailed.
   ///
   /// In en, this message translates to:
@@ -2670,6 +2790,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Search loaded history'**
   String get chatSearchLoadedHistory;
+
+  /// No description provided for @chatHistoryLocatorPartial.
+  ///
+  /// In en, this message translates to:
+  /// **'Older messages aren\'t loaded yet — search results may be incomplete'**
+  String get chatHistoryLocatorPartial;
+
+  /// No description provided for @chatLoadAllHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Load all history'**
+  String get chatLoadAllHistory;
+
+  /// No description provided for @chatLoadingAllHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading all history…'**
+  String get chatLoadingAllHistory;
+
+  /// No description provided for @chatLoadAllHistoryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load history: {error}'**
+  String chatLoadAllHistoryFailed(Object error);
 
   /// No description provided for @chatSelectFilesFailed.
   ///
@@ -6133,6 +6277,36 @@ abstract class AppLocalizations {
   /// **'Refresh preview'**
   String get previewRefresh;
 
+  /// No description provided for @previewReloadWithoutCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Reload without cache'**
+  String get previewReloadWithoutCache;
+
+  /// No description provided for @previewRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get previewRetry;
+
+  /// No description provided for @previewServerNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t reach this server'**
+  String get previewServerNotFound;
+
+  /// No description provided for @previewAppFailedToBoot.
+  ///
+  /// In en, this message translates to:
+  /// **'The app failed to load'**
+  String get previewAppFailedToBoot;
+
+  /// No description provided for @previewRemoteLoopbackHint.
+  ///
+  /// In en, this message translates to:
+  /// **'This address points to a machine that doesn\'t exist on this device — the agent\'s dev server is probably running on the connected computer, not here. Try opening it there instead.'**
+  String get previewRemoteLoopbackHint;
+
   /// No description provided for @previewRunJavascript.
   ///
   /// In en, this message translates to:
@@ -9085,6 +9259,12 @@ abstract class AppLocalizations {
   /// **'Load more ({loaded}/{total})'**
   String historyLoadMoreCount(Object loaded, Object total);
 
+  /// No description provided for @historyEndOfList.
+  ///
+  /// In en, this message translates to:
+  /// **'— End of history —'**
+  String get historyEndOfList;
+
   /// No description provided for @historyPinned.
   ///
   /// In en, this message translates to:
@@ -9905,6 +10085,42 @@ abstract class AppLocalizations {
   /// **'Model'**
   String get profilesModel;
 
+  /// No description provided for @profilesModelChangeWarningTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Routines pin the old model'**
+  String get profilesModelChangeWarningTitle;
+
+  /// No description provided for @profilesModelChangeWarningBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} routine(s) on {profile} have their own model override and won\'t switch automatically. Save anyway?'**
+  String profilesModelChangeWarningBody(int count, String profile);
+
+  /// No description provided for @profilesModelChangeViewRoutines.
+  ///
+  /// In en, this message translates to:
+  /// **'View routines'**
+  String get profilesModelChangeViewRoutines;
+
+  /// No description provided for @profilesModelChangeSaveAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Save anyway'**
+  String get profilesModelChangeSaveAnyway;
+
+  /// No description provided for @profilesModelChangeCheckFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t check routines'**
+  String get profilesModelChangeCheckFailedTitle;
+
+  /// No description provided for @profilesModelChangeCheckFailedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'We couldn\'t verify whether any routines on {profile} pin their own model override, so we can\'t tell if this change affects them. Save anyway?'**
+  String profilesModelChangeCheckFailedBody(String profile);
+
   /// No description provided for @profilesSystemPrompt.
   ///
   /// In en, this message translates to:
@@ -10373,6 +10589,12 @@ abstract class AppLocalizations {
   /// **'No matching bots'**
   String get agentSearchNoMatches;
 
+  /// No description provided for @agentBotUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Unreachable'**
+  String get agentBotUnreachable;
+
   /// No description provided for @agentGroupSaveFailed.
   ///
   /// In en, this message translates to:
@@ -10643,6 +10865,138 @@ abstract class AppLocalizations {
   /// **'Delete Bot'**
   String get agentDeleteBot;
 
+  /// No description provided for @agentEditAvatarMenuItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit avatar'**
+  String get agentEditAvatarMenuItem;
+
+  /// No description provided for @avatarEditorShapeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Shape'**
+  String get avatarEditorShapeLabel;
+
+  /// No description provided for @avatarEditorColorLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Color'**
+  String get avatarEditorColorLabel;
+
+  /// No description provided for @avatarEditorRandomize.
+  ///
+  /// In en, this message translates to:
+  /// **'Randomize'**
+  String get avatarEditorRandomize;
+
+  /// No description provided for @avatarEditorUploadPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload photo'**
+  String get avatarEditorUploadPhoto;
+
+  /// No description provided for @avatarEditorRemovePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove photo'**
+  String get avatarEditorRemovePhoto;
+
+  /// No description provided for @avatarEditorImageTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Image too large (max 15MB)'**
+  String get avatarEditorImageTooLarge;
+
+  /// No description provided for @avatarEditorGenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate with AI'**
+  String get avatarEditorGenerate;
+
+  /// No description provided for @avatarEditorGenerateHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe your bot\'s look (optional)'**
+  String get avatarEditorGenerateHint;
+
+  /// No description provided for @avatarEditorGenerateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Generation failed: {error}'**
+  String avatarEditorGenerateFailed(String error);
+
+  /// No description provided for @avatarEditorChoosePet.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose pet'**
+  String get avatarEditorChoosePet;
+
+  /// No description provided for @avatarEditorPetSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search pets'**
+  String get avatarEditorPetSearchHint;
+
+  /// No description provided for @avatarEditorPetLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the pet gallery'**
+  String get avatarEditorPetLoadFailed;
+
+  /// No description provided for @avatarEditorSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Avatar updated'**
+  String get avatarEditorSaved;
+
+  /// No description provided for @avatarEditorSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to update avatar: {error}'**
+  String avatarEditorSaveFailed(String error);
+
+  /// No description provided for @agentBotMcpMenuItem.
+  ///
+  /// In en, this message translates to:
+  /// **'MCP servers'**
+  String get agentBotMcpMenuItem;
+
+  /// No description provided for @agentBotModelMenuItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Model & tools'**
+  String get agentBotModelMenuItem;
+
+  /// No description provided for @agentHiddenBotsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get agentHiddenBotsSection;
+
+  /// No description provided for @agentHideBot.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get agentHideBot;
+
+  /// No description provided for @agentUnhideBot.
+  ///
+  /// In en, this message translates to:
+  /// **'Unhide'**
+  String get agentUnhideBot;
+
+  /// No description provided for @agentPinBot.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get agentPinBot;
+
+  /// No description provided for @agentUnpinBot.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get agentUnpinBot;
+
   /// No description provided for @agentGateway.
   ///
   /// In en, this message translates to:
@@ -10894,6 +11248,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete routine'**
   String get botRoutineDelete;
+
+  /// No description provided for @botRoutineEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get botRoutineEdit;
+
+  /// No description provided for @botRoutineEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit routine · {name}'**
+  String botRoutineEditTitle(Object name);
+
+  /// No description provided for @botRoutineSaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving...'**
+  String get botRoutineSaving;
+
+  /// No description provided for @botRoutineSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get botRoutineSave;
+
+  /// No description provided for @botRoutineLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load routine details: {error}'**
+  String botRoutineLoadFailed(Object error);
 
   /// No description provided for @botRoutineScheduleOnce.
   ///
@@ -11158,6 +11542,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Operation failed: {error}'**
   String mcpOperationFailed(Object error);
+
+  /// No description provided for @mcpHealthNeedsAuthTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} needs reauthorization'**
+  String mcpHealthNeedsAuthTitle(String name);
+
+  /// No description provided for @mcpHealthNeedsAuthBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A background check found this server\'s connection has expired. Reconnect to keep using it.'**
+  String get mcpHealthNeedsAuthBody;
+
+  /// No description provided for @mcpHealthErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is unreachable'**
+  String mcpHealthErrorTitle(String name);
+
+  /// No description provided for @mcpHealthErrorBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A background check couldn\'t reach this server. Open MCP settings to investigate.'**
+  String get mcpHealthErrorBody;
 
   /// No description provided for @mcpPersistenceFailed.
   ///
@@ -14951,6 +15359,18 @@ abstract class AppLocalizations {
   /// **'Attach to chat'**
   String get fileTreeAttachToChat;
 
+  /// No description provided for @sessionActionMarkUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as unread'**
+  String get sessionActionMarkUnread;
+
+  /// No description provided for @sessionMarkedUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked as unread'**
+  String get sessionMarkedUnread;
+
   /// No description provided for @projectAddFolder.
   ///
   /// In en, this message translates to:
@@ -15952,6 +16372,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'It looks like a binary file (image, archive, or executable). Opening it in the text editor would corrupt it on save, so editing is disabled — download it to your device instead.'**
   String get fileEditorBinaryDescription;
+
+  /// No description provided for @fileEditorFindReplaceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Find and Replace'**
+  String get fileEditorFindReplaceTitle;
+
+  /// No description provided for @fileEditorFindLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Find'**
+  String get fileEditorFindLabel;
+
+  /// No description provided for @fileEditorReplaceWithLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace with'**
+  String get fileEditorReplaceWithLabel;
+
+  /// No description provided for @fileEditorReplaceAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace all'**
+  String get fileEditorReplaceAll;
+
+  /// No description provided for @fileEditorNoMatches.
+  ///
+  /// In en, this message translates to:
+  /// **'No matches found'**
+  String get fileEditorNoMatches;
+
+  /// No description provided for @fileEditorReplacedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Replaced {count} occurrences'**
+  String fileEditorReplacedCount(int count);
+
+  /// No description provided for @fileEditorNoChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'No changes'**
+  String get fileEditorNoChanges;
 
   /// No description provided for @kanbanTaskCreatedLinkFailed.
   ///
@@ -19175,6 +19637,66 @@ abstract class AppLocalizations {
   /// **'No free profile name is available'**
   String get botProfileNameUnavailable;
 
+  /// No description provided for @botProfileNameInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Names must start with a letter or number and use only lowercase letters, numbers, - or _'**
+  String get botProfileNameInvalid;
+
+  /// No description provided for @botCreateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create bot'**
+  String get botCreateTitle;
+
+  /// No description provided for @botCreateNameHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Lowercase letters, numbers, - or _'**
+  String get botCreateNameHelper;
+
+  /// No description provided for @botCreateNameTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'A bot named \"{name}\" already exists'**
+  String botCreateNameTaken(String name);
+
+  /// No description provided for @botCreateRoleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Role (optional)'**
+  String get botCreateRoleLabel;
+
+  /// No description provided for @botCreateMissionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Mission (optional)'**
+  String get botCreateMissionLabel;
+
+  /// No description provided for @botCreateCloneFromLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Clone from'**
+  String get botCreateCloneFromLabel;
+
+  /// No description provided for @botCreateCustomSoulLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a custom SOUL'**
+  String get botCreateCustomSoulLabel;
+
+  /// No description provided for @botCreateCustomSoulHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe this bot\'s identity in its own words'**
+  String get botCreateCustomSoulHint;
+
+  /// No description provided for @botCreateSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Bot created'**
+  String get botCreateSuccess;
+
   /// No description provided for @botDefaultProfileDeleteForbidden.
   ///
   /// In en, this message translates to:
@@ -19216,6 +19738,258 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The server returned HTTP {statusCode}'**
   String httpStatusError(int statusCode);
+
+  /// No description provided for @voiceMuteMicrophone.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute microphone'**
+  String get voiceMuteMicrophone;
+
+  /// No description provided for @voiceMicrophoneMuted.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone muted'**
+  String get voiceMicrophoneMuted;
+
+  /// No description provided for @voiceRecordingDroppedMuted.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording stopped and discarded because the microphone was muted'**
+  String get voiceRecordingDroppedMuted;
+
+  /// No description provided for @keybindsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Keyboard shortcuts'**
+  String get keybindsTitle;
+
+  /// No description provided for @settingsKeybindsDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Customize shortcuts for a physical keyboard'**
+  String get settingsKeybindsDesc;
+
+  /// No description provided for @keybindActionChatUndo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get keybindActionChatUndo;
+
+  /// No description provided for @keybindActionChatFind.
+  ///
+  /// In en, this message translates to:
+  /// **'Find'**
+  String get keybindActionChatFind;
+
+  /// No description provided for @keybindChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get keybindChange;
+
+  /// No description provided for @keybindReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get keybindReset;
+
+  /// No description provided for @keybindResetAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset all'**
+  String get keybindResetAll;
+
+  /// No description provided for @keybindCustomizedBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Customized'**
+  String get keybindCustomizedBadge;
+
+  /// No description provided for @keybindCapturePrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Press a key combination…'**
+  String get keybindCapturePrompt;
+
+  /// No description provided for @keybindCaptureModifierRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Include a modifier key (Ctrl, ⌘, Alt, or Shift)'**
+  String get keybindCaptureModifierRequired;
+
+  /// No description provided for @keybindConflictWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Already used by \"{action}\"'**
+  String keybindConflictWith(String action);
+
+  /// No description provided for @keybindNoHardwareKeyboardHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shortcuts apply when this device has a physical keyboard attached'**
+  String get keybindNoHardwareKeyboardHint;
+
+  /// No description provided for @previewSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Source'**
+  String get previewSource;
+
+  /// No description provided for @previewRendered.
+  ///
+  /// In en, this message translates to:
+  /// **'Rendered'**
+  String get previewRendered;
+
+  /// No description provided for @previewDiff.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes'**
+  String get previewDiff;
+
+  /// No description provided for @previewLargeFileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Large file preview is paused'**
+  String get previewLargeFileTitle;
+
+  /// No description provided for @previewLargeFileDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading this file may use substantial memory. Open it only when you need the full preview.'**
+  String get previewLargeFileDescription;
+
+  /// No description provided for @pluginComposerBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'A plugin blocked this message.'**
+  String get pluginComposerBlocked;
+
+  /// No description provided for @pluginComposerInvalidResponse.
+  ///
+  /// In en, this message translates to:
+  /// **'A composer plugin returned an invalid response'**
+  String get pluginComposerInvalidResponse;
+
+  /// No description provided for @pluginComposerTextTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'The message produced by a composer plugin is too large'**
+  String get pluginComposerTextTooLarge;
+
+  /// No description provided for @workspaceRenameTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename tab'**
+  String get workspaceRenameTab;
+
+  /// No description provided for @workspaceCloseOtherTabs.
+  ///
+  /// In en, this message translates to:
+  /// **'Close other tabs'**
+  String get workspaceCloseOtherTabs;
+
+  /// No description provided for @workspaceCloseTabsToRight.
+  ///
+  /// In en, this message translates to:
+  /// **'Close tabs to the right'**
+  String get workspaceCloseTabsToRight;
+
+  /// No description provided for @chatReadingAttachments.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading attachment…'**
+  String get chatReadingAttachments;
+
+  /// No description provided for @chatSendingEllipsis.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending…'**
+  String get chatSendingEllipsis;
+
+  /// No description provided for @chatUploadingPercent.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {percent}%'**
+  String chatUploadingPercent(int percent);
+
+  /// No description provided for @chatUploadingEllipsis.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading…'**
+  String get chatUploadingEllipsis;
+
+  /// No description provided for @chatPreparingAttachments.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing attachment…'**
+  String get chatPreparingAttachments;
+
+  /// No description provided for @chatUploadingProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {current}/{total}'**
+  String chatUploadingProgress(int current, int total);
+
+  /// No description provided for @chatUploadingProgressPercent.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading · {percent}%'**
+  String chatUploadingProgressPercent(int percent);
+
+  /// No description provided for @chatSendCancelledRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Send cancelled, you can retry'**
+  String get chatSendCancelledRetry;
+
+  /// No description provided for @chatSuggestionUseSkill.
+  ///
+  /// In en, this message translates to:
+  /// **'Use skill: {id}'**
+  String chatSuggestionUseSkill(String id);
+
+  /// No description provided for @chatSuggestionConfigureGithub.
+  ///
+  /// In en, this message translates to:
+  /// **'Configure GitHub capability'**
+  String get chatSuggestionConfigureGithub;
+
+  /// No description provided for @chatSuggestionConnectMcp.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect {id} MCP'**
+  String chatSuggestionConnectMcp(String id);
+
+  /// No description provided for @chatSuggestionRepairMcp.
+  ///
+  /// In en, this message translates to:
+  /// **'Repair {id} MCP connection'**
+  String chatSuggestionRepairMcp(String id);
+
+  /// No description provided for @chatSuggestionTriggerReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Because the draft or current session mentioned {trigger}'**
+  String chatSuggestionTriggerReason(String trigger);
+
+  /// No description provided for @chatInvalidPublicUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid public http/https address'**
+  String get chatInvalidPublicUrl;
+
+  /// No description provided for @messageBubbleAttachmentSendFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Attachment failed to send, tap to retry'**
+  String get messageBubbleAttachmentSendFailed;
+
+  /// No description provided for @messageBubbleAttachmentUploading.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading attachment {percent}'**
+  String messageBubbleAttachmentUploading(String percent);
 }
 
 class _AppLocalizationsDelegate

@@ -9,7 +9,10 @@ import '../core/performance_metrics.dart';
 import '../core/stores/update_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 /// The single About surface used by every navigation layout.
 class AboutScreen extends StatelessWidget {
@@ -21,10 +24,7 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = const _AboutContent();
     if (embedded) return content;
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.aboutTitle)),
-      body: content,
-    );
+    return MobilePageScaffold(title: context.l10n.aboutTitle, body: content);
   }
 }
 
@@ -81,7 +81,10 @@ class _AboutContent extends StatelessWidget {
             ],
           ),
         ),
-        HermesMobileSectionLabel(title: l10n.updateSectionTitle),
+        HermesSectionHeader(
+          title: l10n.updateSectionTitle,
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+        ),
         HermesMobileGroup(
           children: [
             if (updates?.requiresUpdate == true)
@@ -134,18 +137,18 @@ class _AboutContent extends StatelessWidget {
                   : () async {
                       final ok = await updates.check(force: true);
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            ok
-                                ? updates.updateAvailable
-                                      ? l10n.updateFound(
-                                          updates.manifest!.latestVersion,
-                                        )
-                                      : l10n.updateCurrent
-                                : l10n.updateCheckFailed,
-                          ),
-                        ),
+                      showHermesToast(
+                        context,
+                        message: ok
+                            ? updates.updateAvailable
+                                  ? l10n.updateFound(
+                                      updates.manifest!.latestVersion,
+                                    )
+                                  : l10n.updateCurrent
+                            : l10n.updateCheckFailed,
+                        kind: ok
+                            ? HermesToastKind.success
+                            : HermesToastKind.error,
                       );
                     },
             ),
@@ -172,7 +175,10 @@ class _AboutContent extends StatelessWidget {
             ),
           ],
         ),
-        HermesMobileSectionLabel(title: l10n.helpAndFeedbackTitle),
+        HermesSectionHeader(
+          title: l10n.helpAndFeedbackTitle,
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+        ),
         HermesMobileGroup(
           children: [
             HermesMobileRow(
@@ -207,7 +213,10 @@ class _AboutContent extends StatelessWidget {
             ),
           ],
         ),
-        HermesMobileSectionLabel(title: l10n.legalTitle),
+        HermesSectionHeader(
+          title: l10n.legalTitle,
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+        ),
         HermesMobileGroup(
           children: [
             HermesMobileRow(
@@ -239,7 +248,7 @@ class _AboutContent extends StatelessWidget {
           child: SingleChildScrollView(
             child: SelectableText(
               snapshot,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              style: HermesType.code.copyWith(fontSize: 12),
             ),
           ),
         ),

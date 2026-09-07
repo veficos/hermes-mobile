@@ -6,6 +6,9 @@ import '../core/connection_reload_mixin.dart';
 import '../core/stores/terminal_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
 import 'connect_screen.dart';
 
 /// System, security, terminal, backend, and connection settings.
@@ -196,13 +199,17 @@ class _SettingsScreenState extends State<SettingsScreen>
             .cast<String, dynamic>();
         _config!['terminal'] = {...terminal, 'font_family': selected.trim()};
       });
-      ScaffoldMessenger.of(
+      showHermesToast(
         context,
-      ).showSnackBar(SnackBar(content: Text(l10n.terminalFontSaved)));
+        message: l10n.terminalFontSaved,
+        kind: HermesToastKind.success,
+      );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.terminalFontSaveFailed('$error'))),
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: l10n.terminalFontSaveFailed('$error'),
       );
     }
   }
@@ -212,36 +219,29 @@ class _SettingsScreenState extends State<SettingsScreen>
     final connection = context.read<ConnectionStore>();
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.settingsRestartBackendQuestion),
-        content: Text(l10n.settingsRestartBackendWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(l10n.commonRestart),
-          ),
-        ],
-      ),
+      title: l10n.settingsRestartBackendQuestion,
+      message: l10n.settingsRestartBackendWarning,
+      confirmLabel: l10n.commonRestart,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     try {
       requireActiveApi(context, connection, api);
       await api.restartBackend();
       if (!mounted) return;
       requireActiveApi(context, connection, api);
-      ScaffoldMessenger.of(
+      showHermesToast(
         context,
-      ).showSnackBar(SnackBar(content: Text(l10n.settingsBackendRestarted)));
+        message: l10n.settingsBackendRestarted,
+        kind: HermesToastKind.success,
+      );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.settingsBackendRestartFailed('$error'))),
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: l10n.settingsBackendRestartFailed('$error'),
       );
     }
   }

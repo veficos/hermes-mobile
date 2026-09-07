@@ -4,6 +4,7 @@ import 'package:hermes_mobile/core/api_client.dart';
 import 'package:hermes_mobile/core/models.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/profile_scope_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/skills_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -56,7 +57,12 @@ void main() {
             ChangeNotifierProvider<ConnectionStore>.value(value: connection),
             ChangeNotifierProvider<ProfileScopeStore>.value(value: scope),
           ],
-          child: const MaterialApp(home: SkillsScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SkillsScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();

@@ -8,9 +8,11 @@ import '../core/connection_reload_mixin.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import 'project_detail_screen.dart';
 
 class ProjectScreen extends StatefulWidget {
@@ -78,17 +80,15 @@ class _ProjectScreenState extends State<ProjectScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.featureProjects),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.projectCreate,
-            onPressed: () => _createProject(context),
-            icon: const Icon(Icons.add),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.featureProjects,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.projectCreate,
+          onPressed: () => _createProject(context),
+          icon: const Icon(Icons.add),
+        ),
+      ],
       body: _buildBody(context),
     );
   }
@@ -370,7 +370,6 @@ class _ProjectScreenState extends State<ProjectScreen>
       ),
     );
     if (result == null || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await requireActiveGateway(context, connection, gateway).request(
         'projects.update',
@@ -379,8 +378,10 @@ class _ProjectScreenState extends State<ProjectScreen>
       await _load();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.projectAppearanceSaveFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: l10n.projectAppearanceSaveFailed('$e'),
         );
       }
     }
@@ -476,7 +477,6 @@ class _ProjectScreenState extends State<ProjectScreen>
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     if (name == null || name.isEmpty || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await requireActiveGateway(
         context,
@@ -486,8 +486,10 @@ class _ProjectScreenState extends State<ProjectScreen>
       await _load();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.projectRenameFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: l10n.projectRenameFailed('$e'),
         );
       }
     }
@@ -499,25 +501,14 @@ class _ProjectScreenState extends State<ProjectScreen>
     final gateway = connectedGatewayOrNotify(context, connection);
     if (gateway == null) return;
     final name = (project['name'] ?? l10n.projectUntitled).toString();
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.projectDeleteQuestion(name)),
-        content: Text(l10n.projectDeleteDescription),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: l10n.projectDeleteQuestion(name),
+      message: l10n.projectDeleteDescription,
+      confirmLabel: l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
+    if (!confirmed || !mounted) return;
     try {
       await requireActiveGateway(
         context,
@@ -527,8 +518,10 @@ class _ProjectScreenState extends State<ProjectScreen>
       await _load();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.projectDeleteFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: l10n.projectDeleteFailed('$e'),
         );
       }
     }
@@ -656,7 +649,6 @@ class _ProjectScreenState extends State<ProjectScreen>
     if (fields == null || !context.mounted) return;
     final (name, extras) = fields;
     final path = pathCtrl.text.trim();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await requireActiveGateway(context, connection, gateway).request(
         'projects.create',
@@ -678,8 +670,10 @@ class _ProjectScreenState extends State<ProjectScreen>
       await _load();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.projectCreateFailed('$e'))),
+        showHermesErrorSnackBar(
+          this.context,
+          e,
+          fallback: l10n.projectCreateFailed('$e'),
         );
       }
     }

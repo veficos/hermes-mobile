@@ -61,6 +61,22 @@ class ClientPerformanceMetrics {
   Duration totalRpcLatency = Duration.zero;
   Duration totalListRefreshLatency = Duration.zero;
 
+  Map<String, num> benchmarkCounters() => {
+    'frames': frames,
+    'slow_frames': slowFrames,
+    'max_build_micros': maxBuildMicros,
+    'max_raster_micros': maxRasterMicros,
+    'gateway_received_bytes': gatewayReceivedBytes,
+    'gateway_sent_bytes': gatewaySentBytes,
+    'http_response_bytes': httpResponseBytes,
+    'session_response_bytes': sessionResponseBytes,
+    'transcript_composed_copies': transcriptComposedCopies,
+    'transcript_copied_rows': transcriptCopiedRows,
+    'stream_materializations': streamMaterializations,
+    'markdown_scanned_chars': markdownScannedChars,
+    'markdown_tail_chars': markdownTailChars,
+  };
+
   void recordJsonDecode(int bytes, Duration elapsed) {
     jsonDecodes++;
     if (bytes >= 64 * 1024) largeJsonDecodes++;

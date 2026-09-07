@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
+import 'package:hermes_mobile/core/upload_cancellation.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:http/http.dart' as http;
 
@@ -47,6 +49,27 @@ class _GatedClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) {
     sends++;
     return response.future;
+  }
+}
+
+class _RecordingClient extends http.BaseClient {
+  final List<http.BaseRequest> requests = [];
+  final List<int> statuses;
+
+  _RecordingClient(this.statuses);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    requests.add(request);
+    final status = statuses[requests.length - 1];
+    final body = status >= 200 && status < 300
+        ? utf8.encode('{"path":"/workspace/photo.jpg"}')
+        : utf8.encode('{"detail":"not supported"}');
+    return http.StreamedResponse(
+      Stream.value(body),
+      status,
+      headers: const {'content-type': 'application/json'},
+    );
   }
 }
 
@@ -165,51 +188,45 @@ void main() {
     },
   );
 
-  test(
-    'uploadFile retries one transient weak-network failure',
-    () async {
-      final transport = _SequencedClient([
-        http.ClientException('network changed'),
-        200,
-      ]);
-      final delays = <Duration>[];
-      final api = ApiClient(
-        baseUrl: 'http://contract.invalid',
-        apiKey: 'key',
-        client: transport,
-        retryDelay: (delay) async => delays.add(delay),
-      );
-      addTearDown(api.close);
+  test('uploadFile retries one transient weak-network failure', () async {
+    final transport = _SequencedClient([
+      http.ClientException('network changed'),
+      200,
+    ]);
+    final delays = <Duration>[];
+    final api = ApiClient(
+      baseUrl: 'http://contract.invalid',
+      apiKey: 'key',
+      client: transport,
+      retryDelay: (delay) async => delays.add(delay),
+    );
+    addTearDown(api.close);
 
-      final result = await api.uploadFile('draft/note.txt', 'data:,hi');
+    final result = await api.uploadFile('draft/note.txt', 'data:,hi');
 
-      expect(result, isA<Map>());
-      expect(transport.sends, 2);
-      expect(delays, [const Duration(milliseconds: 250)]);
-    },
-  );
+    expect(result, isA<Map>());
+    expect(transport.sends, 2);
+    expect(delays, [const Duration(milliseconds: 250)]);
+  });
 
-  test(
-    'uploadFile does not retry a definitive server response',
-    () async {
-      final transport = _SequencedClient([409, 200]);
-      final api = ApiClient(
-        baseUrl: 'http://contract.invalid',
-        apiKey: 'key',
-        client: transport,
-        retryDelay: (_) async {},
-      );
-      addTearDown(api.close);
+  test('uploadFile does not retry a definitive server response', () async {
+    final transport = _SequencedClient([409, 200]);
+    final api = ApiClient(
+      baseUrl: 'http://contract.invalid',
+      apiKey: 'key',
+      client: transport,
+      retryDelay: (_) async {},
+    );
+    addTearDown(api.close);
 
-      // A received response — even an error one — means the server saw
-      // the request, so it must not be resent blind.
-      await expectLater(
-        api.uploadFile('draft/note.txt', 'data:,hi'),
-        throwsA(isA<ApiException>()),
-      );
-      expect(transport.sends, 1);
-    },
-  );
+    // A received response — even an error one — means the server saw
+    // the request, so it must not be resent blind.
+    await expectLater(
+      api.uploadFile('draft/note.txt', 'data:,hi'),
+      throwsA(isA<ApiException>()),
+    );
+    expect(transport.sends, 1);
+  });
 
   test(
     'postMultipart retries one transient weak-network failure and honors a custom timeout',
@@ -241,6 +258,89 @@ void main() {
       expect(delays, [const Duration(milliseconds: 250)]);
     },
   );
+
+  test(
+    'stream upload uses refreshed token and preserves proxy headers',
+    () async {
+      final transport = _RecordingClient([200]);
+      var tokenCalls = 0;
+      final api = ApiClient(
+        baseUrl: 'https://agent.example',
+        apiKey: 'stale-key',
+        accessTokenProvider: () async {
+          tokenCalls++;
+          return 'fresh-token';
+        },
+        extraHeaders: const {'X-Proxy-Tenant': 'mobile'},
+        directGateway: true,
+        client: transport,
+      );
+      addTearDown(api.close);
+
+      final progress = <(int, int)>[];
+      final result = await api.uploadFileStream(
+        '/workspace/photo.jpg',
+        Uint8List.fromList([1, 2, 3]),
+        'photo.jpg',
+        onProgress: (sent, total) => progress.add((sent, total)),
+      );
+
+      expect(result['path'], '/workspace/photo.jpg');
+      expect(tokenCalls, 1);
+      expect(transport.requests.single.url.path, '/api/files/upload-stream');
+      expect(
+        transport.requests.single.headers['authorization'],
+        'Bearer fresh-token',
+      );
+      expect(transport.requests.single.headers['x-proxy-tenant'], 'mobile');
+      expect(progress.first, (0, 3));
+      expect(progress.last, (3, 3));
+    },
+  );
+
+  test('stream upload falls back to legacy JSON on 405', () async {
+    final transport = _RecordingClient([405, 200]);
+    final api = ApiClient(
+      baseUrl: 'https://agent.example',
+      apiKey: 'key',
+      directGateway: true,
+      client: transport,
+    );
+    addTearDown(api.close);
+
+    final result = await api.uploadFileStream(
+      '/workspace/photo.jpg',
+      Uint8List.fromList([1, 2, 3]),
+      'photo.jpg',
+    );
+
+    expect(result['path'], '/workspace/photo.jpg');
+    expect(transport.requests, hasLength(2));
+    expect(transport.requests[0].url.path, '/api/files/upload-stream');
+    expect(transport.requests[1].url.path, '/api/files/upload');
+  });
+
+  test('stream upload rejects a cancellation before sending bytes', () async {
+    final transport = _RecordingClient([200]);
+    final cancellation = UploadCancellation()..cancel();
+    final api = ApiClient(
+      baseUrl: 'https://agent.example',
+      apiKey: 'key',
+      client: transport,
+    );
+    addTearDown(api.close);
+
+    await expectLater(
+      api.uploadFileStream(
+        '/workspace/photo.jpg',
+        Uint8List.fromList([1, 2, 3]),
+        'photo.jpg',
+        cancellation: cancellation,
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(transport.requests, isEmpty);
+  });
 
   test('ConnectionStore negotiates runtime and REST capabilities', () async {
     final connection = ConnectionStore()..api = _CapabilityApi();

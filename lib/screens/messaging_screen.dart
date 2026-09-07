@@ -14,9 +14,11 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/profile_scope_selector.dart';
 
 class MessagingScreen extends StatefulWidget {
@@ -368,25 +370,13 @@ class _MessagingScreenState extends State<MessagingScreen>
     }
   }
 
-  Future<bool> _offerRestart(String message) async {
-    final restart = await showDialog<bool>(
+  Future<bool> _offerRestart(String message) {
+    return showHermesConfirmDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.l10n.messagingRestartQuestion),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(context.l10n.commonRestart),
-          ),
-        ],
-      ),
+      title: context.l10n.messagingRestartQuestion,
+      message: message,
+      confirmLabel: context.l10n.commonRestart,
     );
-    return restart == true;
   }
 
   Future<void> _approve(MessagingPairing pairing) async {
@@ -443,28 +433,16 @@ class _MessagingScreenState extends State<MessagingScreen>
     final profile = _loadedProfile;
     if (api == null || !_ownsTarget(api, profile)) return;
     final generation = _mutationGeneration;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.l10n.messagingRevokeTitle),
-        content: Text(
-          context.l10n.messagingRevokeQuestion(
-            pairing.userName ?? pairing.userId,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(context.l10n.messagingRevoke),
-          ),
-        ],
+      title: context.l10n.messagingRevokeTitle,
+      message: context.l10n.messagingRevokeQuestion(
+        pairing.userName ?? pairing.userId,
       ),
+      confirmLabel: context.l10n.messagingRevoke,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     try {
       requireActiveApi(context, connection, api);
       if (profile != _profile) {
@@ -508,24 +486,13 @@ class _MessagingScreenState extends State<MessagingScreen>
     final generation = _mutationGeneration;
     final confirmed = !confirm
         ? true
-        : await showDialog<bool>(
+        : await showHermesConfirmDialog(
             context: context,
-            builder: (context) => AlertDialog(
-              title: Text(context.l10n.messagingRestartQuestion),
-              content: Text(context.l10n.messagingRestartWarning),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: Text(context.l10n.commonCancel),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: Text(context.l10n.commonRestart),
-                ),
-              ],
-            ),
+            title: context.l10n.messagingRestartQuestion,
+            message: context.l10n.messagingRestartWarning,
+            confirmLabel: context.l10n.commonRestart,
           );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     setState(() => _restarting = true);
     try {
       requireActiveApi(context, connection, api);
@@ -561,29 +528,26 @@ class _MessagingScreenState extends State<MessagingScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: widget.embedded
-          ? null
-          : AppBar(
-              title: Text(context.l10n.messagingTitle),
-              actions: [
-                IconButton(
-                  tooltip: context.l10n.messagingRestartGateway,
-                  onPressed: _restarting ? null : _restartGateway,
-                  icon: _restarting
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.restart_alt),
-                ),
-                IconButton(
-                  tooltip: context.l10n.commonRefresh,
-                  onPressed: _loading ? null : _loadData,
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
-            ),
+    return MobilePageScaffold(
+      title: context.l10n.messagingTitle,
+      showAppBar: !widget.embedded,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.messagingRestartGateway,
+          onPressed: _restarting ? null : _restartGateway,
+          icon: _restarting
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.restart_alt),
+        ),
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _loading ? null : _loadData,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: _buildBody(),
     );
   }
@@ -1025,9 +989,11 @@ class _PlatformConfigDialogState extends State<_PlatformConfigDialog> {
       final field = missing.first;
       final label = field.prompt.isEmpty ? field.key : field.prompt;
       final requiredMessage = '$label: ${context.l10n.pluginFieldRequired}';
-      ScaffoldMessenger.of(
+      showHermesToast(
         context,
-      ).showSnackBar(SnackBar(content: Text(requiredMessage)));
+        message: requiredMessage,
+        kind: HermesToastKind.error,
+      );
       return;
     }
     Navigator.pop(

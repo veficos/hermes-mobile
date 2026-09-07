@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
+import '../theme/hermes_tokens.dart';
 import 'clipboard.dart';
 import 'external_links.dart';
 import 'stores/connection_store.dart';
@@ -92,7 +93,7 @@ Future<void> showSendDiagnosticsDialog(
               const SizedBox(height: 4),
               SelectableText(
                 url,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                style: HermesType.code.copyWith(fontSize: 12),
               ),
               const SizedBox(height: 12),
             ],

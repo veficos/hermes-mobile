@@ -13,7 +13,7 @@ import '../../core/models.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
 import '../h/hermes_glass.dart';
-import '../mobile/hermes_mobile_surfaces.dart';
+import '../h/hermes_status.dart';
 import 'session_list_meta.dart';
 
 /// `123456` → `123.5K`, matching desktop's compact token-count formatting.
@@ -251,7 +251,7 @@ class SessionCard extends StatelessWidget {
                     extraBadges!,
                   ],
                   const SizedBox(width: 8),
-                  HermesMobileStatusChip(
+                  HermesStatusChip(
                     label: statusLabel,
                     color: statusColor,
                   ),

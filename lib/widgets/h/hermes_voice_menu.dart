@@ -46,17 +46,33 @@ class HermesVoiceMenu extends StatelessWidget {
       padding: padding,
       constraints: constraints,
       iconSize: iconSize,
-      icon: Icon(
-        capturing
-            ? Icons.graphic_eq
-            : armed
-            ? Icons.hearing
-            : Icons.keyboard_voice_outlined,
-        color: capturing
-            ? theme.colorScheme.primary
-            : armed
-            ? theme.colorScheme.tertiary
-            : null,
+      icon: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            voice.muted
+                ? Icons.mic_off_outlined
+                : capturing
+                ? Icons.graphic_eq
+                : armed
+                ? Icons.hearing
+                : Icons.keyboard_voice_outlined,
+            color: capturing
+                ? theme.colorScheme.primary
+                : armed
+                ? theme.colorScheme.tertiary
+                : null,
+          ),
+          if (voice.inputLevel > 0 && !voice.muted)
+            SizedBox.square(
+              dimension: 30,
+              child: CircularProgressIndicator(
+                value: voice.inputLevel,
+                strokeWidth: 2,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+        ],
       ),
       onSelected: (value) {
         switch (value) {
@@ -66,6 +82,8 @@ class HermesVoiceMenu extends StatelessWidget {
             onToggleContinuous();
           case 'auto':
             onToggleAutoSpeak();
+          case 'mute':
+            voice.toggleMuted();
           case 'wake':
             wake?.toggle();
           case 'stop':
@@ -89,6 +107,15 @@ class HermesVoiceMenu extends StatelessWidget {
           value: 'continuous',
           checked: voice.continuousConversation,
           child: Text(context.l10n.voiceContinuousConversation),
+        ),
+        CheckedPopupMenuItem(
+          value: 'mute',
+          checked: voice.muted,
+          child: Text(
+            voice.muted
+                ? context.l10n.voiceMicrophoneMuted
+                : context.l10n.voiceMuteMicrophone,
+          ),
         ),
         CheckedPopupMenuItem(
           value: 'auto',

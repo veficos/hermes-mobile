@@ -98,7 +98,7 @@ ThemeData buildHermesTheme({
       elevation: 0,
       color: palette.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(HermesRadius.card),
         side: BorderSide(color: border, width: borderWidth),
       ),
     ),
@@ -180,7 +180,9 @@ ThemeData buildHermesTheme({
       elevation: 0,
       modalElevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(HermesRadius.sheet),
+        ),
         side: BorderSide(color: border, width: borderWidth),
       ),
       showDragHandle: false,

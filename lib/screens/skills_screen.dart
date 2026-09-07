@@ -15,8 +15,12 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../theme/hermes_tokens.dart';
 import '../l10n/l10n.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/profile_scope_selector.dart';
@@ -215,16 +219,10 @@ class _SkillsScreenState extends State<SkillsScreen>
     final profile = _profile;
     _detailOpen = true;
     try {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
+      await showMobileSheet<void>(
+        context,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(HermesRadius.sheet),
-          ),
-        ),
-        builder: (_) => _SkillDetailSheet(
+        (_) => _SkillDetailSheet(
           skill: s,
           ownerApi: api,
           profile: profile,
@@ -246,36 +244,34 @@ class _SkillsScreenState extends State<SkillsScreen>
   @override
   Widget build(BuildContext context) {
     final skills = _skills;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.skillsTitle),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.skillsMarketplace,
-            onPressed: _openHub,
-            icon: const Icon(Icons.storefront_outlined),
-          ),
-          HermesAdaptiveMenuButton<String>(
-            enabled: !_bulkBusy && skills != null && skills.isNotEmpty,
-            onSelected: (v) => _toggleAll(v == 'enable'),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'enable',
-                child: Text(context.l10n.skillsEnableAll),
-              ),
-              PopupMenuItem(
-                value: 'disable',
-                child: Text(context.l10n.skillsDisableAll),
-              ),
-            ],
-          ),
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.skillsTitle,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.skillsMarketplace,
+          onPressed: _openHub,
+          icon: const Icon(Icons.storefront_outlined),
+        ),
+        HermesAdaptiveMenuButton<String>(
+          enabled: !_bulkBusy && skills != null && skills.isNotEmpty,
+          onSelected: (v) => _toggleAll(v == 'enable'),
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'enable',
+              child: Text(context.l10n.skillsEnableAll),
+            ),
+            PopupMenuItem(
+              value: 'disable',
+              child: Text(context.l10n.skillsDisableAll),
+            ),
+          ],
+        ),
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: Column(
         children: [
           const ProfileScopeDropdown(),
@@ -371,8 +367,9 @@ class _SkillsScreenState extends State<SkillsScreen>
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 32),
       children: [
         for (final g in sortedGroups) ...[
-          HermesMobileSectionLabel(
+          HermesSectionHeader(
             title: g.key.isEmpty ? context.l10n.skillsUncategorized : g.key,
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
           ),
           HermesMobileGroup(
             children: [for (final s in g.value) _row(context, s)],
@@ -411,17 +408,17 @@ class _SkillsScreenState extends State<SkillsScreen>
   Widget _provenanceBadge(String? provenance) {
     switch (provenance) {
       case 'agent':
-        return HermesMobileStatusChip(
+        return HermesStatusChip(
           color: HermesSemantic.blue,
           label: context.l10n.skillsLearned,
         );
       case 'hub':
-        return HermesMobileStatusChip(
+        return HermesStatusChip(
           color: HermesSemantic.green,
           label: context.l10n.skillsProvenanceMarketplace,
         );
       case 'bundled':
-        return HermesMobileStatusChip(
+        return HermesStatusChip(
           color: HermesSemantic.gray,
           label: context.l10n.skillsBuiltIn,
         );
@@ -549,28 +546,14 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
   Future<void> _archive() async {
     final connection = context.read<ConnectionStore>();
     final api = widget.ownerApi;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ctx.l10n.skillsArchiveQuestion),
-        content: Text(ctx.l10n.skillsArchivePrompt(widget.skill.name)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(ctx.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(ctx.l10n.skillsArchive),
-          ),
-        ],
-      ),
+      title: context.l10n.skillsArchiveQuestion,
+      message: context.l10n.skillsArchivePrompt(widget.skill.name),
+      confirmLabel: context.l10n.skillsArchive,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     try {
       _requireTarget(connection);
       await api.knowledgeNodeDelete(widget.skill.name);

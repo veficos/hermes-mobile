@@ -8,9 +8,11 @@ import 'package:hermes_mobile/core/stores/command_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/core/stores/session_tab_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
 import 'package:hermes_mobile/chat/tools/tool_dismiss_store.dart';
 import 'package:hermes_mobile/chat/timeline/turn_activity_card.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/chat_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -100,6 +102,14 @@ void main() {
         MultiProvider(
           providers: [
             ChangeNotifierProvider<ConnectionStore>.value(value: connection),
+            ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
+              create: (_) => SessionTabStore(),
+              update: (_, connection, tabs) =>
+                  (tabs ?? SessionTabStore())..attachRoutedEvents(
+                    connection.routedEvents,
+                    owners: connection.sessionOwners,
+                  ),
+            ),
             ChangeNotifierProvider<SessionStore>.value(value: session),
             ChangeNotifierProvider<ChatStore>.value(value: chat),
             ChangeNotifierProvider.value(
@@ -110,7 +120,12 @@ void main() {
             ),
             ChangeNotifierProvider(create: (_) => ToolDismissStore()),
           ],
-          child: const MaterialApp(home: ChatScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ChatScreen(),
+          ),
         ),
       );
       await tester.pump();

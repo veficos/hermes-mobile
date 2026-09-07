@@ -49,5 +49,17 @@ void main() {
         'http_response_bytes',
       ]),
     );
+    expect(
+      metrics.benchmarkCounters().keys,
+      containsAll([
+        'frames',
+        'slow_frames',
+        'gateway_received_bytes',
+        'http_response_bytes',
+        'transcript_copied_rows',
+        'stream_materializations',
+        'markdown_scanned_chars',
+      ]),
+    );
   });
 }

@@ -27,7 +27,7 @@ from urllib.parse import quote
 
 import httpx
 import yaml
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, File, Form, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
@@ -3058,6 +3058,17 @@ def build_domain_router(
             },
         )
 
+    @router.get("/git/review/pr-comment")
+    async def git_review_pr_comment(
+        path: str = Query(...), url: str = Query(...)
+    ) -> Any:
+        return await _backend_json(
+            require_backend(),
+            "GET",
+            "/api/git/review/pr-comment",
+            query={"path": path, "url": url},
+        )
+
     @router.get("/git/file-diff")
     async def git_file_diff(path: str = Query(...), file: str = Query(...)) -> Any:
         return await _backend_json(
@@ -3638,6 +3649,35 @@ def build_domain_router(
         return await local(lambda: local_workspace.write_data_url(
             payload.get("path", ""), payload.get("data_url", ""), overwrite=bool(payload.get("overwrite"))
         ))
+
+    @router.post("/files/upload-stream")
+    async def upload_file_stream(
+        file: UploadFile = File(...),
+        path: str = Form(...),
+        overwrite: bool = Form(False),
+    ) -> Any:
+        """Multipart compatibility upload for mobile/desktop clients."""
+        async def chunks():
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        # The local executor is synchronous; materializing an async iterator
+        # would defeat streaming. Feed the UploadFile in bounded chunks here.
+        import tempfile
+        staged = tempfile.SpooledTemporaryFile(max_size=1024 * 1024)
+        total = 0
+        try:
+            async for chunk in chunks():
+                total += len(chunk)
+                if total > 100 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="File is too large")
+                staged.write(chunk)
+            staged.seek(0)
+            return await local(lambda: local_workspace.write_stream(path, iter(lambda: staged.read(1024 * 1024), b""), overwrite=overwrite))
+        finally:
+            staged.close()
 
     @router.delete("/files")
     async def delete_file_canonical(payload: dict = Body(default={})) -> Any:

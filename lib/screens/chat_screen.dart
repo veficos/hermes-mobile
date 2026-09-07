@@ -6,6 +6,7 @@
 library;
 
 export '../core/chat_scroll_coordinator.dart';
+export '../chat/widgets/tablet_session_rail.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -16,7 +17,6 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -26,63 +26,96 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../core/chat_message.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../core/clipboard.dart';
+import '../core/clipboard_image.dart';
 import '../core/composer_input_history.dart';
+import '../core/composer_reference_completion.dart';
+import '../core/completion_query.dart';
 import '../core/composer_suggestions.dart';
 import '../chat/transcript/scroll_coordinator.dart';
+import '../chat/transcript/transcript_search_index.dart';
 import '../core/diagnostics.dart';
 import '../core/external_links.dart';
 import '../core/local_file_io.dart';
+import '../core/incoming_share.dart';
 import '../core/local_slash_commands.dart';
-import '../core/model_catalog.dart';
 import '../core/models.dart';
-import '../core/performance_metrics.dart';
-import '../core/session_tree.dart';
+import '../core/url_validation.dart';
+import '../core/stores/bot_store.dart';
 import '../core/session_refs.dart';
 import '../chat/composer/background_process_sheet.dart';
 import '../chat/composer/session_completion.dart';
 import '../core/structured_composer_controller.dart';
-import '../chat/timeline/chat_timeline.dart';
-import '../chat/timeline/changed_files_card.dart';
-import '../chat/timeline/turn_activity_card.dart';
-import '../chat/tools/tool_group_card.dart';
+import '../core/upload_cancellation.dart';
 import '../chat/tools/tool_dismiss_store.dart';
+import '../chat/tools/toolset_count_chip.dart';
+import '../chat/transcript/chat_transcript_panel.dart';
+import '../chat/widgets/provider_maybe.dart';
+import '../chat/widgets/tablet_session_rail.dart';
+import '../chat/widgets/undo_shortcuts.dart';
+import '../chat/widgets/vibe_heart_burst.dart';
+import '../chat/sheets/active_session_tray_sheet.dart';
+import '../chat/sheets/approval_mode_sheet.dart';
+import '../chat/sheets/artifact_versions_sheet.dart';
+import '../chat/sheets/coding_actions_sheet.dart';
+import '../chat/sheets/composer_history_sheet.dart';
+import '../chat/sheets/context_popover.dart';
+import '../chat/sheets/difficulty_picker_sheet.dart';
+import '../chat/sheets/handoff_dialog.dart';
+import '../chat/sheets/message_locator_sheet.dart';
+import '../chat/sheets/message_menu_sheet.dart';
+import '../chat/sheets/model_picker_flow.dart';
+import '../chat/sheets/profile_picker_sheet.dart';
+import '../chat/sheets/prompt_dialogs.dart';
+import '../chat/sheets/queue_sheet.dart';
+import '../chat/sheets/saved_prompts_sheet.dart';
+import '../chat/sheets/session_info_sheet.dart';
+import '../chat/sheets/session_more_menu.dart';
+import '../chat/sheets/session_tabs_sheet.dart';
+import '../chat/sheets/slash_help_dialog.dart';
+import '../chat/sheets/workspace_picker_sheet.dart';
+import '../chat/widgets/request_banner.dart';
 import '../core/stores/appearance_store.dart';
+import '../core/stores/active_session_tray_store.dart';
 import '../core/stores/chat_store.dart';
 import '../core/stores/billing_store.dart';
 import '../core/stores/command_store.dart';
 import '../core/stores/composer_status_store.dart';
+import '../core/stores/composer_handoff_store.dart';
+import '../core/stores/composer_suggestion_store.dart';
 import '../core/stores/coding_status_store.dart';
-import '../core/connection_reload_mixin.dart';
 import '../core/stores/connection_store.dart';
+import '../core/stores/mobile_surface_store.dart';
 import '../core/stores/plugin_contribution_store.dart';
 import '../core/stores/preview_store.dart';
 import '../core/stores/pull_request_store.dart';
 import '../core/stores/request_store.dart';
 import '../core/stores/session_store.dart';
+import '../core/stores/session_view_state_store.dart';
+import '../core/stores/session_tab_store.dart';
+import '../core/session_surface.dart';
 import '../core/stores/voice_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/adaptive_form_dialog.dart';
-import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_composer.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
+import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/h/hermes_voice_menu.dart';
-import '../widgets/chat_enter_to_send.dart';
-import '../widgets/message_bubble.dart';
-import '../widgets/model_picker_sheet.dart';
 import '../widgets/pet_overlay.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/web_preview.dart';
 import '../widgets/right_sidebar/right_sidebar.dart';
-import '../widgets/session/session_detail_panel.dart';
-import '../widgets/session/session_list_meta.dart';
 import 'request_sheet.dart';
 import 'provider_config_screen.dart';
 import 'billing_screen.dart';
 import 'files_screen.dart';
+import 'focus_composer_screen.dart';
 import 'git_screen.dart';
+import 'cron_screen.dart';
+import 'mcp_screen.dart';
 import 'skills_screen.dart';
 import 'pet_generate_screen.dart';
 import 'starmap_screen.dart';
@@ -95,18 +128,6 @@ String _chatStatusKindLabel(BuildContext context, String kind) =>
       'provider' => context.l10n.chatStatusProvider,
       _ => kind,
     };
-
-extension _MaybeRead on BuildContext {
-  /// Reads a provider if it exists in the tree, otherwise returns null.
-  /// Keeps the screen usable in test harnesses that don't wire every store.
-  T? maybeRead<T>() {
-    try {
-      return read<T>();
-    } on ProviderNotFoundException {
-      return null;
-    }
-  }
-}
 
 class ChatPageBackButton extends StatelessWidget {
   const ChatPageBackButton({super.key});
@@ -158,6 +179,41 @@ class _ChatScreenState extends State<ChatScreen> {
   final _picker = ImagePicker();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _sending = false;
+  String? _sendStatusLabel;
+
+  void _publishSendPhase(SessionSendPhase phase, {String? error}) {
+    final session = context.maybeRead<SessionStore>();
+    final owner = session?.owner;
+    final id = session?.durableId;
+    if (owner == null || id == null || id.isEmpty) return;
+    context.maybeRead<SessionSurfaceStore>()?.updatePhase(
+      id,
+      owner.route,
+      SessionSendState(phase, error: error),
+    );
+  }
+
+  void _publishTranscriptProjection(ChatStore chat, SessionStore session) {
+    final id = session.durableId;
+    final owner = session.owner;
+    if (id == null || id.isEmpty || owner == null) return;
+    final revision = chat.transcriptRevision;
+    context.maybeRead<SessionSurfaceStore>()?.publishTranscript(
+      id: id,
+      owner: owner.route,
+      messages: chat.messages,
+      revision: revision,
+      awaitingInput: false,
+    );
+  }
+
+  String? _pendingAttachmentMessageId;
+  int _uploadDoneBytes = 0;
+  int _uploadTotalBytes = 0;
+  int _uploadAttachmentBase = 0;
+  bool _cancelSendRequested = false;
+  UploadCancellation? _uploadCancellation;
+  bool _sendFailed = false;
   String? _continuousHandledReplyId;
   bool _continuousAdvanceScheduled = false;
   bool _wakeHandling = false;
@@ -197,6 +253,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _locatorHighlightId;
   Timer? _locatorHighlightTimer;
   final _findCtrl = TextEditingController();
+  final TranscriptSearchIndex _transcriptSearch = TranscriptSearchIndex();
+  Timer? _findDebounce;
   final _findFocus = FocusNode();
   bool _findOpen = false;
   int _findIndex = -1;
@@ -214,17 +272,29 @@ class _ChatScreenState extends State<ChatScreen> {
   bool get _diagnosticLogging => kDebugMode || kProfileMode;
 
   List<ChatMessage> _findMatches(ChatStore chat) {
-    final query = _findCtrl.text.trim().toLowerCase();
+    final query = _findCtrl.text.trim();
     if (query.isEmpty) return const [];
-    return chat.messages
-        .where((message) => message.fullText.toLowerCase().contains(query))
+    _transcriptSearch.synchronize(chat.messages, chat.transcriptRevision);
+    return _transcriptSearch
+        .query(query)
+        .map((hit) => hit.message)
         .toList(growable: false);
+  }
+
+  void _scheduleFind(ChatStore chat) {
+    _findDebounce?.cancel();
+    _findDebounce = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted || !_findOpen) return;
+      _findIndex = -1;
+      _stepFind(chat, forward: true);
+    });
   }
 
   void _toggleFind() {
     setState(() {
       _findOpen = !_findOpen;
       if (!_findOpen) {
+        _findDebounce?.cancel();
         _findCtrl.clear();
         _findIndex = -1;
         _locatorHighlightId = null;
@@ -300,12 +370,19 @@ class _ChatScreenState extends State<ChatScreen> {
   // Batch 3.3: slash / @mention autocomplete state.
   List<SlashSuggestion> _slashSuggestions = const [];
   List<PathSuggestion> _pathSuggestions = const [];
+  List<ComposerReferenceSuggestion> _referenceSuggestions = const [];
+  List<ComposerEmojiSuggestion> _emojiSuggestions = const [];
+  ComposerReferenceQuery? _referenceQuery;
+  ({int start, int end, String query})? _emojiQuery;
   List<SessionRefSuggestion> _sessionRefSuggestions = const [];
   bool _slashSuggestionsLoading = false;
   bool _slashSuggestionQueryActive = false;
   int _slashSuggestionIndex = 0;
   int _slashReplaceFrom = 1;
   Timer? _acDebounce;
+  ComposerSuggestionStore? _activeSuggestionStore;
+  ComposerHandoffStore? _composerHandoffs;
+  IncomingShareService? _incomingShares;
   // Passive draft suggestion (desktop's cron suggestion-provider parity):
   // the matched recurrence phrase, or null. Dismissal is keyed to the exact
   // phrase so it stays gone while the user keeps typing around it, but
@@ -323,7 +400,6 @@ class _ChatScreenState extends State<ChatScreen> {
   int _composerContextGeneration = 0;
 
   SessionStore get _session => context.read<SessionStore>();
-  List<ProfileInfo> get _profiles => _session.profiles;
   String? get _activeProfileName => _session.activeProfile;
   bool _configLoaded = false;
   List<ToolsetInfo> _sessionToolsets = const [];
@@ -331,6 +407,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _sessionToolsetsLoaded = false;
   bool _globalCliToolsetsLoaded = false;
   bool _showGlobalToolsets = false;
+  // Scope selection is an explicit user choice. Loading the backend's
+  // current-session toolsets must not make the composer look selected by
+  // default (the tools remain available through the configuration action).
+  bool _toolsetsScopeTouched = false;
 
   bool get _toolsetsSessionScoped =>
       _sessionToolsetsLoaded && !_showGlobalToolsets;
@@ -396,6 +476,25 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final session = context.read<SessionStore>();
+      final owner = session.owner;
+      final id = session.durableId;
+      if (owner != null && id != null && id.isNotEmpty) {
+        context.read<SessionTabStore>().open(
+          SessionTab(
+            id: id,
+            title: session.info?.title?.trim().isNotEmpty == true
+                ? session.info!.title!.trim()
+                : context.l10n.sessionUntitled,
+            owner: owner.route,
+            readOnly: session.readOnly,
+            watch: session.watchMode,
+          ),
+        );
+      }
+    });
     final initialDraft = widget.initialDraftText?.trim() ?? '';
     if (initialDraft.isNotEmpty) {
       _composerCtrl.text = initialDraft;
@@ -406,10 +505,10 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final draftError = widget.initialDraftSaveError;
       if (mounted && draftError != null && draftError.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.chatDraftHandoffSaveFailed(draftError)),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          draftError,
+          fallback: context.l10n.chatDraftHandoffSaveFailed(draftError),
         );
       }
       if (mounted && MediaQuery.sizeOf(context).width >= 840) {
@@ -428,6 +527,12 @@ class _ChatScreenState extends State<ChatScreen> {
     // Lazy-load the slash command catalog (best-effort, errors swallowed).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _composerHandoffs = context.maybeRead<ComposerHandoffStore>();
+      _composerHandoffs?.addListener(_consumeComposerHandoffs);
+      _consumeComposerHandoffs();
+      _incomingShares = context.maybeRead<IncomingShareService>();
+      _incomingShares?.addListener(_consumeIncomingShares);
+      _consumeIncomingShares();
       context.read<CommandStore>().loadCatalog();
       _loadComposerContext();
       unawaited(_loadToolsets());
@@ -687,14 +792,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final session = context.read<SessionStore>();
     final api = session.api;
     if (api == null) return;
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final status = await api.providerQuota(refresh: true);
       if (!mounted || !identical(api, session.api)) return;
       setState(() => _applyQuotaStatus(status));
       final message = _quotaMessage;
       if (message != null && message.isNotEmpty) {
-        messenger.showSnackBar(SnackBar(content: Text(message)));
+        showHermesToast(context, message: message);
       }
     } catch (_) {
       if (mounted && identical(api, session.api)) {
@@ -794,7 +898,10 @@ class _ChatScreenState extends State<ChatScreen> {
     int streamTick,
     bool isStreaming,
   ) {
-    _pruneMessageKeys(context.read<ChatStore>().messages);
+    final chat = context.read<ChatStore>();
+    final session = context.read<SessionStore>();
+    _pruneMessageKeys(chat.messages);
+    _publishTranscriptProjection(chat, session);
     if (_scrollCoordinator.messagesChanged(messageCount)) {
       _scrollToBottom();
     }
@@ -1123,59 +1230,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showTopicPreview(ChatMessage topic) {
-    HapticFeedback.selectionClick();
-    final preview = topic.plainText.trim();
-    final index =
-        context
-            .read<ChatStore>()
-            .messages
-            .where((m) => m.role == 'user')
-            .toList()
-            .indexOf(topic) +
-        1;
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetCtx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                context.l10n.chatTopicNumber(index),
-                style: Theme.of(sheetCtx).textTheme.labelMedium,
-              ),
-              const SizedBox(height: 8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    preview.isEmpty ? context.l10n.chatNoText : preview,
-                    style: Theme.of(sheetCtx).textTheme.bodyMedium,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.of(sheetCtx).pop();
-                    _locateMessage(topic);
-                  },
-                  icon: const Icon(Icons.my_location, size: 16),
-                  label: Text(context.l10n.chatJumpToTopic),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  void _showTopicPreview(ChatMessage topic) =>
+      showChatTopicPreview(context, topic, onJump: (m) => _locateMessage(m));
 
   void _locateInitialSearchHit(ChatStore chat) {
     if (_initialSearchLocated) return;
@@ -1226,163 +1282,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _showHistoryLocator(ChatStore chat) {
-    final searchCtrl = TextEditingController();
-    var role = 'all';
-    var rangeDays = 0;
-    var markedOnly = false;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetCtx) => StatefulBuilder(
-        builder: (sheetCtx, setSheet) {
-          final now = DateTime.now();
-          final keyword = searchCtrl.text.trim().toLowerCase();
-          final messages = chat.messages
-              .where((message) {
-                if (role != 'all' && message.role != role) {
-                  return false;
-                }
-                if (markedOnly &&
-                    !_markedMessageIds.contains(_messageMarkerId(message))) {
-                  return false;
-                }
-                if (rangeDays > 0 &&
-                    message.timestamp != null &&
-                    now.difference(message.timestamp!).inDays >= rangeDays) {
-                  return false;
-                }
-                if (rangeDays > 0 && message.timestamp == null) {
-                  return false;
-                }
-                if (keyword.isNotEmpty &&
-                    !message.fullText.toLowerCase().contains(keyword)) {
-                  return false;
-                }
-                return message.fullText.isNotEmpty || message.parts.isNotEmpty;
-              })
-              .toList(growable: false);
-          return SafeArea(
-            child: SizedBox(
-              height: MediaQuery.of(sheetCtx).size.height * .78,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-                    child: TextField(
-                      controller: searchCtrl,
-                      autofocus: true,
-                      onChanged: (_) => setSheet(() {}),
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search),
-                        hintText: context.l10n.chatSearchLoadedHistory,
-                      ),
-                    ),
-                  ),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      children: [
-                        for (final item in [
-                          ('all', context.l10n.commonAll),
-                          ('user', context.l10n.chatMyMessages),
-                          ('assistant', context.l10n.chatAssistant),
-                        ])
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ChoiceChip(
-                              label: Text(item.$2),
-                              selected: role == item.$1,
-                              onSelected: (_) => setSheet(() => role = item.$1),
-                            ),
-                          ),
-                        for (final item in [
-                          (0, context.l10n.chatAllDates),
-                          (1, context.l10n.chatLast24Hours),
-                          (7, context.l10n.chatLast7Days),
-                        ])
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ChoiceChip(
-                              label: Text(item.$2),
-                              selected: rangeDays == item.$1,
-                              onSelected: (_) =>
-                                  setSheet(() => rangeDays = item.$1),
-                            ),
-                          ),
-                        FilterChip(
-                          label: Text(context.l10n.chatMarkedOnly),
-                          selected: markedOnly,
-                          onSelected: (v) => setSheet(() => markedOnly = v),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Expanded(
-                    child: messages.isEmpty
-                        ? Center(
-                            child: Text(context.l10n.chatNoMatchingMessages),
-                          )
-                        : ListView.builder(
-                            itemCount: messages.length,
-                            itemBuilder: (_, index) {
-                              final message = messages[index];
-                              final marked = _markedMessageIds.contains(
-                                _messageMarkerId(message),
-                              );
-                              final preview = message.fullText
-                                  .replaceAll(RegExp(r'\s+'), ' ')
-                                  .trim();
-                              return ListTile(
-                                leading: Icon(
-                                  message.role == 'user'
-                                      ? Icons.person_outline
-                                      : Icons.smart_toy_outlined,
-                                ),
-                                title: Text(
-                                  preview.isEmpty
-                                      ? context.l10n.chatToolStatusMessage
-                                      : preview,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  message.timestamp?.toLocal().toString() ??
-                                      context.l10n.chatUnknownTime,
-                                ),
-                                trailing: IconButton(
-                                  tooltip: marked
-                                      ? context.l10n.chatUnmarkMessage
-                                      : context.l10n.chatMarkMessage,
-                                  onPressed: () async {
-                                    await _toggleMessageMarker(message);
-                                    setSheet(() {});
-                                  },
-                                  icon: Icon(
-                                    marked
-                                        ? Icons.bookmark
-                                        : Icons.bookmark_border,
-                                  ),
-                                ),
-                                onTap: () {
-                                  Navigator.of(sheetCtx).pop();
-                                  _locateMessage(message);
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    ).whenComplete(searchCtrl.dispose);
-  }
+  void _showHistoryLocator(ChatStore chat) => showChatHistoryLocator(
+    context,
+    chat,
+    search: _transcriptSearch,
+    markedMessageIds: _markedMessageIds,
+    markerId: _messageMarkerId,
+    onToggleMarker: _toggleMessageMarker,
+    onLocate: (m) => _locateMessage(m),
+  );
 
   Future<void> _restoreSharedDraft() async {
     final prefs = await SharedPreferences.getInstance();
@@ -1410,11 +1318,33 @@ class _ChatScreenState extends State<ChatScreen> {
             'kind': a.kind.name,
             'url': a.url,
             'snippet': a.snippetText,
+            'detail': a.detail,
             'local_path': a.localPath,
+            // Bytes are intentionally not persisted in drafts (they may be
+            // large); uploadSent/uploadTotal are transient UI state only.
           },
         )
         .toList(growable: false);
   }
+
+  /// Merges a pre-upload attachment snapshot with the live `_attachments`
+  /// state: any attachment that finished uploading (has a server `path`,
+  /// i.e. `isUploaded`) keeps its live/current value, everything else
+  /// falls back to the snapshot. Used to roll back a failed send/steer
+  /// without discarding uploads that already completed — otherwise a
+  /// retry would re-upload attachments that succeeded the first time.
+  List<ComposerAttachment> _preserveUploadedAttachments(
+    List<ComposerAttachment> snapshot,
+  ) => [
+    for (final current in _attachments)
+      if (current.isUploaded)
+        current
+      else
+        snapshot.firstWhere(
+          (s) => s.occurrenceId == current.occurrenceId,
+          orElse: () => current,
+        ),
+  ];
 
   List<QueuedAttachment> _queueAttachments(
     List<ComposerAttachment> attachments,
@@ -1428,6 +1358,7 @@ class _ChatScreenState extends State<ChatScreen> {
           localPath: item.localPath,
           url: item.url,
           snippetText: item.snippetText,
+          detail: item.detail,
         ),
       )
       .toList(growable: false);
@@ -1447,6 +1378,7 @@ class _ChatScreenState extends State<ChatScreen> {
           localPath: item.localPath,
           url: item.url,
           snippetText: item.snippetText,
+          detail: item.detail,
         ),
       )
       .toList(growable: false);
@@ -1469,6 +1401,19 @@ class _ChatScreenState extends State<ChatScreen> {
     // lose the pending 400 ms debounced save).
     final prev = _lastDraftSid;
     final changedSession = prev != null && prev != sid;
+    final viewStates = context.maybeRead<SessionViewStateStore>();
+    final previews = context.maybeRead<PreviewStore>();
+    if (changedSession) {
+      viewStates?.put(
+        prev,
+        SessionViewState(
+          anchorMessageId: _activeTopic.value,
+          scrollOffset: _scrollCtrl.hasClients ? _scrollCtrl.offset : 0,
+          composerSelection: _composerCtrl.selection.extentOffset,
+          previewTabId: previews?.activeTab?.id,
+        ),
+      );
+    }
     if (prev != null && prev.isNotEmpty) {
       await _composerHistory.persist(_composerHistoryKey(prev));
     }
@@ -1492,6 +1437,17 @@ class _ChatScreenState extends State<ChatScreen> {
       _pruneMessageKeys(session.chat.messages);
     }
     _lastDraftSid = sid;
+    final protectedSessions = <String>{sid};
+    if (!mounted) return;
+    final tray = context.maybeRead<ActiveSessionTrayStore>();
+    if (tray != null) {
+      protectedSessions.addAll(
+        tray.items
+            .where((item) => item.state != ActiveSessionState.completed)
+            .map((item) => item.row.id),
+      );
+    }
+    viewStates?.protect(protectedSessions);
     if (_markerSessionId != sid) {
       await _restoreMessageMarkers(sid);
     }
@@ -1546,6 +1502,13 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
       if (!mounted) return;
+      // The awaits above (`loadStoredDraft`, `rememberNewChatDraftSession`)
+      // give the user a window to type or attach something; if they did,
+      // don't clobber it with the restored draft (mirrors the
+      // `hasComposerContent` guard earlier in this method).
+      if (_composerCtrl.text.isNotEmpty || _attachments.isNotEmpty) {
+        return;
+      }
       setState(() {
         if (draft.text.isNotEmpty) {
           _composerCtrl.text = draft.text;
@@ -1604,6 +1567,9 @@ class _ChatScreenState extends State<ChatScreen> {
                             .isEmpty
                         ? null
                         : (f['snippet'] ?? f['snippetText']).toString(),
+                    detail: f['detail'] is Map
+                        ? (f['detail'] as Map).cast<String, dynamic>()
+                        : null,
                   ),
                 );
               } catch (_) {}
@@ -1612,6 +1578,42 @@ class _ChatScreenState extends State<ChatScreen> {
           if (att.isNotEmpty) _attachments = List.unmodifiable(att);
         }
       });
+      final warm = viewStates?.get(sid);
+      if (warm != null) {
+        final previewTabId = warm.previewTabId;
+        if (previewTabId != null &&
+            previews?.tabs.any((tab) => tab.id == previewTabId) == true) {
+          previews!.activate(previewTabId);
+        }
+        final selection = warm.composerSelection.clamp(
+          0,
+          _composerCtrl.text.length,
+        );
+        _composerCtrl.selection = TextSelection.collapsed(offset: selection);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_scrollCtrl.hasClients || _lastDraftSid != sid) {
+            return;
+          }
+          final anchorContext = warm.anchorMessageId == null
+              ? null
+              : _messageKeys[warm.anchorMessageId!]?.currentContext;
+          if (anchorContext != null) {
+            Scrollable.ensureVisible(
+              anchorContext,
+              duration: Duration.zero,
+              alignment: 0.12,
+            );
+          } else {
+            final position = _scrollCtrl.position;
+            _scrollCtrl.jumpTo(
+              warm.scrollOffset.clamp(
+                position.minScrollExtent,
+                position.maxScrollExtent,
+              ),
+            );
+          }
+        });
+      }
     } finally {
       if (restoreGeneration == _draftRestoreGeneration) {
         _draftRestoreInProgress = false;
@@ -1640,6 +1642,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _acDebounce?.cancel();
+    _activeSuggestionStore?.removeListener(_onActiveSuggestionsChanged);
+    _composerHandoffs?.removeListener(_consumeComposerHandoffs);
+    _incomingShares?.removeListener(_consumeIncomingShares);
     _locatorHighlightTimer?.cancel();
     unawaited(_autoRetrySub?.cancel());
     _stopBackgroundPolling();
@@ -1652,6 +1657,7 @@ class _ChatScreenState extends State<ChatScreen> {
     unawaited(_flushCurrentDraftNow());
     _composerCtrl.dispose();
     _composerFocus.dispose();
+    _findDebounce?.cancel();
     _findCtrl.dispose();
     _findFocus.dispose();
     _scrollCtrl.dispose();
@@ -1661,6 +1667,86 @@ class _ChatScreenState extends State<ChatScreen> {
     _editFocus.dispose();
     super.dispose();
   }
+
+  void _onActiveSuggestionsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _consumeComposerHandoffs() {
+    if (!mounted) return;
+    final owner = context.read<SessionStore>().owner?.route;
+    final textHandoffs = _composerHandoffs?.takeTextFor(owner) ?? const [];
+    if (textHandoffs.isNotEmpty) {
+      final additions = textHandoffs
+          .map((item) => item.text.trim())
+          .join('\n\n');
+      final existing = _composerCtrl.text.trimRight();
+      _composerCtrl.text = existing.isEmpty
+          ? additions
+          : '$existing\n\n$additions';
+      _composerCtrl.selection = TextSelection.collapsed(
+        offset: _composerCtrl.text.length,
+      );
+      _composerFocus.requestFocus();
+    }
+    final snippets = _composerHandoffs?.takeFor(owner) ?? const [];
+    if (snippets.isEmpty) return;
+    _stageAttachments([
+      for (final snippet in snippets)
+        ComposerAttachment(
+          kind: ComposerAttachmentKind.snippet,
+          label:
+              '${_workspaceBaseName(snippet.path)}:${snippet.startLine}-${snippet.endLine}',
+          path: snippet.path,
+          snippetText:
+              '`${snippet.path}:${snippet.startLine}-${snippet.endLine}`\n```\n${snippet.text}\n```',
+          detail: {
+            'kind': 'snippet',
+            'path': snippet.path,
+            'repository_root': snippet.repositoryRoot,
+            'start_line': snippet.startLine,
+            'end_line': snippet.endLine,
+            'revision': snippet.revision,
+          },
+        ),
+    ]);
+  }
+
+  void _consumeIncomingShares() {
+    if (!mounted) return;
+    final payloads = _incomingShares?.takeAll() ?? const [];
+    if (payloads.isEmpty) return;
+    final texts = payloads
+        .map((item) => item.text.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    if (texts.isNotEmpty) {
+      final current = _composerCtrl.text.trimRight();
+      final addition = texts.join('\n\n');
+      _composerCtrl.setCanonicalText(
+        current.isEmpty ? addition : '$current\n\n$addition',
+      );
+    }
+    final files = payloads.expand((item) => item.files).toList(growable: false);
+    if (files.isNotEmpty) {
+      _stageAttachments([
+        for (final path in files)
+          ComposerAttachment(
+            kind: _isSharedImage(path)
+                ? ComposerAttachmentKind.image
+                : ComposerAttachmentKind.file,
+            label: _workspaceBaseName(path),
+            localPath: path,
+          ),
+      ]);
+    }
+    _composerFocus.requestFocus();
+  }
+
+  static bool _isSharedImage(String path) => RegExp(
+    r'\.(png|jpe?g|gif|webp|bmp|heic|heif)$',
+    caseSensitive: false,
+  ).hasMatch(path);
 
   /// Pick the user turn whose bubble sits just above the viewport top; cheap
   /// (user turns are few) and only setState()s when the winner changes.
@@ -1969,11 +2055,35 @@ class _ChatScreenState extends State<ChatScreen> {
     return true;
   }
 
+  /// Resolves a staged "uploading attachment" ghost message on any `_send`
+  /// exit path that bails out before the turn actually reaches
+  /// `session.sendMessage`/`enqueueMessage`. Without this, `message_bubble
+  /// .dart` renders the 'uploading' state forever with no retry/dismiss
+  /// affordance (the bubble is otherwise only resolved by the final
+  /// try/finally around the real send).
+  void _failPendingAttachmentMessage(SessionStore session) {
+    final id = _pendingAttachmentMessageId;
+    if (id == null) return;
+    session.chat.updateAttachmentUpload(
+      id,
+      state: 'failed',
+      sent: _uploadDoneBytes,
+      total: _uploadTotalBytes,
+    );
+    _pendingAttachmentMessageId = null;
+    if (mounted) {
+      setState(() => _sendStatusLabel = null);
+    } else {
+      _sendStatusLabel = null;
+    }
+  }
+
   Future<void> _send(String text) async {
     final l10n = context.l10n;
     final session = context.read<SessionStore>();
     final chat = session.chat;
     final voice = context.read<VoiceStore>();
+    final bots = context.maybeRead<BotStore>();
     final messenger = ScaffoldMessenger.of(context);
     final trimmed = text.trim();
     // The composer already cleared its controller before invoking this
@@ -1987,9 +2097,56 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     final submittedAttachments = _attachments;
     if ((trimmed.isEmpty && submittedAttachments.isEmpty) || _sending) return;
+    if (submittedAttachments.isEmpty &&
+        voice.continuousConversation &&
+        VoiceStore.isStopPhrase(trimmed)) {
+      await voice.endConversation();
+      _composerCtrl.clear();
+      return;
+    }
     // Lock before any async slash-command or attachment work so rapid taps
     // cannot dispatch the same prompt twice.
-    if (mounted) setState(() => _sending = true);
+    if (mounted) {
+      setState(() {
+        _sending = true;
+        _cancelSendRequested = false;
+        _sendFailed = false;
+      });
+    }
+    _publishSendPhase(
+      submittedAttachments.isEmpty
+          ? SessionSendPhase.submitting
+          : SessionSendPhase.uploading,
+    );
+    _uploadCancellation = UploadCancellation();
+    if (mounted) {
+      setState(() {
+        _sendStatusLabel = context.l10n.chatReadingAttachments;
+        _uploadDoneBytes = 0;
+        _uploadTotalBytes = submittedAttachments.fold(
+          0,
+          (sum, item) => sum + (item.bytes?.length ?? 0),
+        );
+      });
+    }
+    if (submittedAttachments.isNotEmpty) {
+      final refs = submittedAttachments
+          .where(
+            (a) =>
+                a.kind == ComposerAttachmentKind.file ||
+                a.kind == ComposerAttachmentKind.image,
+          )
+          .map(
+            (a) => a.kind == ComposerAttachmentKind.image
+                ? '@image:${a.label}'
+                : '@file:${a.label}',
+          )
+          .toList(growable: false);
+      if (refs.isNotEmpty) {
+        _pendingAttachmentMessageId = session.chat
+            .stagePendingAttachmentMessage(trimmed, refs, _uploadTotalBytes);
+      }
+    }
     if (trimmed.isNotEmpty) {
       _composerHistory.add(trimmed);
       final historyScope = _lastDraftSid ?? session.durableId ?? 'new';
@@ -2009,16 +2166,20 @@ class _ChatScreenState extends State<ChatScreen> {
         handledLocally = true;
       }
     } catch (e) {
+      _failPendingAttachmentMessage(session);
       if (mounted) {
         _composerCtrl.value = originalValue;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatCommandFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatCommandFailed('$e'),
         );
       }
       if (mounted) setState(() => _sending = false);
       return;
     }
     if (handledLocally || !mounted) {
+      _failPendingAttachmentMessage(session);
       if (mounted) setState(() => _sending = false);
       return;
     }
@@ -2030,15 +2191,48 @@ class _ChatScreenState extends State<ChatScreen> {
     // real references into the outgoing text before dispatch.
     final String composed;
     try {
-      composed = await _composeWithAttachments(trimmed, submittedAttachments);
-    } catch (e) {
+      final prepared = await _prepareComposerSubmission(
+        trimmed,
+        submittedAttachments,
+      );
+      if (prepared == null) {
+        _failPendingAttachmentMessage(session);
+        if (mounted) {
+          _composerCtrl.value = originalValue;
+          setState(() => _sending = false);
+        }
+        return;
+      }
+      final withAttachments = await _composeWithAttachments(
+        prepared,
+        submittedAttachments,
+      );
+      composed = bots?.composeMentionNote(withAttachments) ?? withAttachments;
+      if (_pendingAttachmentMessageId != null) {
+        session.chat.updateAttachmentUpload(
+          _pendingAttachmentMessageId!,
+          state: 'submitting',
+          sent: _uploadTotalBytes,
+          total: _uploadTotalBytes,
+        );
+      }
+      _publishSendPhase(SessionSendPhase.submitting);
       if (mounted) {
-        setState(() => _sending = false);
+        setState(() => _sendStatusLabel = context.l10n.chatSendingEllipsis);
+      }
+    } catch (e) {
+      _failPendingAttachmentMessage(session);
+      if (mounted) {
+        _sendFailed = true;
+        setState(() {
+          _sending = false;
+          _sendStatusLabel = context.l10n.chatAttachmentUploadFailed('$e');
+        });
         _composerCtrl.value = originalValue;
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.chatAttachmentUploadFailed('$e')),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatAttachmentUploadFailed('$e'),
         );
       }
       return;
@@ -2055,9 +2249,13 @@ class _ChatScreenState extends State<ChatScreen> {
       _editingQueuedMessageId = null;
       _composerCtrl.clear();
       if (mounted) setState(() => _attachments = const []);
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.chatQueuedMessageUpdated)),
-      );
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: l10n.chatQueuedMessageUpdated,
+          kind: HermesToastKind.success,
+        );
+      }
       if (mounted) setState(() => _sending = false);
       return;
     }
@@ -2067,11 +2265,20 @@ class _ChatScreenState extends State<ChatScreen> {
       // (multiple messages in a row) don't get dropped. The queue dispatches
       // each turn sequentially when the transcript is idle.
       if (chat.busy) {
+        _publishSendPhase(SessionSendPhase.queued);
         session.enqueueMessage(
           composed,
           displayText: trimmed,
           attachments: _queueAttachments(submittedAttachments),
         );
+        if (_pendingAttachmentMessageId != null && mounted) {
+          context.read<ChatStore>().updateAttachmentUpload(
+            _pendingAttachmentMessageId!,
+            state: 'accepted',
+            sent: _uploadTotalBytes,
+            total: _uploadTotalBytes,
+          );
+        }
         _composerCtrl.clear();
         if (mounted) setState(() => _attachments = const []);
         _setStuckToBottom(true);
@@ -2097,6 +2304,23 @@ class _ChatScreenState extends State<ChatScreen> {
           onAutoRetry: _showAutoRetryNotice,
           interrupted: interrupted,
         );
+        _publishSendPhase(SessionSendPhase.accepted);
+        if (_pendingAttachmentMessageId != null && mounted) {
+          final finalRefs = <String>[
+            for (final item in _attachments)
+              if (item.path?.trim().isNotEmpty == true)
+                item.kind == ComposerAttachmentKind.image
+                    ? '@image:${item.path}'
+                    : '@file:${item.path}',
+          ];
+          context.read<ChatStore>().updateAttachmentUpload(
+            _pendingAttachmentMessageId!,
+            state: 'accepted',
+            sent: _uploadTotalBytes,
+            total: _uploadTotalBytes,
+            refs: finalRefs.isEmpty ? null : finalRefs,
+          );
+        }
         // A first submit creates the runtime session. Refresh immediately
         // instead of waiting for the next build/post-frame draft transition,
         // which can race a fast response and leave the tools chip global-only.
@@ -2127,16 +2351,41 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       // E2: restore the text and attachments on failure so the user doesn't
-      // lose their input.
+      // lose their input. Attachments that finished uploading before this
+      // failure keep their uploaded state instead of reverting to the
+      // pre-upload snapshot (which would force a re-upload on retry).
       if (mounted) {
         _composerCtrl.value = originalValue;
-        setState(() => _attachments = submittedAttachments);
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatSendFailed('$e'))),
+        _sendFailed = true;
+        setState(() {
+          _attachments = _preserveUploadedAttachments(submittedAttachments);
+          _sendStatusLabel = context.l10n.chatSendFailed('$e');
+        });
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatSendFailed('$e'),
+        );
+      }
+      _publishSendPhase(SessionSendPhase.failed, error: '$e');
+      if (_pendingAttachmentMessageId != null) {
+        session.chat.updateAttachmentUpload(
+          _pendingAttachmentMessageId!,
+          state: 'failed',
+          sent: _uploadDoneBytes,
+          total: _uploadTotalBytes,
         );
       }
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          if (!_sendFailed) _sendStatusLabel = null;
+          _pendingAttachmentMessageId = null;
+          _uploadCancellation = null;
+        });
+      }
+      if (!_sendFailed) _publishSendPhase(SessionSendPhase.accepted);
     }
   }
 
@@ -2145,7 +2394,7 @@ class _ChatScreenState extends State<ChatScreen> {
   /// failure fall back to the send queue instead of dropping the message.
   Future<void> _steerFromComposer(String text) async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
+    final bots = context.maybeRead<BotStore>();
     final trimmed = text.trim();
     // See the matching comment in `_send`: the composer already cleared its
     // controller before calling this, so rebuild the restorable value from
@@ -2171,15 +2420,27 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final String composed;
     try {
-      composed = await _composeWithAttachments(trimmed, submittedAttachments);
+      final prepared = await _prepareComposerSubmission(
+        trimmed,
+        submittedAttachments,
+      );
+      if (prepared == null) {
+        if (mounted) _composerCtrl.value = originalValue;
+        return;
+      }
+      final withAttachments = await _composeWithAttachments(
+        prepared,
+        submittedAttachments,
+      );
+      composed = bots?.composeMentionNote(withAttachments) ?? withAttachments;
     } catch (e) {
       if (mounted) {
         setState(() => _sending = false);
         _composerCtrl.value = originalValue;
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.chatAttachmentUploadFailed('$e')),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatAttachmentUploadFailed('$e'),
         );
       }
       return;
@@ -2197,22 +2458,73 @@ class _ChatScreenState extends State<ChatScreen> {
           rememberedServerDraft: remembered,
         );
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatSteerInjected)),
+      showHermesToast(
+        context,
+        message: context.l10n.chatSteerInjected,
+        kind: HermesToastKind.success,
       );
     } catch (_) {
       // WebUI `_trySteer` fallback: queue the message (with the uploaded
-      // attachment refs already embedded) instead of losing it.
+      // attachment refs already embedded) instead of losing it. Use the
+      // upload-preserving merge so any attachment that finished uploading
+      // before `session.steer` failed is queued with its server `path`
+      // rather than the stale pre-upload snapshot (which would force a
+      // re-upload when the queued message is later dispatched).
       await session.enqueueMessage(
         composed,
         displayText: trimmed,
-        attachments: _queueAttachments(submittedAttachments),
+        attachments: _queueAttachments(
+          _preserveUploadedAttachments(submittedAttachments),
+        ),
       );
       if (!mounted) return;
       setState(() => _attachments = const []);
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatSteerQueued)),
+      showHermesToast(context, message: context.l10n.chatSteerQueued);
+    }
+  }
+
+  Future<String?> _prepareComposerSubmission(
+    String text,
+    List<ComposerAttachment> attachments,
+  ) async {
+    final plugins = context.maybeRead<PluginContributionStore>();
+    if (plugins == null) return text;
+    final session = context.read<SessionStore>();
+    final expectedSession = session.durableId;
+    try {
+      final result = await plugins.prepareComposer(
+        text: text,
+        attachments: [
+          for (final item in attachments)
+            {
+              'kind': item.kind.name,
+              'name': item.label,
+              'path': item.path,
+              'url': item.url,
+            },
+        ],
+        sessionId: expectedSession,
+        owner: session.owner?.route,
       );
+      if (!mounted || session.durableId != expectedSession) return null;
+      if (result.blocked) {
+        showHermesToast(
+          context,
+          message: result.blockedMessage!,
+          kind: HermesToastKind.error,
+        );
+        return null;
+      }
+      return result.text;
+    } catch (error) {
+      if (mounted) {
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.chatPluginPrepareFailed('$error'),
+        );
+      }
+      return null;
     }
   }
 
@@ -2223,7 +2535,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final l10n = context.l10n;
     final session = context.read<SessionStore>();
     final commands = context.read<CommandStore>();
-    final messenger = ScaffoldMessenger.of(context);
     if (session.runtimeId == null) await session.openNewSession();
     final runtimeId = session.runtimeId;
     if (runtimeId == null) return false;
@@ -2269,9 +2580,9 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         if (busy) {
           await session.enqueueMessage(message);
-          messenger.showSnackBar(
-            SnackBar(content: Text(l10n.chatCommandMessageQueued)),
-          );
+          if (mounted) {
+            showHermesToast(context, message: l10n.chatCommandMessageQueued);
+          }
         } else {
           await session.sendMessage(message, onAutoRetry: _showAutoRetryNotice);
         }
@@ -2404,9 +2715,11 @@ class _ChatScreenState extends State<ChatScreen> {
         case LocalSlashHandler.newChat:
           await context.read<SessionStore>().newChat();
           if (mounted) {
-            ScaffoldMessenger.of(
+            showHermesToast(
               context,
-            ).showSnackBar(SnackBar(content: Text(l10n.chatNewSessionOpened)));
+              message: l10n.chatNewSessionOpened,
+              kind: HermesToastKind.success,
+            );
           }
           break;
         case LocalSlashHandler.yolo:
@@ -2497,9 +2810,11 @@ class _ChatScreenState extends State<ChatScreen> {
           outcome = localSlashDescription(command, l10n);
           failed = true;
           if (mounted) {
-            ScaffoldMessenger.of(
+            showHermesToast(
               context,
-            ).showSnackBar(SnackBar(content: Text(outcome)));
+              message: outcome,
+              kind: HermesToastKind.error,
+            );
           }
           break;
       }
@@ -2516,19 +2831,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _undoLastTurn() async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     if (session.readOnly) return;
     try {
       await session.undoLastTurn();
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatLastTurnUndone)),
+        showHermesToast(
+          context,
+          message: context.l10n.chatLastTurnUndone,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatUndoFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatUndoFailed('$e'),
         );
       }
     }
@@ -2536,43 +2854,37 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _steerSlash(String text) async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     final payload = text.trim();
     if (payload.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatSteerUsage)),
-      );
+      showHermesToast(context, message: context.l10n.chatSteerUsage);
       return;
     }
     if (!session.chat.busy) {
       await session.enqueueMessage(payload);
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatNoActiveTurnQueued)),
-        );
+        showHermesToast(context, message: context.l10n.chatNoActiveTurnQueued);
       }
       return;
     }
     try {
       await session.steer(payload);
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatSteerInjected)),
+        showHermesToast(
+          context,
+          message: context.l10n.chatSteerInjected,
+          kind: HermesToastKind.success,
         );
       }
     } catch (_) {
       await session.enqueueMessage(payload);
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatSteerQueued)),
-        );
+        showHermesToast(context, message: context.l10n.chatSteerQueued);
       }
     }
   }
 
   Future<void> _titleSlash(String arg) async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     final title = arg.trim();
     if (title.isEmpty) {
       await _regenerateTitle();
@@ -2581,119 +2893,63 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await session.rename(title);
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatTitleSet(title))),
+        showHermesToast(
+          context,
+          message: context.l10n.chatTitleSet(title),
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatSetTitleFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatSetTitleFailed('$e'),
         );
       }
     }
   }
 
-  Future<void> _showSlashHelp() async {
-    final local = localSlashCommandPairs(context.l10n);
-    final catalog = context.read<CommandStore>().catalog;
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(context.l10n.chatSlashCommands),
-          content: SizedBox(
-            width: 420,
-            height: 420,
-            child: ListView(
-              children: [
-                Text(
-                  context.l10n.chatLocalCommands,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                for (final pair in local)
-                  ListTile(
-                    dense: true,
-                    title: Text('/${pair.$1}'),
-                    subtitle: Text(pair.$2),
-                  ),
-                const Divider(),
-                Text(
-                  context.l10n.chatServerCatalog,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                if (catalog.isEmpty)
-                  ListTile(
-                    dense: true,
-                    title: Text(context.l10n.chatCatalogEmpty),
-                  )
-                else
-                  for (final cmd in catalog)
-                    if (!isMobileSlashSuggestionHidden(cmd.name))
-                      ListTile(
-                        dense: true,
-                        title: Text(
-                          cmd.name.startsWith('/') ? cmd.name : '/${cmd.name}',
-                        ),
-                        subtitle: cmd.description == null
-                            ? null
-                            : Text(cmd.description!),
-                      ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(context.l10n.commonClose),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  Future<void> _showSlashHelp() => showChatSlashHelpDialog(context);
 
   Future<void> _submitBackgroundSlash(String text) async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final id = await context.read<SessionStore>().submitBackground(text);
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            id.isEmpty
-                ? context.l10n.chatBackgroundSubmitted
-                : context.l10n.chatBackgroundSubmittedWithId(id),
-          ),
-        ),
+      showHermesToast(
+        context,
+        message: id.isEmpty
+            ? context.l10n.chatBackgroundSubmitted
+            : context.l10n.chatBackgroundSubmittedWithId(id),
+        kind: HermesToastKind.success,
       );
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.chatBackgroundSubmitFailed('$e')),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatBackgroundSubmitFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _compressSlash() async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await context.read<SessionStore>().compress();
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatCompressionRequested)),
+        showHermesToast(
+          context,
+          message: context.l10n.chatCompressionRequested,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatCompressionFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatCompressionFailed('$e'),
         );
       }
     }
@@ -2701,24 +2957,25 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _queueSlash(String arg) async {
     final text = arg.trim();
-    final messenger = ScaffoldMessenger.of(context);
     if (text.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatQueueUsage)),
-      );
+      showHermesToast(context, message: context.l10n.chatQueueUsage);
       return;
     }
     try {
       await context.read<SessionStore>().enqueueMessage(text);
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatQueued)),
+        showHermesToast(
+          context,
+          message: context.l10n.chatQueued,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatQueueFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatQueueFailed('$e'),
         );
       }
     }
@@ -2727,10 +2984,11 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _showVersionSlash() async {
     final session = context.read<SessionStore>();
     final api = session.api;
-    final messenger = ScaffoldMessenger.of(context);
     if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatServerNotConnected)),
+      showHermesToast(
+        context,
+        message: context.l10n.chatServerNotConnected,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -2758,8 +3016,10 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     } catch (e) {
       if (mounted && identical(api, session.api)) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatVersionLoadFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatVersionLoadFailed('$e'),
         );
       }
     }
@@ -2768,9 +3028,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _approvalsSlash(String arg) async {
     final mode = arg.trim().toLowerCase();
     if (!const {'manual', 'smart', 'off'}.contains(mode)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.chatApprovalsUsage)));
+      showHermesToast(context, message: context.l10n.chatApprovalsUsage);
       return;
     }
     await _setApprovalMode(mode);
@@ -2789,12 +3047,13 @@ class _ChatScreenState extends State<ChatScreen> {
   /// this buried in Settings → 对话配置; this is the quick "更多" menu path,
   /// backed by the same `/approvals` slash-command plumbing.
   Future<void> _setApprovalMode(String mode) async {
-    final messenger = ScaffoldMessenger.of(context);
     final session = context.read<SessionStore>();
     final api = session.api;
     if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatServerNotConnected)),
+      showHermesToast(
+        context,
+        message: context.l10n.chatServerNotConnected,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -2814,73 +3073,28 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       session.applyProfileConfigPatch(profile, patch);
       setState(() => _serverConfig = {..._serverConfig, ...patch});
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatApprovalModeSet(mode))),
+      showHermesToast(
+        context,
+        message: context.l10n.chatApprovalModeSet(mode),
+        kind: HermesToastKind.success,
       );
     } catch (e) {
       if (mounted &&
           identical(api, session.api) &&
           profile == (session.profile ?? session.activeProfile)) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatApprovalModeFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatApprovalModeFailed('$e'),
         );
       }
     }
   }
 
   Future<void> _showApprovalModeSheet() async {
-    const options = ['manual', 'smart', 'off'];
-    final labels = {
-      'manual': context.l10n.chatApprovalManual,
-      'smart': context.l10n.chatApprovalSmart,
-      'off': context.l10n.chatApprovalOff,
-    };
-    final descriptions = {
-      'manual': context.l10n.chatApprovalManualDescription,
-      'smart': context.l10n.chatApprovalSmartDescription,
-      'off': context.l10n.chatApprovalOffDescription,
-    };
     final current = _approvalMode;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  context.l10n.chatApprovalMode,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            RadioGroup<String>(
-              groupValue: current,
-              onChanged: (value) => Navigator.pop(sheetContext, value),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final option in options)
-                    RadioListTile<String>(
-                      value: option,
-                      title: Text(labels[option] ?? option),
-                      subtitle: Text(descriptions[option] ?? ''),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+    if (current == null) return;
+    final selected = await showChatApprovalModeSheet(context, current: current);
     if (selected != null && selected != current) {
       await _setApprovalMode(selected);
     }
@@ -2892,12 +3106,9 @@ class _ChatScreenState extends State<ChatScreen> {
   /// parity).
   Future<void> _retryLastTurn() async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     if (session.readOnly) return;
     if (session.chat.lastUserText() == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatNoRetryMessage)),
-      );
+      showHermesToast(context, message: context.l10n.chatNoRetryMessage);
       return;
     }
     final cmd = context.read<CommandStore>();
@@ -2921,8 +3132,10 @@ class _ChatScreenState extends State<ChatScreen> {
           await session.refreshTranscript();
         }
         if (mounted) {
-          messenger.showSnackBar(
-            SnackBar(content: Text(context.l10n.chatLastTurnRetried)),
+          showHermesToast(
+            context,
+            message: context.l10n.chatLastTurnRetried,
+            kind: HermesToastKind.success,
           );
         }
         return;
@@ -2933,14 +3146,18 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await session.regenerate();
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatLastTurnRetried)),
+        showHermesToast(
+          context,
+          message: context.l10n.chatLastTurnRetried,
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatRetryFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatRetryFailed('$e'),
         );
       }
     }
@@ -2952,7 +3169,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _clearConversationView() async {
     final l10n = context.l10n;
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     final cmd = context.read<CommandStore>();
     final rt = session.runtimeId;
     final hasGatewayClear = cmd.catalog.any(
@@ -2964,8 +3180,10 @@ class _ChatScreenState extends State<ChatScreen> {
         if (!mounted) return;
         await session.refreshTranscript();
         if (mounted) {
-          messenger.showSnackBar(
-            SnackBar(content: Text(l10n.chatSessionCleared)),
+          showHermesToast(
+            context,
+            message: l10n.chatSessionCleared,
+            kind: HermesToastKind.success,
           );
         }
         return;
@@ -2974,175 +3192,24 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     session.chat.clearView();
-    messenger.showSnackBar(SnackBar(content: Text(l10n.chatViewCleared)));
+    if (mounted) showHermesToast(context, message: l10n.chatViewCleared);
   }
 
   /// B15 auto-retry notice: surfaced when a send hits a retryable transport
   /// error and the store resubmits once on its own.
   void _showAutoRetryNotice() {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(context.l10n.chatAutoRetried)));
+    showHermesToast(context, message: context.l10n.chatAutoRetried);
   }
 
   // -------------------------------------------------------- saved prompts
   /// A18 (WebUI `btnSavedPrompts` popup): list saved prompt snippets, tap to
   /// insert into the composer, delete per row, save the current input.
-  Future<void> _showSavedPrompts() async {
-    final l10n = context.l10n;
-    final session = context.read<SessionStore>();
-    final api = session.api;
-    final messenger = ScaffoldMessenger.of(context);
-    if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.chatServerNotConnected)),
-      );
-      return;
-    }
-    List<SavedPrompt> prompts;
-    try {
-      prompts = await api.savedPrompts();
-    } catch (e) {
-      if (mounted && identical(api, session.api)) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.chatSavedPromptsLoadFailed('$e')),
-          ),
-        );
-      }
-      return;
-    }
-    if (!mounted || !identical(api, session.api)) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
-                child: Text(
-                  context.l10n.chatSavedPrompts,
-                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (prompts.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 24,
-                  ),
-                  child: Text(context.l10n.chatNoSavedPrompts),
-                )
-              else
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: prompts.length,
-                    itemBuilder: (_, i) {
-                      final p = prompts[i];
-                      return ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.notes, size: 18),
-                        title: Text(
-                          p.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          p.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: IconButton(
-                          tooltip: context.l10n.commonDelete,
-                          visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.close, size: 18),
-                          onPressed: () async {
-                            if (!identical(api, session.api)) return;
-                            try {
-                              await api.deletePrompt(p.id);
-                              if (!ctx.mounted ||
-                                  !identical(api, session.api)) {
-                                return;
-                              }
-                              setSheet(
-                                () => prompts = prompts
-                                    .where((x) => x.id != p.id)
-                                    .toList(growable: false),
-                              );
-                            } catch (e) {
-                              if (mounted && identical(api, session.api)) {
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      context.l10n.chatDeletePromptFailed('$e'),
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                        ),
-                        onTap: () {
-                          Navigator.of(ctx).pop();
-                          _insertSavedPrompt(p.text);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                    label: Text(context.l10n.chatSaveCurrentInput),
-                    onPressed: _composerCtrl.text.trim().isEmpty
-                        ? null
-                        : () async {
-                            if (!identical(api, session.api)) return;
-                            try {
-                              final saved = await api.savePrompt(
-                                _composerCtrl.text.trim(),
-                              );
-                              if (!ctx.mounted ||
-                                  !identical(api, session.api)) {
-                                return;
-                              }
-                              setSheet(() => prompts = [...prompts, saved]);
-                              messenger.showSnackBar(
-                                SnackBar(content: Text(l10n.chatPromptSaved)),
-                              );
-                            } catch (e) {
-                              if (mounted && identical(api, session.api)) {
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      context.l10n.chatSavePromptFailed('$e'),
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Future<void> _showSavedPrompts() => showChatSavedPromptsSheet(
+    context,
+    currentInput: () => _composerCtrl.text.trim(),
+    onInsert: _insertSavedPrompt,
+  );
 
   /// WebUI `insertSavedPromptIntoComposer` parity: append the snippet after a
   /// blank line and keep editing.
@@ -3168,8 +3235,17 @@ class _ChatScreenState extends State<ChatScreen> {
     final filePaths = <String>[];
     final urlRefs = <String>[];
     final snippets = <String>[];
+    final reviewComments = <String>[];
 
-    for (final att in attachments) {
+    for (
+      var attachmentIndex = 0;
+      attachmentIndex < attachments.length;
+      attachmentIndex++
+    ) {
+      if (_cancelSendRequested) {
+        throw StateError('attachment send cancelled');
+      }
+      final att = attachments[attachmentIndex];
       switch (att.kind) {
         case ComposerAttachmentKind.snippet:
           final snippet = att.snippetText?.trim() ?? '';
@@ -3177,6 +3253,30 @@ class _ChatScreenState extends State<ChatScreen> {
         case ComposerAttachmentKind.url:
           final url = att.url?.trim() ?? att.path?.trim() ?? '';
           if (url.isNotEmpty) urlRefs.add('@url:$url');
+        case ComposerAttachmentKind.review:
+          final detail = att.detail;
+          if (detail == null) {
+            final url = att.url?.trim() ?? '';
+            if (url.isNotEmpty) urlRefs.add('@url:$url');
+            continue;
+          }
+          final path = detail['path']?.toString().trim() ?? '';
+          final start = detail['startLine'] ?? detail['line'];
+          final end = detail['line'] ?? detail['startLine'];
+          final location = path.isEmpty
+              ? 'unknown'
+              : start == null
+              ? path
+              : '$path:$start${end != null && end != start ? '-$end' : ''}';
+          final author = detail['author']?.toString().trim() ?? '';
+          final url = detail['url']?.toString().trim() ?? att.url ?? '';
+          final body = detail['body']?.toString().trim() ?? '';
+          final diff = detail['diffHunk']?.toString().trim() ?? '';
+          reviewComments.add(
+            '```review-comment $location\n'
+            '${author.isEmpty ? '' : '@$author on '}$url\n\n'
+            '$body${diff.isEmpty ? '' : '\n--- diff hunk ---\n$diff'}\n```',
+          );
         case ComposerAttachmentKind.folder:
           // Local folder path refs are not uploaded to the server.
           continue;
@@ -3184,7 +3284,37 @@ class _ChatScreenState extends State<ChatScreen> {
         case ComposerAttachmentKind.file:
           var path = att.path?.trim() ?? '';
           if (path.isEmpty) {
-            path = await _uploadLocalAttachment(att);
+            _uploadAttachmentBase = _uploadDoneBytes;
+            _setAttachmentUploadStatus(att.occurrenceId, uploading: true);
+            try {
+              if (mounted) {
+                setState(() {
+                  _sendStatusLabel = context.l10n.chatUploadingProgress(
+                    attachmentIndex + 1,
+                    attachments.length,
+                  );
+                });
+              }
+              path = await _uploadLocalAttachment(att);
+              if (mounted && path.isNotEmpty) {
+                setState(() {
+                  _attachments = [
+                    for (final item in _attachments)
+                      item.occurrenceId == att.occurrenceId
+                          ? item.copyWith(path: path, localPath: '')
+                          : item,
+                  ];
+                });
+              }
+              _setAttachmentUploadStatus(att.occurrenceId, uploading: false);
+            } catch (e) {
+              _setAttachmentUploadStatus(
+                att.occurrenceId,
+                uploading: false,
+                error: '$e',
+              );
+              rethrow;
+            }
           }
           if (path.isEmpty) continue;
           if (att.kind == ComposerAttachmentKind.image) {
@@ -3202,6 +3332,12 @@ class _ChatScreenState extends State<ChatScreen> {
     ];
 
     var result = text;
+    if (reviewComments.isNotEmpty) {
+      result = [
+        result,
+        ...reviewComments,
+      ].where((p) => p.isNotEmpty).join('\n\n');
+    }
     if (snippets.isNotEmpty) {
       result = [result, ...snippets].where((p) => p.isNotEmpty).join('\n\n');
     }
@@ -3223,190 +3359,182 @@ class _ChatScreenState extends State<ChatScreen> {
     return result;
   }
 
+  /// Drives the per-chip upload spinner / error badge in the attachments
+  /// tray (`_AttachmentsRow`) while `_composeWithAttachments` uploads a
+  /// staged attachment at send-time.
+  void _setAttachmentUploadStatus(
+    String? occurrenceId, {
+    required bool uploading,
+    String? error,
+    int? sent,
+    int? total,
+  }) {
+    if (occurrenceId == null || !mounted) return;
+    setState(() {
+      _attachments = [
+        for (final a in _attachments)
+          if (a.occurrenceId == occurrenceId)
+            a.withUploadStatus(
+              uploading: uploading,
+              error: error,
+              sent: sent,
+              total: total,
+            )
+          else
+            a,
+      ];
+    });
+  }
+
   /// Upload one staged local file to the server working directory via the
   /// domain API (`POST /api/v1/files/upload`, D6) and return the server path.
   Future<String> _uploadLocalAttachment(ComposerAttachment att) async {
     final l10n = context.l10n;
     final local = att.localPath;
-    if (local == null || local.isEmpty) return '';
+    if ((local == null || local.isEmpty) && att.dataUrl == null) return '';
     final session = context.read<SessionStore>();
     final api = session.api;
     if (api == null) throw StateError(l10n.chatServerNotConnected);
-    final file = fs.XFile(local);
-    final length = await file.length();
-    if (length > _maxUploadBytes) {
+    final Uint8List rawBytes;
+    if (att.bytes != null) {
+      rawBytes = att.bytes!;
+    } else if (att.dataUrl != null) {
+      if (mounted) {
+        setState(() => _sendStatusLabel = l10n.chatPreparingAttachments);
+      }
+      if (_pendingAttachmentMessageId != null) {
+        session.chat.updateAttachmentUpload(
+          _pendingAttachmentMessageId!,
+          state: 'encoding',
+          sent: _uploadDoneBytes,
+          total: _uploadTotalBytes,
+        );
+      }
+      try {
+        rawBytes = UriData.parse(att.dataUrl!).contentAsBytes();
+      } on FormatException {
+        throw StateError(l10n.chatAttachmentUploadFailed(att.label));
+      }
+    } else {
+      if (mounted) {
+        setState(() => _sendStatusLabel = l10n.chatPreparingAttachments);
+      }
+      if (_pendingAttachmentMessageId != null) {
+        session.chat.updateAttachmentUpload(
+          _pendingAttachmentMessageId!,
+          state: 'encoding',
+          sent: _uploadDoneBytes,
+          total: _uploadTotalBytes,
+        );
+      }
+      final file = fs.XFile(local!);
+      final length = await file.length();
+      if (length > _maxUploadBytes) {
+        throw StateError(
+          l10n.chatFileTooLarge(_maxUploadBytes ~/ 1024 ~/ 1024, att.label),
+        );
+      }
+      rawBytes = await file.readAsBytes();
+    }
+    if (rawBytes.length > _maxUploadBytes) {
       throw StateError(
         l10n.chatFileTooLarge(_maxUploadBytes ~/ 1024 ~/ 1024, att.label),
       );
     }
-    final bytes = await file.readAsBytes();
-    final ext = _extOf(att.label);
-    final mime = att.kind == ComposerAttachmentKind.image
-        ? 'image/$ext'
-        : 'application/octet-stream';
-    final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+    // Sources such as a native XFile or a data URI do not expose their byte
+    // count when the optimistic history row is created. Fold the count in as
+    // soon as reading finishes so both composer and timeline progress have a
+    // real denominator instead of remaining at 0%.
+    if (att.bytes == null) {
+      if (mounted) {
+        setState(() => _uploadTotalBytes += rawBytes.length);
+      } else {
+        _uploadTotalBytes += rawBytes.length;
+      }
+      if (_pendingAttachmentMessageId != null) {
+        session.chat.updateAttachmentUpload(
+          _pendingAttachmentMessageId!,
+          state: 'uploading',
+          sent: _uploadDoneBytes,
+          total: _uploadTotalBytes,
+        );
+      }
+    }
     final safeName = att.label.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
     final name = 'hm_attach_${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    // Target path must live under the session's actual working directory —
+    // a bare `/hm-attachments/...` is outside the managed-files root and is
+    // always rejected by the server (same fix as `importProfileArchive`).
+    final cwd = await api.fsDefaultCwd();
+    if (cwd.trim().isEmpty) {
+      throw StateError(l10n.chatServerNotConnected);
+    }
+    final separator = cwd.endsWith('/') || cwd.endsWith('\\')
+        ? ''
+        : (cwd.contains('\\') ? '\\' : '/');
+    final targetPath = '$cwd$separator$name';
     if (!identical(api, session.api)) {
       throw StateError(l10n.chatServerNotConnected);
     }
-    final result = await api.uploadFile('/hm-attachments/$name', dataUrl);
+    final result = await api.uploadFileStream(
+      targetPath,
+      rawBytes,
+      att.label,
+      cancellation: _uploadCancellation,
+      onProgress: (sent, total) {
+        if (_cancelSendRequested) return;
+        // The chip spinner remains responsive while the multipart
+        // request is in flight; the callback is also a hook for the
+        // aggregate composer progress indicator.
+        if (mounted) {
+          setState(() {
+            _uploadDoneBytes = (_uploadAttachmentBase + sent).clamp(
+              0,
+              _uploadTotalBytes,
+            );
+            _sendStatusLabel = _uploadTotalBytes > 0
+                ? l10n.chatUploadingProgressPercent(
+                    (_uploadDoneBytes / _uploadTotalBytes * 100).round(),
+                  )
+                : context.l10n.chatUploadingEllipsis;
+          });
+          if (_pendingAttachmentMessageId != null) {
+            context.read<ChatStore>().updateAttachmentUpload(
+              _pendingAttachmentMessageId!,
+              state: 'uploading',
+              sent: _uploadDoneBytes,
+              total: _uploadTotalBytes,
+            );
+          }
+          _setAttachmentUploadStatus(
+            att.occurrenceId,
+            uploading: true,
+            sent: sent,
+            total: total,
+          );
+        }
+      },
+    );
+    if (_cancelSendRequested) {
+      throw StateError('attachment send cancelled');
+    }
     if (!identical(api, session.api)) {
       throw StateError(l10n.chatServerNotConnected);
     }
-    return result['path']?.toString() ?? name;
+    final uploadedPath = result['path']?.toString().trim() ?? '';
+    if (uploadedPath.isEmpty) {
+      throw StateError('upload succeeded but server returned no file path');
+    }
+    // Use the server's canonical resolved path. Falling back to a label or
+    // basename makes later read-data-url calls resolve in the wrong directory.
+    return uploadedPath;
   }
 
   // Batch 2.4: Queue panel — shows all pending queued messages with per-item
   // cancel and a "clear all" action.
-  Future<void> _showQueuePanel() async {
-    final session = context.read<SessionStore>();
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return ChangeNotifierProvider.value(
-          value: session,
-          child: Consumer<SessionStore>(
-            builder: (_, s, child) {
-              final queue = s.sendQueue;
-              return SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
-                      child: Row(
-                        children: [
-                          Text(
-                            context.l10n.chatSendQueue,
-                            style: Theme.of(ctx).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(ctx).colorScheme.primary,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              '${queue.length}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Theme.of(ctx).colorScheme.onPrimary,
-                              ),
-                            ),
-                          ),
-                          const Spacer(),
-                          if (queue.isNotEmpty)
-                            TextButton(
-                              onPressed: () {
-                                s.clearQueue();
-                                Navigator.of(ctx).pop();
-                              },
-                              child: Text(context.l10n.commonCancelAll),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    if (queue.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(40),
-                        child: Center(
-                          child: Column(
-                            children: [
-                              const Icon(
-                                Icons.inbox_outlined,
-                                size: 44,
-                                color: Colors.black26,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                context.l10n.chatNoQueuedMessages,
-                                style: const TextStyle(color: Colors.black54),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      Flexible(
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: queue.length,
-                          itemBuilder: (listCtx, i) {
-                            final item = queue[i];
-                            final preview = item.text.length > 140
-                                ? '${item.text.substring(0, 140)}…'
-                                : item.text;
-                            return ListTile(
-                              leading: CircleAvatar(
-                                radius: 14,
-                                backgroundColor: Theme.of(
-                                  listCtx,
-                                ).colorScheme.primary.withValues(alpha: 0.12),
-                                child: Text(
-                                  '${i + 1}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: Theme.of(
-                                      listCtx,
-                                    ).colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                preview,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 13.5),
-                              ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  _fmtQueueTime(item.createdAt),
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                              ),
-                              trailing: IconButton(
-                                tooltip: context.l10n.commonCancel,
-                                icon: const Icon(Icons.close, size: 20),
-                                onPressed: () => s.cancelQueued(item.id),
-                              ),
-                              dense: true,
-                            );
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
+  Future<void> _showQueuePanel() => showChatQueuePanel(context);
 
-  String _fmtQueueTime(DateTime t) {
-    final now = DateTime.now();
-    final diff = now.difference(t);
-    if (diff.inSeconds < 60) {
-      return context.l10n.chatQueuedSecondsAgo(diff.inSeconds);
-    }
-    if (diff.inMinutes < 60) {
-      return context.l10n.chatQueuedMinutesAgo(diff.inMinutes);
-    }
-    return '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-  }
+  Future<void> _showSessionTabs() => showChatSessionTabs(context);
 
   /// Extracted composer construction so the desktop-only [DropTarget] wrapper
   /// and the plain touch-platform path can share one definition.
@@ -3425,23 +3553,84 @@ class _ChatScreenState extends State<ChatScreen> {
     ChatStore chat,
     VoiceStore voice,
   ) {
-    return HermesComposer(
+    final surfaces = Provider.of<MobileSurfaceStore?>(context, listen: false);
+    final composer = HermesComposer(
       controller: _composerCtrl,
       focusNode: _composerFocus,
       readOnly: session.readOnly,
       busy: chat.busy || _sending,
+      sendStatusLabel: _sendStatusLabel,
       modelLabel: session.info?.model,
       onModelTap: session.readOnly ? null : _showModelPicker,
-      onStop: session.readOnly ? null : () => session.interrupt(),
+      modelTargetKey: surfaces?.targetKey('chat.model'),
+      onStop: session.readOnly
+          ? null
+          : () {
+              if (_sending) {
+                _cancelSendRequested = true;
+                _uploadCancellation?.cancel();
+                _sendFailed = true;
+                _failPendingAttachmentMessage(session);
+                if (mounted) {
+                  setState(() {
+                    _sending = false;
+                    _sendStatusLabel = context.l10n.chatSendCancelledRetry;
+                  });
+                }
+              } else {
+                session.interrupt();
+              }
+            },
+      onRetrySend: _sendFailed && !_sending
+          ? () {
+              _sendFailed = false;
+              setState(() {
+                _sendStatusLabel = context.l10n.chatReadingAttachments;
+              });
+              _send(_composerCtrl.text);
+            }
+          : null,
       onSteer: session.readOnly ? null : _steerFromComposer,
-      onSpeak: _speakLastReply,
       onSend: _send,
-      onUndo: () {
-        if (_composerCtrl.undoStructuredEdit()) setState(() {});
-      },
-      onRedo: () {
-        if (_composerCtrl.redoStructuredEdit()) setState(() {});
-      },
+      onUndo: session.readOnly
+          ? null
+          : () {
+              if (_composerCtrl.undoStructuredEdit()) setState(() {});
+            },
+      onRedo: session.readOnly
+          ? null
+          : () {
+              if (_composerCtrl.redoStructuredEdit()) setState(() {});
+            },
+      onExpand: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => FocusComposerScreen(
+            controller: _composerCtrl,
+            attachments: _attachments,
+            onRemoveAttachment: (attachment) {
+              setState(() {
+                _attachments = List.unmodifiable(
+                  _attachments.where((item) => !identical(item, attachment)),
+                );
+              });
+              final sid = _lastDraftSid;
+              if (sid != null && !_draftRestoreInProgress) {
+                context.read<SessionStore>().scheduleDraftSave(
+                  sid,
+                  _composerCtrl.text,
+                  _attachmentsForPersist,
+                );
+              }
+            },
+            onSend: _send,
+            readOnly: session.readOnly,
+            modelLabel: session.info?.model,
+            profileLabel: _activeProfileName,
+          ),
+        ),
+      ),
+      canUndo: _composerCtrl.canUndo,
+      canRedo: _composerCtrl.canRedo,
       // A17: ambient context-usage indicator fed by the real per-turn
       // usage payloads accumulated in the chat store; null (and not
       // rendered) when no turn has reported usage.
@@ -3449,6 +3638,32 @@ class _ChatScreenState extends State<ChatScreen> {
         final total? => formatCtxUsageLabel(total),
         null => null,
       },
+      topExtensions: [
+        for (final contribution in _composerContributions(
+          context,
+        ).where((item) => item.slot == 'top'))
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.extension_outlined),
+            title: Text(contribution.title),
+            subtitle: contribution.description.isEmpty
+                ? null
+                : Text(contribution.description),
+            onTap: () =>
+                context.read<PluginContributionStore>().invoke(contribution),
+          ),
+      ],
+      bottomExtensions: [
+        for (final contribution in _composerContributions(
+          context,
+        ).where((item) => item.slot == 'bottom'))
+          TextButton.icon(
+            onPressed: () =>
+                context.read<PluginContributionStore>().invoke(contribution),
+            icon: const Icon(Icons.extension_outlined, size: 16),
+            label: Text(contribution.title),
+          ),
+      ],
       suggestions: _buildSuggestions(),
       onSuggestionKeyEvent: _handleSuggestionKey,
       attachments: _attachments,
@@ -3479,7 +3694,10 @@ class _ChatScreenState extends State<ChatScreen> {
           ? null
           : _showDifficultyPicker,
       toolsLabel: _toolsetsLoaded ? _toolsetsLabel : null,
-      toolsSelected: false,
+      toolsSelected:
+          _toolsetsScopeTouched &&
+          _toolsetsLoaded &&
+          _toolsets.any((t) => t.enabled),
       onToolsTap: session.readOnly ? null : _showToolsConfig,
       yoloEnabled: _yoloEnabled,
       onYoloTap: session.readOnly || _yoloEnabled == null ? null : _toggleYolo,
@@ -3498,7 +3716,14 @@ class _ChatScreenState extends State<ChatScreen> {
       leadingActions: session.readOnly
           ? const []
           : [
-              for (final contribution in _composerContributions(context))
+              for (final contribution in _composerContributions(context).where(
+                (item) => const {
+                  'leading',
+                  'actions',
+                  'micro_action',
+                  'attachment_provider',
+                }.contains(item.slot),
+              ))
                 IconButton(
                   tooltip: contribution.title,
                   icon: const Icon(Icons.extension_outlined),
@@ -3510,12 +3735,14 @@ class _ChatScreenState extends State<ChatScreen> {
               // old "附加" menu is gone — these buttons are the only
               // add path).
               HermesAdaptiveMenuButton<String>(
+                key: surfaces?.targetKey('chat.attachments'),
                 tooltip: context.l10n.chatAttachFiles,
                 padding: EdgeInsets.zero,
                 onSelected: (v) {
                   if (v == 'file') _pickFilesToTray();
                   if (v == 'folder') _pickFolderToTray();
                   if (v == 'snippet') _addSnippetAttachment();
+                  if (v == 'paste_image') _pasteClipboardImage();
                 },
                 itemBuilder: (_) => [
                   PopupMenuItem(
@@ -3524,6 +3751,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       dense: true,
                       leading: Icon(Icons.insert_drive_file_outlined),
                       title: Text(context.l10n.commonFile),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'paste_image',
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.content_paste_rounded),
+                      title: Text(context.l10n.chatPasteImage),
                     ),
                   ),
                   PopupMenuItem(
@@ -3605,6 +3840,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 _showHandoffDialog();
               case 'skills':
                 _showSkills();
+              case 'speak':
+                _speakLastReply();
+              case 'input_history':
+                _showComposerInputHistory();
             }
           },
           itemBuilder: (_) => session.readOnly
@@ -3613,6 +3852,16 @@ class _ChatScreenState extends State<ChatScreen> {
                     value: 'info',
                     child: Text(context.l10n.chatSessionInfo),
                   ),
+                  if (chat.lastCompletedAssistant() != null)
+                    PopupMenuItem(
+                      value: 'speak',
+                      child: Text(context.l10n.messageSpeak),
+                    ),
+                  if (_composerHistory.entries.isNotEmpty)
+                    PopupMenuItem(
+                      value: 'input_history',
+                      child: Text(context.l10n.chatRecentInputs),
+                    ),
                 ]
               : [
                   PopupMenuItem(
@@ -3623,6 +3872,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     value: 'rename',
                     child: Text(context.l10n.chatRename),
                   ),
+                  if (chat.lastCompletedAssistant() != null)
+                    PopupMenuItem(
+                      value: 'speak',
+                      child: Text(context.l10n.messageSpeak),
+                    ),
                   const PopupMenuDivider(),
                   // Hidden entirely when the backend config exposes no
                   // approvals field — same "no misleading default" rule as
@@ -3685,6 +3939,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     value: 'skills',
                     child: Text(context.l10n.chatSkillsCenter),
                   ),
+                  if (_composerHistory.entries.isNotEmpty)
+                    PopupMenuItem(
+                      value: 'input_history',
+                      child: Text(context.l10n.chatRecentInputs),
+                    ),
                 ],
           child: _footerIcon(
             tooltip: context.l10n.commonMore,
@@ -3693,84 +3952,29 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ],
     );
+    return KeyedSubtree(
+      key: surfaces?.targetKey('chat.composer'),
+      child: composer,
+    );
+  }
+
+  Future<void> _showComposerInputHistory() async {
+    final entries = _composerHistory.entries.reversed.toList(growable: false);
+    if (entries.isEmpty) return;
+    final selected = await showChatComposerInputHistory(context, entries);
+    if (!mounted || selected == null) return;
+    _composerCtrl.value = TextEditingValue(
+      text: selected,
+      selection: TextSelection.collapsed(offset: selected.length),
+    );
+    _composerFocus.requestFocus();
   }
 
   /// Pending interactive requests (approval / clarify / secret / sudo /
   /// terminal.read) shown as a slim strip above the composer; tapping opens
   /// the existing global request sheet via [showRequestSheet].
-  Widget _buildRequestBanner() {
-    // Nullable watch: returns null (instead of ProviderNotFoundException)
-    // where no RequestStore is scoped above the chat screen (unit tests).
-    final requests = context.watch<RequestStore?>();
-    final req = requests?.current;
-    if (requests == null || req == null) return const SizedBox.shrink();
-    final runtimeId = context.read<SessionStore>().runtimeId;
-    if (req.sessionId == null || req.sessionId == runtimeId) {
-      // Foreground requests are rendered at their exact timeline position by
-      // the interaction ChatPart. Keep this strip for background requests.
-      return const SizedBox.shrink();
-    }
-    final theme = Theme.of(context);
-    final warning = theme.brightness == Brightness.dark
-        ? HermesSemanticDark.orange
-        : HermesSemantic.orange;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-      decoration: BoxDecoration(
-        color: warning.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: warning.withValues(alpha: 0.4)),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => showRequestSheet(context),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              Icon(Icons.rule, size: 16, color: warning),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  requests.pendingCount > 1
-                      ? context.l10n.chatPendingRequests(
-                          _requestKindLabel(req.kind),
-                          requests.pendingCount,
-                        )
-                      : _requestKindLabel(req.kind),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: warning,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Icon(Icons.chevron_right, size: 18, color: warning),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _requestKindLabel(RequestKind kind) {
-    switch (kind) {
-      case RequestKind.approval:
-        return context.l10n.chatRequestApproval;
-      case RequestKind.clarify:
-        return context.l10n.chatRequestQuestion;
-      case RequestKind.mcpSetup:
-        return context.l10n.chatRequestMcpConfig;
-      case RequestKind.secret:
-        return context.l10n.chatRequestSecret;
-      case RequestKind.sudo:
-        return context.l10n.chatRequestPassword;
-      case RequestKind.terminalRead:
-        return context.l10n.chatRequestTerminalInput;
-    }
-  }
+  Widget _buildRequestBanner() =>
+      buildChatRequestBanner(context, onOpen: _openPendingRequest);
 
   /// WebUI queue-card parity: a persistent strip above the composer shows the
   /// pending queue count; tapping expands it to a per-item list with delete
@@ -3892,7 +4096,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       subtitle: Text(
                         item.deliveryUncertain
                             ? context.l10n.chatDeliveryUncertain
-                            : _fmtQueueTime(item.createdAt),
+                            : formatChatQueueTime(context, item.createdAt),
                         style: TextStyle(
                           fontSize: 11,
                           color: item.deliveryUncertain
@@ -3971,6 +4175,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final preview = context.maybeRead<PreviewStore>();
     final coding = context.maybeRead<CodingStatusStore>();
     final billing = context.maybeRead<BillingStore>();
+    final voice = context.maybeRead<VoiceStore>();
     final pullRequests = Provider.of<PullRequestStore?>(context);
     final listenables = <Listenable>[
       chat.composerSurfaceRevision,
@@ -3980,6 +4185,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ?coding,
       ?billing,
       ?pullRequests,
+      ?voice,
     ];
     return ListenableBuilder(
       listenable: Listenable.merge(listenables),
@@ -4037,6 +4243,7 @@ class _ChatScreenState extends State<ChatScreen> {
             session.sendQueue.isNotEmpty ||
             preview?.hasContent == true ||
             billingBlocked ||
+            (voice != null && voice.phase != VoiceConversationPhase.idle) ||
             hasCoding;
         final palette = HermesPalette.of(context);
         final groups = statusSnapshot?.groups ?? const {};
@@ -4192,6 +4399,42 @@ class _ChatScreenState extends State<ChatScreen> {
                                             info.branch ??
                                             '',
                                       ),
+                              ),
+                            if (voice != null &&
+                                voice.phase != VoiceConversationPhase.idle)
+                              ListTile(
+                                dense: true,
+                                leading: Icon(
+                                  voice.recording
+                                      ? Icons.mic
+                                      : voice.speaking
+                                      ? Icons.volume_up_outlined
+                                      : Icons.graphic_eq,
+                                  size: 18,
+                                ),
+                                title: Text(switch (voice.phase) {
+                                  VoiceConversationPhase.listening =>
+                                    context.l10n.voiceWakeListening,
+                                  VoiceConversationPhase.transcribing =>
+                                    'Transcribing…',
+                                  VoiceConversationPhase.waiting =>
+                                    'Waiting for reply…',
+                                  VoiceConversationPhase.speaking =>
+                                    context.l10n.voiceStopSpeaking,
+                                  VoiceConversationPhase.idle => '',
+                                }),
+                                subtitle: voice.inputLevel > 0
+                                    ? LinearProgressIndicator(
+                                        value: voice.inputLevel,
+                                      )
+                                    : null,
+                                trailing: voice.speaking
+                                    ? IconButton(
+                                        tooltip: context.l10n.voiceStopSpeaking,
+                                        onPressed: voice.stopSpeaking,
+                                        icon: const Icon(Icons.stop, size: 17),
+                                      )
+                                    : null,
                               ),
                             for (final type in ComposerStatusType.values)
                               if (groups[type]?.isNotEmpty == true)
@@ -4522,185 +4765,14 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _showArtifactVersions(ChatStore chat) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        child: FractionallySizedBox(
-          heightFactor: .72,
-          child: ListView(
-            children: [
-              ListTile(
-                title: Text(context.l10n.chatCurrentSessionArtifacts),
-                subtitle: Text(context.l10n.chatBrowseArtifactsDescription),
-              ),
-              for (final entry in chat.artifactRegistry.entries)
-                ExpansionTile(
-                  leading: const Icon(Icons.code_outlined),
-                  title: Text(entry.key.toUpperCase()),
-                  subtitle: Text(
-                    context.l10n.chatVersionCount(entry.value.length),
-                  ),
-                  children: [
-                    for (var index = 0; index < entry.value.length; index++)
-                      ListTile(
-                        dense: true,
-                        title: Text(context.l10n.chatVersionNumber(index + 1)),
-                        subtitle: Text(
-                          entry.value[index],
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: () {
-                          Navigator.of(sheetContext).pop();
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => WebPreviewPage(
-                                html: entry.key == 'html'
-                                    ? entry.value[index]
-                                    : '<pre>${const HtmlEscape().convert(entry.value[index])}</pre>',
-                                title:
-                                    '${entry.key.toUpperCase()} · v${index + 1}',
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Future<void> _showArtifactVersions(ChatStore chat) =>
+      showChatArtifactVersions(context, chat);
 
   Future<void> _showCodingActions(
     CodingStatusStore coding,
     String cwd,
     String currentBranch,
-  ) async {
-    List<String> branches;
-    try {
-      branches = await coding.branches(cwd);
-    } catch (error) {
-      if (mounted) {
-        showHermesToast(
-          context,
-          message: context.l10n.chatBranchesLoadFailed('$error'),
-          kind: HermesToastKind.error,
-        );
-      }
-      return;
-    }
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(
-              title: Text(context.l10n.gitSwitchBranch),
-              subtitle: Text(context.l10n.chatLongPressCodingStatus),
-            ),
-            ListTile(
-              leading: const Icon(Icons.call_split),
-              title: Text(context.l10n.gitNewWorktree),
-              subtitle: Text(context.l10n.chatNewWorktreeDescription),
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                await _createWorktree(coding, cwd, currentBranch);
-              },
-            ),
-            const Divider(height: 1),
-            for (final branch in branches)
-              ListTile(
-                leading: Icon(
-                  branch == currentBranch
-                      ? Icons.check_circle
-                      : Icons.account_tree_outlined,
-                ),
-                title: Text(branch),
-                enabled: branch != currentBranch,
-                onTap: branch == currentBranch
-                    ? null
-                    : () async {
-                        Navigator.of(sheetContext).pop();
-                        try {
-                          await coding.switchBranch(cwd, branch);
-                        } catch (error) {
-                          if (mounted) {
-                            showHermesToast(
-                              context,
-                              message: context.l10n.gitSwitchBranchFailed(
-                                '$error',
-                              ),
-                              kind: HermesToastKind.error,
-                            );
-                          }
-                        }
-                      },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _createWorktree(
-    CodingStatusStore coding,
-    String cwd,
-    String currentBranch,
-  ) async {
-    final ctrl = TextEditingController();
-    final name = await showAdaptiveFormDialog<String>(
-      context: context,
-      title: context.l10n.gitNewWorktree,
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        decoration: InputDecoration(
-          labelText: context.l10n.commonName,
-          hintText: context.l10n.gitWorktreeNameHint,
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(context.l10n.commonCancel),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
-          child: Text(context.l10n.commonCreate),
-        ),
-      ],
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
-    if (name == null || name.isEmpty || !mounted) return;
-    try {
-      final result = await coding.addWorktree(
-        cwd,
-        name: name,
-        base: currentBranch,
-      );
-      final path = (result?['path'] ?? result?['worktreePath'])?.toString();
-      if (path != null && path.isNotEmpty && mounted) {
-        await context.read<SessionStore>().openNewSession(cwd: path);
-      }
-    } catch (error) {
-      if (mounted) {
-        showHermesToast(
-          context,
-          message: context.l10n.gitCreateWorktreeFailed('$error'),
-          kind: HermesToastKind.error,
-        );
-      }
-    }
-  }
+  ) => showChatCodingActions(context, coding, cwd, currentBranch);
 
   Widget _buildTypedStatusGroup({
     required SessionStore session,
@@ -4829,7 +4901,7 @@ class _ChatScreenState extends State<ChatScreen> {
       onTap:
           item.type == ComposerStatusType.subagent &&
               item.sessionId?.isNotEmpty == true
-          ? () => session.openReadOnlySession(item.sessionId!)
+          ? () => session.openWatchSession(item.sessionId!)
           : null,
     );
   }
@@ -4886,10 +4958,10 @@ class _ChatScreenState extends State<ChatScreen> {
               await composer.stopBackgroundProcess(runtimeId, item.id);
             } catch (e) {
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(context.l10n.chatStopProcessFailed('$e')),
-                  ),
+                showHermesErrorSnackBar(
+                  context,
+                  e,
+                  fallback: context.l10n.chatStopProcessFailed('$e'),
                 );
               }
             }
@@ -4912,6 +4984,30 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ----------------------------------------------------- autocomplete (3.3)
+  bool get _hasCompletionState =>
+      _slashSuggestions.isNotEmpty ||
+      _pathSuggestions.isNotEmpty ||
+      _referenceSuggestions.isNotEmpty ||
+      _emojiSuggestions.isNotEmpty ||
+      _sessionRefSuggestions.isNotEmpty ||
+      _referenceQuery != null ||
+      _emojiQuery != null ||
+      _slashSuggestionQueryActive ||
+      _slashSuggestionsLoading;
+
+  void _clearCompletionState() {
+    _slashSuggestions = const [];
+    _pathSuggestions = const [];
+    _referenceSuggestions = const [];
+    _emojiSuggestions = const [];
+    _sessionRefSuggestions = const [];
+    _referenceQuery = null;
+    _emojiQuery = null;
+    _slashSuggestionIndex = 0;
+    _slashSuggestionsLoading = false;
+    _slashSuggestionQueryActive = false;
+  }
+
   void _onComposerChanged() {
     _acDebounce?.cancel();
     final text = _composerCtrl.text;
@@ -4922,22 +5018,16 @@ class _ChatScreenState extends State<ChatScreen> {
       s.scheduleDraftSave(sid, text, _attachmentsForPersist);
     }
     if (text.isEmpty) {
-      if (_slashSuggestions.isNotEmpty ||
-          _pathSuggestions.isNotEmpty ||
-          _slashSuggestionQueryActive ||
-          _slashSuggestionsLoading ||
-          _cronSuggestionPhrase != null) {
+      if (_hasCompletionState || _cronSuggestionPhrase != null) {
         setState(() {
-          _slashSuggestions = const [];
-          _pathSuggestions = const [];
-          _slashSuggestionsLoading = false;
-          _slashSuggestionQueryActive = false;
+          _clearCompletionState();
           _cronSuggestionPhrase = null;
         });
       }
       return;
     }
     _updateCronSuggestion(text);
+    context.maybeRead<ComposerSuggestionStore>()?.sample(text);
     _acDebounce = Timer(const Duration(milliseconds: 250), () {
       _refreshSuggestions(text);
     });
@@ -4961,9 +5051,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _refreshSuggestions(String text) async {
     final cmd = context.read<CommandStore>();
+    final detected = detectCompletionQuery(
+      text,
+      caret: _acTarget.selection.isValid
+          ? _acTarget.selection.extentOffset
+          : text.length,
+    );
     // Keep completion active through argument stages. `replace_from` tells us
     // whether a pick replaces the command token or only the argument suffix.
-    if (text.startsWith('/') && !text.contains('\n')) {
+    if (detected?.kind == CompletionKind.slash && !text.contains('\n')) {
       setState(() {
         _slashSuggestionsLoading = true;
         _slashSuggestionQueryActive = true;
@@ -4986,7 +5082,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_acTarget.text != text) return;
       // Merge WebUI built-in local commands (commands.js `COMMANDS`) that
       // the gateway catalog does not cover.
-      final token = text.substring(1).toLowerCase();
+      final token = detected!.query.toLowerCase();
       final seen = results
           .map((r) => r.name.replaceFirst('/', '').toLowerCase())
           .toSet();
@@ -5005,6 +5101,10 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _slashSuggestions = merged;
         _pathSuggestions = const [];
+        _referenceSuggestions = const [];
+        _emojiSuggestions = const [];
+        _referenceQuery = null;
+        _emojiQuery = null;
         _slashSuggestionsLoading = false;
         _slashSuggestionIndex = 0;
         _slashReplaceFrom = replaceFrom;
@@ -5022,36 +5122,98 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _sessionRefSuggestions = results;
         _pathSuggestions = const [];
+        _referenceSuggestions = const [];
+        _emojiSuggestions = const [];
+        _referenceQuery = null;
+        _emojiQuery = null;
         _slashSuggestions = const [];
       });
       return;
     }
-    // Path completion: a trailing `@word` (no space after the @).
-    final m = RegExp(r'@([^\s@]*)$').firstMatch(text);
-    if (m != null) {
-      final word = m.group(1)!;
-      if (word.isNotEmpty) {
-        final results = await cmd.completePath(word);
-        if (!mounted) return;
-        if (_acTarget.text != text) return;
-        setState(() {
-          _pathSuggestions = results;
-          _sessionRefSuggestions = const [];
-          _slashSuggestions = const [];
-        });
-        return;
-      }
-    }
-    if (_slashSuggestions.isNotEmpty ||
-        _pathSuggestions.isNotEmpty ||
-        _sessionRefSuggestions.isNotEmpty) {
+    final caret = _acTarget.selection.isValid
+        ? _acTarget.selection.extentOffset
+        : text.length;
+    final emojiQuery = composerEmojiQuery(text, caret: caret);
+    if (emojiQuery != null) {
+      final results = composerEmojiSuggestions(emojiQuery.query);
       setState(() {
-        _slashSuggestions = const [];
+        _emojiQuery = emojiQuery;
+        _emojiSuggestions = results;
+        _referenceQuery = null;
+        _referenceSuggestions = const [];
         _pathSuggestions = const [];
         _sessionRefSuggestions = const [];
-        _slashSuggestionsLoading = false;
-        _slashSuggestionQueryActive = false;
+        _slashSuggestions = const [];
+        _slashSuggestionIndex = 0;
       });
+      return;
+    }
+
+    // Desktop-compatible typed references. The active range follows the
+    // caret, so completion also works while editing the middle of a draft.
+    final referenceQuery = composerReferenceQuery(text, caret: caret);
+    if (referenceQuery != null) {
+      var results = <ComposerReferenceSuggestion>[];
+      final starters = referenceQuery.isTyped
+          ? const <ComposerReferenceSuggestion>[]
+          : composerReferenceStarters(referenceQuery.query);
+      if (referenceQuery.raw.length > 1) {
+        final session = context.read<SessionStore>();
+        final paths = await cmd.completePath(
+          referenceQuery.raw,
+          sessionId: session.durableId,
+          cwd: session.info?.cwd,
+        );
+        if (!mounted || _acTarget.text != text) return;
+        results = paths
+            .map((path) => referenceSuggestionFromPath(path, referenceQuery))
+            .toList(growable: true);
+        if (results.isEmpty) results.addAll(starters);
+
+        final plugins = context.maybeRead<PluginContributionStore>();
+        final owner = session.owner?.route;
+        final sid = session.durableId;
+        if (plugins != null && owner != null && sid != null) {
+          final contributed = await plugins.completeComposer(
+            text: referenceQuery.raw,
+            sessionId: sid,
+            owner: owner,
+          );
+          if (!mounted || _acTarget.text != text) return;
+          results.insertAll(
+            0,
+            contributed.map(
+              (item) => ComposerReferenceSuggestion(
+                id: item.id,
+                kind: ComposerReferenceKind.contributed,
+                insertText: item.insertText,
+                display: item.title,
+                description: item.description,
+              ),
+            ),
+          );
+        }
+      } else {
+        results = starters;
+      }
+      final seen = <String>{};
+      results = results
+          .where((item) => seen.add(item.insertText.toLowerCase()))
+          .toList(growable: false);
+      setState(() {
+        _referenceQuery = referenceQuery;
+        _referenceSuggestions = results;
+        _emojiQuery = null;
+        _emojiSuggestions = const [];
+        _pathSuggestions = const [];
+        _sessionRefSuggestions = const [];
+        _slashSuggestions = const [];
+        _slashSuggestionIndex = 0;
+      });
+      return;
+    }
+    if (_hasCompletionState) {
+      setState(_clearCompletionState);
     }
   }
 
@@ -5095,6 +5257,45 @@ class _ChatScreenState extends State<ChatScreen> {
     if (p.isDirectory) _refreshSuggestions(replaced);
   }
 
+  void _applyReferenceSuggestion(
+    ComposerReferenceSuggestion suggestion, {
+    bool descend = false,
+  }) {
+    final query = _referenceQuery;
+    if (query == null) return;
+    final current = _acTarget.text;
+    final next = replaceComposerReference(
+      current,
+      query,
+      suggestion,
+      descend: descend,
+    );
+    _acSetText(next);
+    setState(() {
+      _referenceSuggestions = const [];
+      _referenceQuery = null;
+      _slashSuggestionIndex = 0;
+    });
+    _acFocus.requestFocus();
+    if (descend || suggestion.insertText.endsWith(':')) {
+      unawaited(_refreshSuggestions(next));
+    }
+  }
+
+  void _applyEmojiSuggestion(ComposerEmojiSuggestion suggestion) {
+    final query = _emojiQuery;
+    if (query == null) return;
+    final current = _acTarget.text;
+    final next = current.replaceRange(query.start, query.end, suggestion.emoji);
+    _acSetText(next);
+    setState(() {
+      _emojiSuggestions = const [];
+      _emojiQuery = null;
+      _slashSuggestionIndex = 0;
+    });
+    _acFocus.requestFocus();
+  }
+
   void _applySessionRefSuggestion(SessionRefSuggestion suggestion) {
     final current = _acTarget.text;
     final next = current.replaceFirst(
@@ -5109,9 +5310,97 @@ class _ChatScreenState extends State<ChatScreen> {
   void _acceptCronSuggestion() {
     final phrase = _cronSuggestionPhrase;
     if (phrase == null) return;
-    _acSetText('${context.l10n.cronSuggestionPrefix}${_composerCtrl.text}');
+    final draft = _composerCtrl.text.trim();
     setState(() => _cronSuggestionPhrase = null);
-    _acFocus.requestFocus();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            CronScreen(initialPrompt: draft.isEmpty ? phrase : draft),
+      ),
+    );
+  }
+
+  Future<void> _acceptActiveSuggestion(
+    ActiveComposerSuggestion suggestion,
+  ) async {
+    switch (suggestion.kind) {
+      case ComposerSuggestionKind.skill:
+      case ComposerSuggestionKind.github:
+        _acSetText('/${suggestion.id} ${_composerCtrl.text}');
+        _acFocus.requestFocus();
+      case ComposerSuggestionKind.mcpDiscovery:
+      case ComposerSuggestionKind.mcpRepair:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => McpScreen(
+              initialServer: suggestion.id,
+              beginRepair: suggestion.kind == ComposerSuggestionKind.mcpRepair,
+            ),
+          ),
+        );
+      case ComposerSuggestionKind.plugin:
+        final insertText = suggestion.insertText;
+        if (insertText != null && insertText.isNotEmpty) {
+          _acSetText(insertText);
+          _acFocus.requestFocus();
+        }
+    }
+    _activeSuggestionStore?.markHandled(suggestion);
+  }
+
+  Widget _buildActiveSuggestionCard(
+    List<ActiveComposerSuggestion> suggestions,
+  ) {
+    final theme = Theme.of(context);
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 144),
+      margin: const EdgeInsets.only(bottom: 6),
+      child: HermesGlassCard(
+        radius: HermesRadius.card,
+        padding: EdgeInsets.zero,
+        child: Material(
+          type: MaterialType.transparency,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final suggestion in suggestions)
+                ListTile(
+                  dense: true,
+                  leading: Icon(switch (suggestion.kind) {
+                    ComposerSuggestionKind.skill => Icons.auto_awesome_outlined,
+                    ComposerSuggestionKind.github => Icons.code,
+                    ComposerSuggestionKind.mcpDiscovery =>
+                      Icons.extension_outlined,
+                    ComposerSuggestionKind.mcpRepair =>
+                      Icons.build_circle_outlined,
+                    ComposerSuggestionKind.plugin => Icons.extension_outlined,
+                  }, color: theme.colorScheme.primary),
+                  title: Text(switch (suggestion.kind) {
+                    ComposerSuggestionKind.skill =>
+                      context.l10n.chatSuggestionUseSkill(suggestion.id),
+                    ComposerSuggestionKind.github =>
+                      context.l10n.chatSuggestionConfigureGithub,
+                    ComposerSuggestionKind.mcpDiscovery =>
+                      context.l10n.chatSuggestionConnectMcp(suggestion.id),
+                    ComposerSuggestionKind.mcpRepair =>
+                      context.l10n.chatSuggestionRepairMcp(suggestion.id),
+                    ComposerSuggestionKind.plugin =>
+                      suggestion.title ?? suggestion.id,
+                  }),
+                  subtitle: Text(
+                    suggestion.description ??
+                        context.l10n.chatSuggestionTriggerReason(
+                          suggestion.trigger,
+                        ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _acceptActiveSuggestion(suggestion),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _dismissCronSuggestion() {
@@ -5164,8 +5453,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget? _buildSuggestions() {
     if (_slashSuggestions.isEmpty &&
         _pathSuggestions.isEmpty &&
+        _referenceSuggestions.isEmpty &&
+        _emojiSuggestions.isEmpty &&
         _sessionRefSuggestions.isEmpty &&
         !_slashSuggestionQueryActive) {
+      final active = _activeSuggestionStore?.suggestions ?? const [];
+      if (active.isNotEmpty) return _buildActiveSuggestionCard(active);
       return _cronSuggestionPhrase != null
           ? _buildCronSuggestionCard(_cronSuggestionPhrase!)
           : null;
@@ -5276,6 +5569,76 @@ class _ChatScreenState extends State<ChatScreen> {
                     subtitle: Text(suggestion.value),
                     onTap: () => _applySessionRefSuggestion(suggestion),
                   ),
+              ] else if (_referenceSuggestions.isNotEmpty) ...[
+                for (var i = 0; i < _referenceSuggestions.length; i++)
+                  ListTile(
+                    key: ValueKey(
+                      'reference-suggestion-${_referenceSuggestions[i].id}',
+                    ),
+                    dense: true,
+                    selected: i == _slashSuggestionIndex,
+                    leading: Icon(
+                      switch (_referenceSuggestions[i].kind) {
+                        ComposerReferenceKind.file =>
+                          Icons.insert_drive_file_outlined,
+                        ComposerReferenceKind.folder => Icons.folder_outlined,
+                        ComposerReferenceKind.url => Icons.link,
+                        ComposerReferenceKind.image => Icons.image_outlined,
+                        ComposerReferenceKind.tool => Icons.handyman_outlined,
+                        ComposerReferenceKind.git ||
+                        ComposerReferenceKind.diff ||
+                        ComposerReferenceKind.staged =>
+                          Icons.difference_outlined,
+                        ComposerReferenceKind.session =>
+                          Icons.chat_bubble_outline,
+                        ComposerReferenceKind.contributed =>
+                          Icons.extension_outlined,
+                      },
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    title: Text(_referenceSuggestions[i].display),
+                    subtitle: _referenceSuggestions[i].description == null
+                        ? null
+                        : Text(
+                            _referenceSuggestions[i].description!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                    trailing:
+                        _referenceSuggestions[i].isContainer &&
+                            !_referenceSuggestions[i].insertText.endsWith(':')
+                        ? IconButton(
+                            tooltip: context.l10n.commonOpen,
+                            icon: const Icon(Icons.chevron_right),
+                            onPressed: () => _applyReferenceSuggestion(
+                              _referenceSuggestions[i],
+                              descend: true,
+                            ),
+                          )
+                        : null,
+                    onTap: () => _applyReferenceSuggestion(
+                      _referenceSuggestions[i],
+                      descend:
+                          _referenceSuggestions[i].isContainer &&
+                          !_referenceSuggestions[i].insertText.endsWith(':'),
+                    ),
+                  ),
+              ] else if (_emojiSuggestions.isNotEmpty) ...[
+                for (var i = 0; i < _emojiSuggestions.length; i++)
+                  ListTile(
+                    key: ValueKey(
+                      'emoji-suggestion-${_emojiSuggestions[i].shortcode}',
+                    ),
+                    dense: true,
+                    selected: i == _slashSuggestionIndex,
+                    leading: Text(
+                      _emojiSuggestions[i].emoji,
+                      style: const TextStyle(fontSize: 22),
+                    ),
+                    title: Text(':${_emojiSuggestions[i].shortcode}:'),
+                    onTap: () => _applyEmojiSuggestion(_emojiSuggestions[i]),
+                  ),
               ] else
                 for (final p in _pathSuggestions)
                   ListTile(
@@ -5320,6 +5683,8 @@ class _ChatScreenState extends State<ChatScreen> {
         event.logicalKey == LogicalKeyboardKey.arrowDown;
     if (!_slashSuggestionQueryActive &&
         _pathSuggestions.isEmpty &&
+        _referenceSuggestions.isEmpty &&
+        _emojiSuggestions.isEmpty &&
         historyKey) {
       if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
           _composerCtrl.selection.baseOffset <= 0) {
@@ -5343,18 +5708,43 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
     }
-    if (!_slashSuggestionQueryActive && _pathSuggestions.isEmpty) {
+    if (!_slashSuggestionQueryActive &&
+        _pathSuggestions.isEmpty &&
+        _referenceSuggestions.isEmpty &&
+        _emojiSuggestions.isEmpty) {
       return KeyEventResult.ignored;
     }
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       setState(() {
         _slashSuggestions = const [];
         _pathSuggestions = const [];
+        _referenceSuggestions = const [];
+        _emojiSuggestions = const [];
+        _referenceQuery = null;
+        _emojiQuery = null;
         _slashSuggestionQueryActive = false;
       });
       return KeyEventResult.handled;
     }
-    if (_slashSuggestions.isEmpty) {
+    if (event.logicalKey == LogicalKeyboardKey.backspace) {
+      final query = _referenceQuery;
+      if (query != null &&
+          _acTarget.selection.isCollapsed &&
+          _acTarget.selection.extentOffset == query.end) {
+        final ascended = ascendComposerReference(_acTarget.text, query);
+        if (ascended != null) {
+          _acSetText(ascended);
+          unawaited(_refreshSuggestions(ascended));
+          return KeyEventResult.handled;
+        }
+      }
+    }
+    final selectableCount = _slashSuggestions.isNotEmpty
+        ? _slashSuggestions.length
+        : _referenceSuggestions.isNotEmpty
+        ? _referenceSuggestions.length
+        : _emojiSuggestions.length;
+    if (selectableCount == 0) {
       if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
           _composerCtrl.selection.baseOffset <= 0) {
         final previous = _composerHistory.previous();
@@ -5373,14 +5763,31 @@ class _ChatScreenState extends State<ChatScreen> {
       final delta = event.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1;
       setState(() {
         _slashSuggestionIndex =
-            (_slashSuggestionIndex + delta) % _slashSuggestions.length;
+            (_slashSuggestionIndex + delta) % selectableCount;
+        if (_slashSuggestionIndex < 0) {
+          _slashSuggestionIndex += selectableCount;
+        }
       });
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.tab ||
         event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-      _applySlashSuggestion(_slashSuggestions[_slashSuggestionIndex]);
+      if (_slashSuggestions.isNotEmpty) {
+        _applySlashSuggestion(_slashSuggestions[_slashSuggestionIndex]);
+      } else if (_referenceSuggestions.isNotEmpty) {
+        _applyReferenceSuggestion(
+          _referenceSuggestions[_slashSuggestionIndex],
+          descend:
+              event.logicalKey == LogicalKeyboardKey.tab &&
+              _referenceSuggestions[_slashSuggestionIndex].isContainer &&
+              !_referenceSuggestions[_slashSuggestionIndex].insertText.endsWith(
+                ':',
+              ),
+        );
+      } else if (_emojiSuggestions.isNotEmpty) {
+        _applyEmojiSuggestion(_emojiSuggestions[_slashSuggestionIndex]);
+      }
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -5389,464 +5796,64 @@ class _ChatScreenState extends State<ChatScreen> {
   // ------------------------------------------------ session menu actions (3.3)
   Future<void> _toggleYolo() async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     final next = !(_yoloEnabled ?? false);
     try {
       await session.setYoloMode(next);
       if (!mounted) return;
       setState(() => _yoloEnabled = next);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            next ? context.l10n.chatYoloEnabled : context.l10n.chatYoloDisabled,
-          ),
-        ),
+      showHermesToast(
+        context,
+        message: next
+            ? context.l10n.chatYoloEnabled
+            : context.l10n.chatYoloDisabled,
+        kind: HermesToastKind.success,
       );
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatYoloToggleFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatYoloToggleFailed('$e'),
         );
       }
     }
   }
 
-  Future<void> _showSteerDialog() async {
-    final l10n = context.l10n;
-    final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
-    final ctrl = TextEditingController();
-    final text = await showAdaptiveFormDialog<String>(
-      context: context,
-      title: context.l10n.chatSteerMessage,
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        maxLines: 4,
-        decoration: InputDecoration(labelText: context.l10n.chatSteerHint),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(context.l10n.commonCancel),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
-          child: Text(context.l10n.commonSend),
-        ),
-      ],
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
-    if (text == null || text.isEmpty) return;
-    try {
-      await session.steer(text);
-      messenger.showSnackBar(SnackBar(content: Text(l10n.chatSteerInjected)));
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatSteerNowFailed('$e'))),
-        );
-      }
-    }
-  }
+  Future<void> _showSteerDialog() => showChatSteerDialog(context);
 
-  Future<void> _showBackgroundDialog() async {
-    final l10n = context.l10n;
-    final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
-    final ctrl = TextEditingController();
-    final text = await showAdaptiveFormDialog<String>(
-      context: context,
-      title: context.l10n.chatRunInBackground,
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        maxLines: 4,
-        decoration: InputDecoration(
-          labelText: context.l10n.chatBackgroundPrompt,
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(context.l10n.commonCancel),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
-          child: Text(context.l10n.commonSubmit),
-        ),
-      ],
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
-    if (text == null || text.isEmpty) return;
-    try {
-      final taskId = await session.submitBackground(text);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            taskId.isEmpty
-                ? l10n.chatBackgroundSubmitted
-                : l10n.chatBackgroundSubmittedWithId(taskId),
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.chatBackgroundSubmitFailed('$e')),
-          ),
-        );
-      }
-    }
-  }
+  Future<void> _showBackgroundDialog() => showChatBackgroundDialog(context);
 
   Future<void> _branchFromHere([ChatMessage? atMessage]) async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final newId = await session.branchSession(atMessageId: atMessage?.id);
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            newId.isEmpty
-                ? context.l10n.chatBranchCreated
-                : context.l10n.chatBranchCreatedWithId(newId),
-          ),
-        ),
+      showHermesToast(
+        context,
+        message: newId.isEmpty
+            ? context.l10n.chatBranchCreated
+            : context.l10n.chatBranchCreatedWithId(newId),
+        kind: HermesToastKind.success,
       );
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatBranchFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatBranchFailed('$e'),
         );
       }
     }
   }
 
-  Future<void> _showHandoffDialog() async {
-    final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
-    final api = session.api;
-    final runtimeId = session.runtimeId;
-    final sessionId = session.durableId;
-    if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatServerNotConnected)),
+  Future<void> _showHandoffDialog() => showChatHandoffDialog(context);
+
+  Future<void> _showContextPopover(BuildContext anchorContext) =>
+      showChatContextPopover(
+        context,
+        anchorContext,
+        onUsage: (percent) => setState(() => _contextUsagePercent = percent),
       );
-      return;
-    }
-
-    List<MessagingPlatform> platforms;
-    try {
-      platforms = (await api.messagingPlatforms(
-        profile: session.profile ?? session.activeProfile,
-      )).where((platform) => platform.canHandoff).toList(growable: false);
-    } catch (error) {
-      if (mounted && identical(api, session.api)) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.chatHandoffPlatformsFailed('$error')),
-          ),
-        );
-      }
-      return;
-    }
-    if (!mounted ||
-        !identical(api, session.api) ||
-        runtimeId != session.runtimeId ||
-        sessionId != session.durableId) {
-      return;
-    }
-
-    if (platforms.isEmpty) {
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(context.l10n.chatNoHandoffPlatforms),
-          content: Text(context.l10n.chatNoHandoffPlatformsDescription),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(context.l10n.commonGotIt),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    final picked = await showDialog<MessagingPlatform>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(context.l10n.chatHandoffToPlatform),
-        children: [
-          for (final platform in platforms)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(ctx).pop(platform),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.forum_outlined),
-                title: Text(platform.displayName),
-                subtitle: Text(
-                  platform.homeChannelName?.isNotEmpty == true
-                      ? context.l10n.chatHomeChannel(platform.homeChannelName!)
-                      : context.l10n.chatHomeChannelNotSet,
-                ),
-                trailing: platform.gatewayRunning
-                    ? const Icon(
-                        Icons.circle,
-                        size: 10,
-                        color: HermesSemantic.green,
-                      )
-                    : null,
-              ),
-            ),
-        ],
-      ),
-    );
-    if (picked == null || !mounted) return;
-    if (!identical(api, session.api) ||
-        runtimeId != session.runtimeId ||
-        sessionId != session.durableId) {
-      return;
-    }
-
-    final progress = ValueNotifier<String>('pending');
-    var cancelled = false;
-    final dialog = showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          title: Text(context.l10n.chatHandingOffTo(picked.displayName)),
-          content: ValueListenableBuilder<String>(
-            valueListenable: progress,
-            builder: (_, state, _) => Row(
-              children: [
-                const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-                const SizedBox(width: HermesSpacing.md),
-                Expanded(child: Text(_handoffStateLabel(state))),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                cancelled = true;
-                Navigator.of(ctx).pop();
-              },
-              child: Text(context.l10n.commonCancel),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    HandoffResult? result;
-    try {
-      result = await session
-          .handoff(picked.name, onProgress: (state) => progress.value = state)
-          .timeout(const Duration(seconds: 90));
-    } on TimeoutException {
-      result = null;
-    } catch (_) {
-      result = null;
-    }
-    if (mounted && !cancelled) Navigator.of(context, rootNavigator: true).pop();
-    await dialog;
-    progress.dispose();
-    if (!mounted ||
-        cancelled ||
-        !identical(api, session.api) ||
-        runtimeId != session.runtimeId ||
-        sessionId != session.durableId) {
-      return;
-    }
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          result != null && result.ok
-              ? context.l10n.chatHandoffCompletedTo(picked.displayName)
-              : context.l10n.chatHandoffFailed(
-                  result?.error ?? context.l10n.chatHandoffTimeout,
-                ),
-        ),
-      ),
-    );
-  }
-
-  String _handoffStateLabel(String state) => switch (state) {
-    'running' => context.l10n.chatHandoffGatewayRunning,
-    'completed' => context.l10n.chatHandoffCompleted,
-    'failed' => context.l10n.chatHandoffFailedStatus,
-    _ => context.l10n.chatHandoffWaiting,
-  };
-
-  Future<void> _showContextPopover(BuildContext anchorContext) async {
-    final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
-    final usage = await _loadContextUsage(session);
-    if (!mounted || !anchorContext.mounted) return;
-    if (usage != null) {
-      setState(() => _contextUsagePercent = usage.percent);
-    }
-
-    final anchor = anchorContext.findRenderObject()! as RenderBox;
-    final overlay =
-        Overlay.of(anchorContext).context.findRenderObject()! as RenderBox;
-    final anchorRect = Rect.fromPoints(
-      anchor.localToGlobal(Offset.zero, ancestor: overlay),
-      anchor.localToGlobal(
-        anchor.size.bottomRight(Offset.zero),
-        ancestor: overlay,
-      ),
-    );
-    final selected = await showMenu<String>(
-      context: anchorContext,
-      position: RelativeRect.fromRect(anchorRect, Offset.zero & overlay.size),
-      items: [
-        PopupMenuItem<String>(
-          enabled: false,
-          padding: EdgeInsets.zero,
-          child: SizedBox(
-            width: 280,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.l10n.chatContextUsage,
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    usage == null
-                        ? context.l10n.chatNoContextData
-                        : '${usage.percent.round()}% of ${_formatContextLimit(usage.max)}',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  if (usage != null && usage.categories.isEmpty) ...[
-                    const SizedBox(height: 10),
-                    LinearProgressIndicator(
-                      value: (usage.percent / 100).clamp(0, 1),
-                      minHeight: 4,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ],
-                  if (usage != null && usage.categories.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    _ContextUsageBreakdown(categories: usage.categories),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'compress',
-          enabled: !session.readOnly,
-          padding: EdgeInsets.zero,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: Theme.of(context).colorScheme.primaryContainer,
-            child: Row(
-              children: [
-                const Icon(Icons.compress, size: 18),
-                const SizedBox(width: 10),
-                Text(
-                  context.l10n.chatCompressContext,
-                  style: TextStyle(
-                    color: session.readOnly
-                        ? Theme.of(context).disabledColor
-                        : Theme.of(context).colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-    if (selected != 'compress' || !mounted) return;
-
-    try {
-      await session.compress();
-      await session.refreshTranscript();
-      final refreshed = await _loadContextUsage(session);
-      if (!mounted) return;
-      setState(() => _contextUsagePercent = refreshed?.percent);
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatCompressionRequested)),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatCompressionFailed('$error'))),
-      );
-    }
-  }
-
-  Future<ContextUsageSnapshot?> _loadContextUsage(SessionStore session) async {
-    final breakdown = _contextUsageValues(await session.contextBreakdown());
-    if (breakdown != null) return breakdown;
-    return _contextUsageValues(await session.usage());
-  }
-
-  static ContextUsageSnapshot? _contextUsageValues(
-    Map<String, dynamic> payload,
-  ) {
-    Map<String, dynamic> values = payload;
-    for (final key in const ['usage', 'context', 'data', 'result']) {
-      final nested = values[key];
-      if (nested is Map) values = nested.cast<String, dynamic>();
-      if (values.containsKey('context_max')) break;
-    }
-    double? number(String key) {
-      final value = values[key];
-      return value is num ? value.toDouble() : double.tryParse('$value');
-    }
-
-    final used = number('context_used');
-    final max = number('context_max');
-    var percent = number('context_percent');
-    if (used == null || max == null || max <= 0) return null;
-    percent ??= used / max * 100;
-    final rawCategories = values['categories'];
-    final categories = rawCategories is List
-        ? rawCategories
-              .whereType<Map>()
-              .map((e) => e.cast<String, dynamic>())
-              .where((e) => ((e['tokens'] as num?) ?? 0) > 0)
-              .toList(growable: false)
-        : const <Map<String, dynamic>>[];
-    return ContextUsageSnapshot(
-      used: used,
-      max: max,
-      percent: percent,
-      categories: categories,
-    );
-  }
-
-  static String _formatContextLimit(double tokens) {
-    if (tokens >= 1000000) return '${tokens / 1000000}M';
-    if (tokens >= 1000) {
-      final value = tokens / 1000;
-      return '${value == value.roundToDouble() ? value.round() : value.toStringAsFixed(1)}K';
-    }
-    return tokens.round().toString();
-  }
 
   // ----------------------------------------------------- inline editing
   /// WebUI `editMessage` parity (ui.js:18598): the bubble under edit becomes
@@ -5857,17 +5864,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _acDebounce?.cancel();
     final text = _editCtrl.text;
     if (text.isEmpty) {
-      if (_slashSuggestions.isNotEmpty ||
-          _pathSuggestions.isNotEmpty ||
-          _sessionRefSuggestions.isNotEmpty ||
-          _slashSuggestionQueryActive) {
-        setState(() {
-          _slashSuggestions = const [];
-          _pathSuggestions = const [];
-          _sessionRefSuggestions = const [];
-          _slashSuggestionQueryActive = false;
-          _slashSuggestionsLoading = false;
-        });
+      if (_hasCompletionState) {
+        setState(_clearCompletionState);
       }
       return;
     }
@@ -5911,17 +5909,11 @@ class _ChatScreenState extends State<ChatScreen> {
     _editCtrl.clear();
     _editAttachments = const [];
     _editFocus.unfocus();
-    final hadSuggestions =
-        _slashSuggestions.isNotEmpty ||
-        _pathSuggestions.isNotEmpty ||
-        _sessionRefSuggestions.isNotEmpty;
+    final hadSuggestions = _hasCompletionState;
     if (_editingMessageId == null && !hadSuggestions) return;
     setState(() {
       _editingMessageId = null;
-      _slashSuggestions = const [];
-      _pathSuggestions = const [];
-      _sessionRefSuggestions = const [];
-      _slashSuggestionQueryActive = false;
+      _clearCompletionState();
     });
   }
 
@@ -5941,25 +5933,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> _confirmTruncateResubmit({
     required String title,
     required String confirmLabel,
-  }) async {
-    final confirmed = await showDialog<bool>(
+  }) {
+    return showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(context.l10n.chatTruncateWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
+      title: title,
+      message: context.l10n.chatTruncateWarning,
+      confirmLabel: confirmLabel,
     );
-    return confirmed == true;
   }
 
   /// Confirm: re-send through the existing real rewind/edit chain
@@ -5968,7 +5948,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _submitInlineEdit(ChatMessage message) async {
     final l10n = context.l10n;
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     var text = _editCtrl.text.trim();
     if (text.isEmpty && _editAttachments.isEmpty) {
       _cancelInlineEdit();
@@ -6008,8 +5987,10 @@ class _ChatScreenState extends State<ChatScreen> {
         _editCtrl.text = text;
         _editCtrl.selection = TextSelection.collapsed(offset: text.length);
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatEditFailed('$e'))),
+      showHermesErrorSnackBar(
+        context,
+        e,
+        fallback: context.l10n.chatEditFailed('$e'),
       );
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _editingMessageId != message.id) return;
@@ -6028,8 +6009,10 @@ class _ChatScreenState extends State<ChatScreen> {
       await context.read<SessionStore>().restoreToMessage(message);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatRestoreFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.chatRestoreFailed('$error'),
         );
       }
     }
@@ -6053,8 +6036,10 @@ class _ChatScreenState extends State<ChatScreen> {
       await context.read<SessionStore>().resendTurn(anchor, text);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatRestoreFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.chatRestoreFailed('$error'),
         );
       }
     }
@@ -6095,15 +6080,13 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       if (await file.length() > _maxUploadBytes) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                context.l10n.chatFileTooLarge(
-                  _maxUploadBytes ~/ 1024 ~/ 1024,
-                  name,
-                ),
-              ),
+          showHermesToast(
+            context,
+            message: context.l10n.chatFileTooLarge(
+              _maxUploadBytes ~/ 1024 ~/ 1024,
+              name,
             ),
+            kind: HermesToastKind.error,
           );
         }
         return null;
@@ -6111,12 +6094,28 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {
       // Length probe failed (e.g. web stream) — let the upload path decide.
     }
+    Uint8List? bytes;
+    try {
+      bytes = await file.readAsBytes();
+    } catch (error) {
+      // Do not keep an unreadable content:// or ephemeral browser URI in the
+      // tray; it would only defer a guaranteed upload failure until send.
+      if (mounted) {
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.chatAttachmentUploadFailed('$error'),
+        );
+      }
+      return null;
+    }
     return ComposerAttachment(
       kind: _isImageName(name)
           ? ComposerAttachmentKind.image
           : ComposerAttachmentKind.file,
       label: name,
       localPath: file.path,
+      bytes: bytes,
     );
   }
 
@@ -6130,10 +6129,80 @@ class _ChatScreenState extends State<ChatScreen> {
       if (att != null) _stageAttachments([att]);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatAddImageFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatAddImageFailed('$e'),
         );
       }
+    }
+  }
+
+  Future<void> _pasteClipboardImage() async {
+    try {
+      final image = await readClipboardImage();
+      if (!mounted) return;
+      if (image == null || image.bytes.isEmpty) {
+        showHermesToast(context, message: context.l10n.chatClipboardHasNoImage);
+        return;
+      }
+      if (image.bytes.length > _maxUploadBytes) {
+        throw StateError(
+          context.l10n.chatFileTooLarge(
+            _maxUploadBytes ~/ 1024 ~/ 1024,
+            image.filename,
+          ),
+        );
+      }
+      // Clipboard images do not have a stable local path on web and can be
+      // evicted by the OS on mobile. Upload immediately and persist only the
+      // server path; keeping the data URL in a draft/send queue would both
+      // bloat SharedPreferences and lose the image after process restart.
+      // Stage a chip right away (uploading: true) so the tray shows the same
+      // spinner/error feedback as the deferred file/gallery upload path,
+      // instead of leaving the composer looking frozen while this awaits.
+      final occurrenceId =
+          'attachment-${DateTime.now().microsecondsSinceEpoch}';
+      final staged = ComposerAttachment(
+        occurrenceId: occurrenceId,
+        kind: ComposerAttachmentKind.image,
+        label: image.filename,
+        dataUrl: 'data:${image.mimeType};base64,${base64Encode(image.bytes)}',
+        uploading: true,
+      );
+      _stageAttachments([staged]);
+      try {
+        final uploadedPath = await _uploadLocalAttachment(staged);
+        if (!mounted) return;
+        setState(() {
+          _attachments = [
+            for (final a in _attachments)
+              if (a.occurrenceId == occurrenceId)
+                ComposerAttachment(
+                  occurrenceId: occurrenceId,
+                  kind: ComposerAttachmentKind.image,
+                  label: image.filename,
+                  path: uploadedPath,
+                )
+              else
+                a,
+          ];
+        });
+      } catch (error) {
+        _setAttachmentUploadStatus(
+          occurrenceId,
+          uploading: false,
+          error: '$error',
+        );
+        rethrow;
+      }
+    } catch (error) {
+      if (!mounted) return;
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.chatClipboardImageFailed('$error'),
+      );
     }
   }
 
@@ -6148,8 +6217,10 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatAddImageFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatAddImageFailed('$e'),
         );
       }
     }
@@ -6168,8 +6239,10 @@ class _ChatScreenState extends State<ChatScreen> {
       _stageAttachments(staged);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatSelectFilesFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatSelectFilesFailed('$e'),
         );
       }
     }
@@ -6188,8 +6261,9 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       if (dirPath == null || dirPath.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.chatFolderPickerUnavailable)),
+          showHermesToast(
+            context,
+            message: context.l10n.chatFolderPickerUnavailable,
           );
         }
         await _pickFilesToTray();
@@ -6201,12 +6275,9 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (listed.files.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                listed.warning ?? context.l10n.chatNoUploadableFolderFiles,
-              ),
-            ),
+          showHermesToast(
+            context,
+            message: listed.warning ?? context.l10n.chatNoUploadableFolderFiles,
           );
         }
         return;
@@ -6218,17 +6289,20 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       _stageAttachments(staged);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.l10n.chatFolderFilesAttached(staged.length, listed.skipped),
-          ),
+      showHermesToast(
+        context,
+        message: context.l10n.chatFolderFilesAttached(
+          staged.length,
+          listed.skipped,
         ),
+        kind: HermesToastKind.success,
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatSelectFolderFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatSelectFolderFailed('$e'),
         );
       }
     }
@@ -6249,13 +6323,52 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _addUrlAttachment() async {
     final url = await _promptForUrl();
     if (url == null || url.isEmpty) return;
+    final safeUrl = validateComposerUrl(url);
+    if (safeUrl == null) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.chatInvalidPublicUrl,
+          kind: HermesToastKind.error,
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final match = RegExp(
+      r'^https://github\.com/[^/\s]+/[^/\s]+/pull/\d+(?:/[^#\s]*)?#(?:discussion_r|issuecomment-)\d+$',
+    ).hasMatch(safeUrl);
+    if (match) {
+      final session = context.read<SessionStore>();
+      final cwd = _workspaceCwd ?? session.info?.cwd ?? _defaultCwd;
+      final api = session.api;
+      if (cwd != null && cwd.isNotEmpty && api != null) {
+        try {
+          final detail = await api.gitReviewPrComment(cwd, safeUrl);
+          if (detail != null && mounted) {
+            final path = detail['path']?.toString().trim() ?? '';
+            _stageAttachments([
+              ComposerAttachment(
+                kind: ComposerAttachmentKind.review,
+                label: path.isEmpty ? 'PR comment' : path,
+                url: safeUrl,
+                detail: detail,
+              ),
+            ]);
+            return;
+          }
+        } catch (_) {
+          // Keep the user's URL useful when gh is unavailable or unauthenticated.
+        }
+      }
+    }
     _stageAttachments([
       ComposerAttachment(
         kind: ComposerAttachmentKind.url,
-        label: Uri.tryParse(url)?.host.isNotEmpty == true
-            ? Uri.parse(url).host
-            : url,
-        url: url,
+        label: Uri.tryParse(safeUrl)?.host.isNotEmpty == true
+            ? Uri.parse(safeUrl).host
+            : safeUrl,
+        url: safeUrl,
       ),
     ]);
   }
@@ -6310,38 +6423,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // -------------------------------------------------------- URL attachment
-  Future<String?> _promptForUrl() async {
-    final ctrl = TextEditingController();
-    final result = await showAdaptiveFormDialog<String>(
-      context: context,
-      title: context.l10n.chatAttachLink,
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        decoration: InputDecoration(
-          labelText: context.l10n.commonUrl,
-          hintText: 'https://example.com/article.pdf',
-          prefixIcon: const Icon(Icons.link_outlined),
-        ),
-        keyboardType: TextInputType.url,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(context.l10n.commonCancel),
-        ),
-        FilledButton(
-          onPressed: () {
-            final v = ctrl.text.trim();
-            Navigator.of(context).pop(v.isEmpty ? null : v);
-          },
-          child: Text(context.l10n.chatAttach),
-        ),
-      ],
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
-    return result;
-  }
+  Future<String?> _promptForUrl() => promptChatAttachmentUrl(context);
 
   // ------------------------------------------------------------- voice
   /// WebUI parity (boot.js mic button): the transcript lands in the composer
@@ -6442,8 +6524,15 @@ class _ChatScreenState extends State<ChatScreen> {
         !voice.continuousConversation &&
         _autoSpokenReplyId != reply.id) {
       _autoSpokenReplyId = reply.id;
+      final voiceGeneration = voice.generation;
+      final durableSessionId = context.read<SessionStore>().durableId;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !chat.busy && !chat.isStreaming) {
+        if (mounted &&
+            voice.generation == voiceGeneration &&
+            context.read<SessionStore>().durableId == durableSessionId &&
+            !chat.busy &&
+            !chat.isStreaming &&
+            reply.fullText.trim().isNotEmpty) {
           unawaited(voice.speak(reply.fullText));
         }
       });
@@ -6485,6 +6574,37 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _scheduleVoiceBargeIn(ChatStore chat, VoiceStore voice) {
+    if (!voice.continuousConversation ||
+        voice.muted ||
+        voice.bargeMonitoring ||
+        (!chat.busy && !chat.isStreaming && !voice.speaking)) {
+      return;
+    }
+    final session = context.read<SessionStore>();
+    final durableId = session.durableId;
+    unawaited(() async {
+      final text = await voice.monitorBargeIn(() async {
+        HapticFeedback.mediumImpact();
+        if (voice.speaking || voice.streamingSpeechId != null) {
+          await voice.stopSpeaking();
+        }
+        if (chat.busy || chat.isStreaming) {
+          await session.interrupt();
+        }
+      });
+      if (!mounted ||
+          text == null ||
+          text.isEmpty ||
+          session.durableId != durableId ||
+          !voice.continuousConversation) {
+        return;
+      }
+      voice.markWaiting();
+      await _send(text);
+    }());
+  }
+
   Future<void> _speakLastReply() async {
     final chat = context.read<ChatStore>();
     final voice = context.read<VoiceStore>();
@@ -6497,281 +6617,108 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ------------------------------------------------------------- model picker
-  Future<void> _showModelPicker() async {
-    final session = context.read<SessionStore>();
-    final api = connectedApiOrNotify(context, context.read<ConnectionStore>());
-    if (api == null) return;
-    final runtimeId = session.runtimeId;
-    ModelCatalog catalog;
-    try {
-      catalog = await api.modelCatalog();
-    } catch (e) {
-      if (mounted && identical(api, session.api)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatModelsLoadFailed('$e'))),
-        );
-      }
-      return;
-    }
-    if (!mounted ||
-        !identical(api, session.api) ||
-        runtimeId != session.runtimeId) {
-      return;
-    }
-    final info = session.info;
-    final currentProvider = info?.provider?.trim() ?? '';
-    final currentModel = info?.model?.trim() ?? '';
-    if (currentProvider.isNotEmpty && currentModel.isNotEmpty) {
-      catalog = catalog.copyWithCurrent(
-        currentProvider: currentProvider,
-        currentModel: currentModel,
-      );
-    }
-    final preferences = await SharedPreferences.getInstance();
-    if (!mounted ||
-        !identical(api, session.api) ||
-        runtimeId != session.runtimeId) {
-      return;
-    }
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(HermesRadius.sheet),
-      ),
-      builder: (_) => ModelPickerSheet(
-        api: api,
-        initialCatalog: catalog,
-        visibilityStore: ModelVisibilityStore(preferences),
-      ),
-    );
-    if (selected == null) return;
-    if (!mounted ||
-        !identical(api, session.api) ||
-        runtimeId != session.runtimeId) {
-      return;
-    }
-    final idx = selected.indexOf('|');
-    final provider = idx < 0 ? selected : selected.substring(0, idx);
-    final model = idx < 0 ? selected : selected.substring(idx + 1);
-    try {
-      final result = await session.switchCurrentModel(provider, model);
-      if (!mounted ||
-          !identical(api, session.api) ||
-          runtimeId != session.runtimeId) {
-        return;
-      }
-      final applied = result['applied']?.toString() ?? 'now';
-      if (applied == 'deferred') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatModelSwitchDeferred)),
-        );
-      }
-    } catch (e) {
-      if (mounted &&
-          identical(api, session.api) &&
-          runtimeId == session.runtimeId) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.chatModelSwitchFailed('$e'))),
-        );
-      }
-    }
-  }
+  Future<void> _showModelPicker() => showChatModelPicker(context);
 
   // ---------------------------------------------------------- session menu
-  void _showSessionInfo() {
+  void _showSessionInfo() => showChatSessionInfo(context);
+
+  Future<void> _showActiveSessionTray() async {
+    final selected = await showChatActiveSessionTraySheet(context);
+    if (!mounted || selected == null) return;
     final session = context.read<SessionStore>();
-    final info = session.info;
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(HermesRadius.sheet),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                context.l10n.chatSessionInfo,
-                style: HermesType.onSurface(
-                  HermesType.headline,
-                  Theme.of(context),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _infoRow(
-                context.l10n.commonTitle,
-                info?.title ?? context.l10n.chatUntitled,
-              ),
-              _infoRow(context.l10n.chatModel, info?.model ?? '—'),
-              _infoRow(context.l10n.chatProvider, info?.provider ?? '—'),
-              _infoRow(context.l10n.chatWorkingDirectory, info?.cwd ?? '—'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  HermesAgentStatusView(
-                    status: info?.running == true
-                        ? HermesAgentStatus.running
-                        : HermesAgentStatus.idle,
-                    showLabel: true,
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: Text(context.l10n.commonClose),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (selected.request != null) {
+      await _openPendingRequest(selected.request!, fallbackRow: selected.row);
+      return;
+    }
+    if (selected.row.id == session.durableId) return;
+    try {
+      await session.setSessionViewedCount(
+        selected.row.id,
+        selected.row.messageCount ?? 0,
+      );
+      await session.resumeSession(
+        selected.row.id,
+        profile: selected.row.profile,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.sessionResumeFailed('$error'),
+      );
+    }
   }
 
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 76,
-            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
+  Future<void> _openPendingRequest(
+    PendingRequest request, {
+    SessionRow? fallbackRow,
+  }) async {
+    final session = context.read<SessionStore>();
+    final durableId = request.durableSessionId ?? fallbackRow?.id;
+    try {
+      if (durableId?.isNotEmpty == true && durableId != session.durableId) {
+        final owner = request.ownerRoute;
+        if (owner != null) {
+          await session.resumeOwnedSession(durableId!, owner);
+        } else {
+          await session.resumeSession(
+            durableId!,
+            profile: fallbackRow?.profile,
+          );
+        }
+      }
+      if (!mounted) return;
+      await showRequestSheet(
+        context,
+        requestId: request.requestId,
+        ownerRoute: request.ownerRoute,
+        sessionId: request.sessionId ?? request.durableSessionId,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showHermesErrorSnackBar(
+        context,
+        error,
+        fallback: context.l10n.sessionResumeFailed('$error'),
+      );
+    }
   }
 
-  Future<void> _renameSession() async {
-    final session = context.read<SessionStore>();
-    final ctrl = TextEditingController(text: session.info?.title ?? '');
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.chatRenameSession),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: InputDecoration(labelText: context.l10n.commonTitle),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await session.rename(ctrl.text.trim());
-              if (ctx.mounted) Navigator.of(ctx).pop();
-            },
-            child: Text(context.l10n.commonSave),
-          ),
-        ],
-      ),
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
-  }
+  Future<void> _renameSession() => showChatRenameSessionDialog(context);
 
   // ------------------------------------------------ AppBar session more menu
   /// C11/C12 parity: title regeneration + copy session ID / link. Entries
   /// that need a durable session are disabled for a fresh, never-sent chat.
-  Widget _buildSessionMoreMenu(SessionStore session) {
-    final hasDurable = session.durableId != null;
-    final supportsSharing = session.api?.supportsSessionSharing ?? false;
-    return HermesAdaptiveMenuButton<String>(
-      tooltip: context.l10n.chatSessionMenu,
-      icon: const Icon(Icons.more_vert),
-      onSelected: (value) {
-        switch (value) {
-          case 'workspace':
-            _showWorkspacePicker();
-          case 'regen_title':
-            _regenerateTitle();
-          case 'copy_id':
-            _copySessionId();
-          case 'copy_link':
-            _copySessionLink();
-        }
-      },
-      itemBuilder: (ctx) => [
-        PopupMenuItem(
-          value: 'workspace',
-          enabled: hasDurable && !session.readOnly,
-          child: ListTile(
-            leading: const Icon(Icons.drive_file_move_outline),
-            title: Text(context.l10n.chatChangeWorkspace),
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-          ),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem(
-          value: 'regen_title',
-          enabled: hasDurable && !session.readOnly,
-          child: ListTile(
-            leading: const Icon(Icons.auto_awesome_outlined),
-            title: Text(context.l10n.chatRegenerateTitle),
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-          ),
-        ),
-        PopupMenuItem(
-          value: 'copy_id',
-          enabled: hasDurable,
-          child: ListTile(
-            leading: const Icon(Icons.content_copy_outlined),
-            title: Text(context.l10n.chatCopySessionId),
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-          ),
-        ),
-        if (supportsSharing)
-          PopupMenuItem(
-            value: 'copy_link',
-            enabled: hasDurable,
-            child: ListTile(
-              leading: const Icon(Icons.link_outlined),
-              title: Text(context.l10n.chatCopySessionLink),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-            ),
-          ),
-      ],
-    );
-  }
+  Widget _buildSessionMoreMenu(SessionStore session) =>
+      buildChatSessionMoreMenu(
+        context,
+        session,
+        onWorkspace: _showWorkspacePicker,
+        onRegenTitle: _regenerateTitle,
+        onCopyId: _copySessionId,
+        onCopyLink: _copySessionLink,
+      );
 
   Future<void> _regenerateTitle() async {
     final l10n = context.l10n;
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final title = await session.regenerateCurrentTitle();
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            title.isEmpty
-                ? l10n.chatTitleUnchanged
-                : l10n.chatTitleUpdated(title),
-          ),
-        ),
+      showHermesToast(
+        context,
+        message: title.isEmpty
+            ? l10n.chatTitleUnchanged
+            : l10n.chatTitleUpdated(title),
+        kind: title.isEmpty ? HermesToastKind.info : HermesToastKind.success,
       );
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatRegenerateTitleFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatRegenerateTitleFailed('$e'),
         );
       }
     }
@@ -6795,14 +6742,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _copySessionLink() async {
     final l10n = context.l10n;
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     final sid = session.durableId;
     final runtimeId = session.runtimeId;
     if (sid == null) return;
     final api = session.api;
     if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.chatServerNotConnected)),
+      showHermesToast(
+        context,
+        message: l10n.chatServerNotConnected,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -6825,8 +6773,10 @@ class _ChatScreenState extends State<ChatScreen> {
           identical(api, session.api) &&
           runtimeId == session.runtimeId &&
           sid == session.durableId) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatShareLinkFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.chatShareLinkFailed('$error'),
         );
       }
     }
@@ -6836,13 +6786,14 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Desktop parity: inline assistant-footer regenerate action.
   Future<void> _regenerateFromFooter(ChatMessage message) async {
     final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await session.reloadFromMessage(message);
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatRegenerateFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatRegenerateFailed('$e'),
         );
       }
     }
@@ -6871,167 +6822,29 @@ class _ChatScreenState extends State<ChatScreen> {
     _composerFocus.requestFocus();
   }
 
-  void _showMessageMenu(ChatMessage message) {
-    final l10n = context.l10n;
-    final session = context.read<SessionStore>();
-    final messenger = ScaffoldMessenger.of(context);
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.copy),
-              title: Text(context.l10n.chatCopyText),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                // Desktop parity: "Copy text" strips markdown syntax.
-                final text = message.plainText;
-                if (text.isEmpty) return;
-                copyTextOrNotify(
-                  context,
-                  text,
-                  successMessage: context.l10n.commonCopied,
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                _markedMessageIds.contains(_messageMarkerId(message))
-                    ? Icons.bookmark_remove_outlined
-                    : Icons.bookmark_add_outlined,
-              ),
-              title: Text(
-                _markedMessageIds.contains(_messageMarkerId(message))
-                    ? context.l10n.chatUnmarkMessage
-                    : context.l10n.chatMarkMessage,
-              ),
-              onTap: () async {
-                Navigator.of(ctx).pop();
-                await _toggleMessageMarker(message);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.data_object_outlined),
-              title: Text(context.l10n.chatCopyAsMarkdown),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                final text = message.fullText;
-                if (text.isEmpty) return;
-                copyTextOrNotify(
-                  context,
-                  text,
-                  successMessage: context.l10n.chatMarkdownCopied,
-                );
-              },
-            ),
-            if (!session.readOnly && message.role == 'assistant')
-              ListTile(
-                leading: const Icon(Icons.refresh),
-                title: Text(context.l10n.chatRegenerate),
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  try {
-                    await session.reloadFromMessage(message);
-                  } catch (e) {
-                    if (mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            context.l10n.chatRegenerateFailed('$e'),
-                          ),
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-            if (!session.readOnly &&
-                message.role == 'assistant' &&
-                message.isError &&
-                message.errorSurface?.retryable != false)
-              ListTile(
-                leading: const Icon(Icons.replay),
-                title: Text(context.l10n.commonRetry),
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  try {
-                    await session.reloadFromMessage(message);
-                  } catch (e) {
-                    if (mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(context.l10n.chatRetryFailed('$e')),
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-            if (!session.readOnly &&
-                (message.role == 'user' || message.role == 'assistant') &&
-                message.fullText.trim().isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.call_split),
-                title: Text(context.l10n.chatBranchInNewSession),
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  try {
-                    final newId = await session.branchSession(
-                      atMessageId: message.id,
-                    );
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          newId.isEmpty
-                              ? l10n.chatBranchedHere
-                              : l10n.chatBranchedWithId(newId),
-                        ),
-                      ),
-                    );
-                  } catch (e) {
-                    if (mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(context.l10n.chatBranchFailed('$e')),
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-            if (!session.readOnly && message.role == 'user') ...[
-              ListTile(
-                leading: const Icon(Icons.edit_outlined),
-                title: Text(context.l10n.commonEdit),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  // WebUI .msg-edit-area: swap the bubble for an in-place
-                  // editor instead of opening a dialog.
-                  _startInlineEdit(message);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.restore),
-                title: Text(context.l10n.chatRestoreToMessage),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _confirmRestoreMessage(message);
-                },
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
+  void _showMessageMenu(ChatMessage message) => showChatMessageMenu(
+    context,
+    message,
+    isMarked: (m) => _markedMessageIds.contains(_messageMarkerId(m)),
+    onToggleMarker: _toggleMessageMarker,
+    onEdit: _startInlineEdit,
+    onRestore: (m) => _confirmRestoreMessage(m),
+  );
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final connection = context.watch<ConnectionStore>();
     final session = context.read<SessionStore>();
+    final suggestionStore = context.maybeRead<ComposerSuggestionStore>();
+    suggestionStore?.bindPluginContributions(
+      context.maybeRead<PluginContributionStore>(),
+    );
+    if (!identical(suggestionStore, _activeSuggestionStore)) {
+      _activeSuggestionStore?.removeListener(_onActiveSuggestionsChanged);
+      _activeSuggestionStore = suggestionStore;
+      suggestionStore?.addListener(_onActiveSuggestionsChanged);
+    }
     context.select<SessionStore, Object>(
       (store) => Object.hash(
         store.durableId,
@@ -7050,6 +6863,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _locateInitialSearchHit(chat);
     _scheduleContinuousVoice(chat, voice);
+    _scheduleVoiceBargeIn(chat, voice);
     if (voice.wakeDetection != null && !_wakeHandling) {
       _wakeHandling = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -7090,7 +6904,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
 
-    // Auto-scroll is driven by [_ChatTranscriptPanel] transcript callbacks.
+    // Auto-scroll is driven by [ChatTranscriptPanel] transcript callbacks.
 
     final viewportWidth = MediaQuery.of(context).size.width;
     final mediaQuery = MediaQuery.of(context);
@@ -7253,6 +7067,56 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
       actions: [
+        Builder(
+          builder: (context) {
+            final tabs = context.watch<SessionTabStore>();
+            if (tabs.tabs.length < 2) return const SizedBox.shrink();
+            return IconButton(
+              tooltip: context.l10n.chatSessions,
+              icon: Badge(
+                isLabelVisible: tabs.tabs.any((tab) => tab.unread),
+                child: const Icon(Icons.tab),
+              ),
+              onPressed: _showSessionTabs,
+            );
+          },
+        ),
+        Builder(
+          builder: (context) {
+            final tray = Provider.of<ActiveSessionTrayStore?>(
+              context,
+              listen: false,
+            );
+            if (tray == null) return const SizedBox.shrink();
+            return AnimatedBuilder(
+              animation: tray,
+              builder: (context, _) {
+                final total = tray.items.length;
+                final attention = tray.items
+                    .where(
+                      (item) =>
+                          item.state == ActiveSessionState.running ||
+                          item.state == ActiveSessionState.waiting ||
+                          item.state == ActiveSessionState.queued,
+                    )
+                    .length;
+                return Badge(
+                  key: Provider.of<MobileSurfaceStore?>(
+                    context,
+                    listen: false,
+                  )?.targetKey('chat.sessionTray'),
+                  isLabelVisible: attention > 0,
+                  label: Text('$attention'),
+                  child: IconButton(
+                    tooltip: context.l10n.chatSessions,
+                    icon: const Icon(Icons.dynamic_feed_outlined),
+                    onPressed: total == 0 ? null : _showActiveSessionTray,
+                  ),
+                );
+              },
+            );
+          },
+        ),
         IconButton(
           tooltip: context.l10n.chatFindInConversation,
           icon: Icon(_findOpen ? Icons.search_off : Icons.search),
@@ -7296,10 +7160,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         prefixIcon: const Icon(Icons.search),
                       ),
                       textInputAction: TextInputAction.search,
-                      onChanged: (_) {
-                        _findIndex = -1;
-                        _stepFind(chat, forward: true);
-                      },
+                      onChanged: (_) => _scheduleFind(chat),
                       onSubmitted: (_) => _stepFind(chat, forward: true),
                     ),
                   ),
@@ -7356,7 +7217,7 @@ class _ChatScreenState extends State<ChatScreen> {
         Expanded(
           child: Stack(
             children: [
-              _ChatTranscriptPanel(
+              ChatTranscriptPanel(
                 scrollCtrl: _scrollCtrl,
                 scrollCoordinator: _scrollCoordinator,
                 onTranscriptChanged: _onTranscriptChanged,
@@ -7395,7 +7256,7 @@ class _ChatScreenState extends State<ChatScreen> {
               Positioned.fill(
                 child: Selector<ChatStore, int>(
                   selector: (_, store) => store.vibeBurstRevision,
-                  builder: (context, revision, _) => _VibeHeartBurst(
+                  builder: (context, revision, _) => VibeHeartBurst(
                     revision: revision,
                     animationsDisabled: MediaQuery.disableAnimationsOf(context),
                   ),
@@ -7492,21 +7353,24 @@ class _ChatScreenState extends State<ChatScreen> {
     // L/XL use Sessions + Chat + Context and retain page-level navigation
     // because ChatScreen is pushed above AppShell.
     if (hasSessionRail) {
-      return _WithUndoShortcuts(
+      return WithUndoShortcuts(
         onFind: _toggleFind,
         onUndo: () async {
-          final messenger = ScaffoldMessenger.of(context);
           try {
             await session.undoLastTurn();
-            if (mounted) {
-              messenger.showSnackBar(
-                SnackBar(content: Text(l10n.chatLastTurnUndone)),
+            if (context.mounted) {
+              showHermesToast(
+                context,
+                message: l10n.chatLastTurnUndone,
+                kind: HermesToastKind.success,
               );
             }
           } catch (e) {
-            if (mounted) {
-              messenger.showSnackBar(
-                SnackBar(content: Text(l10n.chatUndoFailed('$e'))),
+            if (context.mounted) {
+              showHermesErrorSnackBar(
+                context,
+                e,
+                fallback: l10n.chatUndoFailed('$e'),
               );
             }
           }
@@ -7569,21 +7433,24 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
-    return _WithUndoShortcuts(
+    return WithUndoShortcuts(
       onFind: _toggleFind,
       onUndo: () async {
-        final messenger = ScaffoldMessenger.of(context);
         try {
           await session.undoLastTurn();
-          if (mounted) {
-            messenger.showSnackBar(
-              SnackBar(content: Text(l10n.chatLastTurnUndone)),
+          if (context.mounted) {
+            showHermesToast(
+              context,
+              message: l10n.chatLastTurnUndone,
+              kind: HermesToastKind.success,
             );
           }
         } catch (e) {
-          if (mounted) {
-            messenger.showSnackBar(
-              SnackBar(content: Text(l10n.chatUndoFailed('$e'))),
+          if (context.mounted) {
+            showHermesErrorSnackBar(
+              context,
+              e,
+              fallback: l10n.chatUndoFailed('$e'),
             );
           }
         }
@@ -7734,54 +7601,26 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Profile chip → real profiles API. Selecting a profile updates the sticky
   /// profile used by profile-scoped reads and subsequent backend starts.
   Future<void> _showProfilePicker() async {
-    final session = context.read<SessionStore>();
-    final api = session.api;
-    final messenger = ScaffoldMessenger.of(context);
-    if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatServerNotConnected)),
-      );
-      return;
-    }
-    try {
-      await session.refreshProfiles();
-      if (!mounted) return;
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatProfilesLoadFailed('$e'))),
-        );
-      }
-      return;
-    }
-    if (!mounted) return;
-    if (_profiles.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatNoProfiles)),
-      );
-      return;
-    }
-    final picked = await _showOptionSheet<String>(
-      title: context.l10n.chatSelectProfile,
-      subtitle: context.l10n.chatSelectProfileDescription,
-      current: _activeProfileName ?? '',
-      options: [for (final p in _profiles) (p.name, Icons.person_outline)],
-      selectedLabel: context.l10n.chatCurrentlyActive,
-    );
+    final picked = await showChatProfilePickerSheet(context);
     if (picked == null || !mounted || picked == _activeProfileName) return;
+    final session = context.read<SessionStore>();
     try {
       ++_composerContextGeneration;
       final payload = await session.switchActiveProfile(picked);
       final finalActive = payload.active ?? picked;
       if (!mounted) return;
       setState(() => _applyServerConfig(session.profileConfig));
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatProfileSwitched(finalActive))),
+      showHermesToast(
+        context,
+        message: context.l10n.chatProfileSwitched(finalActive),
+        kind: HermesToastKind.success,
       );
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatProfileSwitchFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatProfileSwitchFailed('$e'),
         );
       }
     }
@@ -7795,10 +7634,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final api = session.api;
     final sessionId = session.durableId;
     final runtimeId = session.runtimeId;
-    final messenger = ScaffoldMessenger.of(context);
     if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatServerNotConnected)),
+      showHermesToast(
+        context,
+        message: context.l10n.chatServerNotConnected,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -7823,101 +7663,12 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
 
     final current = _workspaceCwd ?? session.info?.cwd ?? _defaultCwd ?? '';
-    final seen = <String>{};
-    final options = <(String, IconData)>[];
-    void add(String? path, IconData icon) {
-      final value = (path ?? '').trim();
-      if (value.isEmpty || !seen.add(value)) return;
-      options.add((value, icon));
-    }
-
-    add(_defaultCwd, Icons.folder_special);
-    add(session.info?.cwd, Icons.folder);
-    for (final project in _workspaceProjects) {
-      var path = project['path']?.toString();
-      if (path == null || path.trim().isEmpty) {
-        final repos = project['repos'] as List? ?? const [];
-        for (final repo in repos) {
-          if (repo is Map && (repo['path']?.toString().isNotEmpty ?? false)) {
-            path = repo['path'].toString();
-            break;
-          }
-        }
-      }
-      add(path, Icons.source);
-    }
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * .72,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: Text(context.l10n.chatChangeWorkspace),
-                subtitle: Text(context.l10n.chatChangeWorkspaceDescription),
-              ),
-              ListTile(
-                leading: const Icon(Icons.folder_open_outlined),
-                title: Text(context.l10n.chatBrowseFiles),
-                subtitle: Text(context.l10n.chatBrowseFilesDescription),
-                onTap: () async {
-                  final picked = await Navigator.of(context).push<String>(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          FilesScreen(initialPath: current, pickMode: true),
-                    ),
-                  );
-                  if (picked != null &&
-                      picked.isNotEmpty &&
-                      sheetContext.mounted) {
-                    Navigator.of(sheetContext).pop(picked);
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_location_alt_outlined),
-                title: Text(context.l10n.chatEnterOtherDirectory),
-                subtitle: Text(context.l10n.chatAbsoluteServerPath),
-                onTap: () async {
-                  final custom = await _promptWorkspacePath(current);
-                  if (custom != null && sheetContext.mounted) {
-                    Navigator.of(sheetContext).pop(custom);
-                  }
-                },
-              ),
-              if (options.isNotEmpty) const Divider(height: 1),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: options.length,
-                  itemBuilder: (_, index) {
-                    final (path, icon) = options[index];
-                    final selected = path == current;
-                    return ListTile(
-                      leading: Icon(icon),
-                      title: Text(
-                        path,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: selected
-                          ? const Icon(Icons.check_circle)
-                          : null,
-                      onTap: () => Navigator.of(sheetContext).pop(path),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    final picked = await showChatWorkspacePickerSheet(
+      context,
+      current: current,
+      defaultCwd: _defaultCwd,
+      sessionCwd: session.info?.cwd,
+      projects: _workspaceProjects,
     );
     if (picked == null || !mounted || picked == current) return;
     if (!identical(api, session.api) ||
@@ -7926,8 +7677,9 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     if (sessionId == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.l10n.chatStartSessionBeforeWorkspace)),
+      showHermesToast(
+        context,
+        message: context.l10n.chatStartSessionBeforeWorkspace,
       );
       return;
     }
@@ -7940,140 +7692,35 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
       setState(() => _workspaceCwd = picked);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            context.l10n.chatWorkspaceSwitched(_workspaceBaseName(picked)),
-          ),
-        ),
+      showHermesToast(
+        context,
+        message: context.l10n.chatWorkspaceSwitched(_workspaceBaseName(picked)),
+        kind: HermesToastKind.success,
       );
     } catch (e) {
       if (mounted &&
           identical(api, session.api) &&
           runtimeId == session.runtimeId &&
           sessionId == session.durableId) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.chatWorkspaceSwitchFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.chatWorkspaceSwitchFailed('$e'),
         );
       }
     }
-  }
-
-  Future<String?> _promptWorkspacePath(String current) async {
-    final controller = TextEditingController(text: current);
-    final result = await showAdaptiveFormDialog<String>(
-      context: context,
-      title: context.l10n.chatEnterWorkspacePath,
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        keyboardType: TextInputType.text,
-        decoration: InputDecoration(
-          labelText: context.l10n.chatServerDirectory,
-          hintText: '/home/user/project',
-          helperText: context.l10n.chatServerDirectoryHelp,
-        ),
-        onSubmitted: (value) {
-          final path = value.trim();
-          if (path.isNotEmpty) Navigator.of(context).pop(path);
-        },
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(context.l10n.commonCancel),
-        ),
-        FilledButton(
-          onPressed: () {
-            final path = controller.text.trim();
-            if (path.isNotEmpty) Navigator.of(context).pop(path);
-          },
-          child: Text(context.l10n.commonSwitch),
-        ),
-      ],
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
-    return result?.trim();
   }
 
   /// Difficulty chip → the real reasoning effort in the backend config.
   /// Reads `agent.reasoning_effort` (with older-key fallbacks) and writes the
   /// picked value back through PUT /config.
-  Future<void> _showDifficultyPicker() async {
-    final l10n = context.l10n;
-    final session = context.read<SessionStore>();
-    final api = session.api;
-    final runtimeId = session.runtimeId;
-    final configProfile = session.profile ?? session.activeProfile;
-    final messenger = ScaffoldMessenger.of(context);
-    if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.chatServerNotConnected)),
-      );
-      return;
-    }
-    final current = _reasoningEffort;
-    if (current == null) return; // pill is hidden in this state anyway
-    // WebUI `/reasoning` ladder (commands.js:33): the full effort set the
-    // backend accepts.
-    const levels = [
-      ('none', Icons.block),
-      ('minimal', Icons.eco_outlined),
-      ('low', Icons.sentiment_satisfied_alt),
-      ('medium', Icons.trending_up),
-      ('high', Icons.local_fire_department),
-      ('xhigh', Icons.whatshot_outlined),
-      ('max', Icons.rocket_launch_outlined),
-    ];
-    final options = [
-      ...levels,
-      if (!levels.any((l) => l.$1 == current)) (current, Icons.psychology),
-    ];
-    final picked = await _showOptionSheet<String>(
-      title: context.l10n.chatReasoningEffort,
-      subtitle: context.l10n.chatReasoningEffortDescription,
-      current: current,
-      options: options,
-    );
-    if (picked == null || !mounted || picked == current) return;
-    if (!identical(api, session.api) ||
-        runtimeId != session.runtimeId ||
-        configProfile != (session.profile ?? session.activeProfile)) {
-      return;
-    }
-    // Always write the canonical shape: merge into the existing `agent` map.
-    final patch = {
-      'agent': {
-        ...(_serverConfig['agent'] is Map
-            ? (_serverConfig['agent'] as Map).cast<String, dynamic>()
-            : const <String, dynamic>{}),
-        'reasoning_effort': picked,
-      },
-    };
-    try {
-      await api.putConfig(patch, profile: configProfile);
-      if (!mounted ||
-          !identical(api, session.api) ||
-          runtimeId != session.runtimeId ||
-          configProfile != (session.profile ?? session.activeProfile)) {
-        return;
-      }
-      session.applyProfileConfigPatch(configProfile, patch);
-      setState(() => _serverConfig = {..._serverConfig, ...patch});
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.chatReasoningEffortSet(picked))),
-      );
-    } catch (e) {
-      if (mounted &&
-          identical(api, session.api) &&
-          runtimeId == session.runtimeId &&
-          configProfile == (session.profile ?? session.activeProfile)) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.chatReasoningEffortSetFailed('$e'))),
-        );
-      }
-    }
-  }
+  Future<void> _showDifficultyPicker() => showChatDifficultyPicker(
+    context,
+    current: _reasoningEffort,
+    serverConfig: () => _serverConfig,
+    onApplied: (patch) =>
+        setState(() => _serverConfig = {..._serverConfig, ...patch}),
+  );
 
   /// Tools chip → session-scoped toolset selection when a live session is
   /// bound (WebUI session toolsets chip, A15); otherwise the global list
@@ -8083,10 +7730,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final session = context.read<SessionStore>();
     final api = session.api;
     final runtimeId = session.runtimeId;
-    final messenger = ScaffoldMessenger.of(context);
     if (api == null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.chatServerNotConnected)),
+      showHermesToast(
+        context,
+        message: l10n.chatServerNotConnected,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -8098,18 +7746,16 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     if (!_toolsetsLoaded) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.chatToolsetsLoadFailed)),
+      showHermesToast(
+        context,
+        message: l10n.chatToolsetsLoadFailed,
+        kind: HermesToastKind.error,
       );
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(HermesRadius.sheet),
-      ),
-      builder: (ctx) => StatefulBuilder(
+    await showMobileSheet<void>(
+      context,
+      (ctx) => StatefulBuilder(
         builder: (ctx, setModal) => SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
@@ -8117,19 +7763,6 @@ class _ChatScreenState extends State<ChatScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Text(
                   context.l10n.chatToolConfiguration,
                   style: HermesType.onSurface(
@@ -8149,29 +7782,36 @@ class _ChatScreenState extends State<ChatScreen> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _ToolsetCountChip(
+                    ToolsetCountChip(
                       label: context.l10n.chatCurrentSessionToolsets,
                       count: _sessionToolsetsLoaded
                           ? _toolsetCountLabel(_sessionToolsets)
                           : context.l10n.chatNotConnected,
-                      selected: _toolsetsSessionScoped,
+                      selected: _toolsetsScopeTouched && _toolsetsSessionScoped,
                       onTap: !_sessionToolsetsLoaded
                           ? null
                           : () {
-                              setModal(() => _showGlobalToolsets = false);
+                              setModal(() {
+                                _showGlobalToolsets = false;
+                                _toolsetsScopeTouched = true;
+                              });
                               setState(() {});
                             },
                     ),
-                    _ToolsetCountChip(
+                    ToolsetCountChip(
                       label: context.l10n.chatGlobalCliToolsets,
                       count: _globalCliToolsetsLoaded
                           ? _toolsetCountLabel(_globalCliToolsets)
                           : context.l10n.chatLoadFailed,
-                      selected: !_toolsetsSessionScoped,
+                      selected:
+                          _toolsetsScopeTouched && !_toolsetsSessionScoped,
                       onTap: !_globalCliToolsetsLoaded
                           ? null
                           : () {
-                              setModal(() => _showGlobalToolsets = true);
+                              setModal(() {
+                                _showGlobalToolsets = true;
+                                _toolsetsScopeTouched = true;
+                              });
                               setState(() {});
                             },
                     ),
@@ -8320,15 +7960,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                     _toolsets[i] = t;
                                   });
                                   setState(() {});
-                                  messenger.showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        context.l10n.chatToolsetToggleFailed(
-                                          t.name,
-                                          '$e',
-                                        ),
-                                      ),
-                                    ),
+                                  showHermesErrorSnackBar(
+                                    context,
+                                    e,
+                                    fallback: context.l10n
+                                        .chatToolsetToggleFailed(t.name, '$e'),
                                   );
                                 }
                               },
@@ -8351,1798 +7987,4 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
-  Future<T?> _showOptionSheet<T extends String>({
-    required String title,
-    required String subtitle,
-    required T current,
-    required List<(T, IconData)> options,
-    String? selectedLabel,
-  }) {
-    return showModalBottomSheet<T>(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(HermesRadius.sheet),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                style: HermesType.onSurface(
-                  HermesType.headline,
-                  Theme.of(context),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: options.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) {
-                    final (value, icon) = options[i];
-                    final selected = value == current;
-                    final colors = Theme.of(context).colorScheme;
-                    return Semantics(
-                      selected: selected,
-                      child: ListTile(
-                        leading: Icon(
-                          icon,
-                          color: selected
-                              ? colors.primary
-                              : colors.onSurfaceVariant,
-                        ),
-                        title: Text(
-                          value,
-                          style: TextStyle(
-                            fontWeight: selected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: colors.onSurface,
-                          ),
-                        ),
-                        trailing: selected
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.check_circle,
-                                    color: colors.primary,
-                                  ),
-                                  if (selectedLabel != null) ...[
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      selectedLabel,
-                                      style: TextStyle(
-                                        color: colors.primary,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              )
-                            : null,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            HermesRadius.smallCard,
-                          ),
-                          side: BorderSide(
-                            color: selected
-                                ? colors.primary
-                                : colors.outlineVariant,
-                            width: selected ? 2 : 1,
-                          ),
-                        ),
-                        tileColor: selected
-                            ? colors.primary.withValues(alpha: 0.16)
-                            : null,
-                        onTap: () => Navigator.of(ctx).pop(value),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Ephemeral desktop-parity feedback for the standalone gateway `reaction`
-/// event ("ily", "<3", "good bot"). Persistent per-message reactions
-/// continue to render inside [MessageBubble]; this overlay intentionally owns
-/// no transcript state and never intercepts gestures.
-class _VibeHeartBurst extends StatefulWidget {
-  const _VibeHeartBurst({
-    required this.revision,
-    required this.animationsDisabled,
-  });
-
-  final int revision;
-  final bool animationsDisabled;
-
-  @override
-  State<_VibeHeartBurst> createState() => _VibeHeartBurstState();
-}
-
-class _VibeHeartBurstState extends State<_VibeHeartBurst>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1050),
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant _VibeHeartBurst oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.revision != oldWidget.revision && widget.revision > 0) {
-      if (widget.animationsDisabled) {
-        _controller.value = 0;
-      } else {
-        _controller.forward(from: 0);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.animationsDisabled) return const SizedBox.expand();
-    const hearts = <(double, double, double)>[
-      (0.28, 0.00, 24),
-      (0.40, 0.14, 31),
-      (0.52, 0.04, 27),
-      (0.63, 0.18, 34),
-      (0.73, 0.08, 25),
-    ];
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final t = Curves.easeOutCubic.transform(_controller.value);
-          if (_controller.value == 0 || _controller.isDismissed) {
-            return const SizedBox.expand();
-          }
-          final opacity =
-              (1 -
-                      Curves.easeIn.transform(
-                        ((_controller.value - 0.55) / 0.45).clamp(0.0, 1.0),
-                      ))
-                  .clamp(0.0, 1.0);
-          return LayoutBuilder(
-            builder: (context, constraints) => Stack(
-              clipBehavior: Clip.none,
-              children: [
-                for (final (x, delay, size) in hearts)
-                  if (_controller.value > delay)
-                    Positioned(
-                      left: constraints.maxWidth * x - size / 2,
-                      bottom:
-                          24 +
-                          (constraints.maxHeight *
-                              0.42 *
-                              ((t - delay).clamp(0.0, 1.0))),
-                      child: Opacity(
-                        opacity: opacity,
-                        child: Transform.rotate(
-                          angle: (x - 0.5) * 0.55,
-                          child: Transform.scale(
-                            scale: 0.55 + 0.45 * t,
-                            child: Text('❤️', style: TextStyle(fontSize: size)),
-                          ),
-                        ),
-                      ),
-                    ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Snapshot for transcript list rebuilds (counts + streaming lifecycle).
-///
-/// `streamTick` is deliberately EXCLUDED from equality: it bumps ~30 Hz while
-/// streaming, and rebuilding the whole list per tick re-ran Markdown parsing
-/// for every visible historical bubble. The actively-streaming row subscribes
-/// to the tick itself ([_StreamingBubble]); the list only rebuilds when its
-/// structure changes.
-class _ChatTranscriptSnapshot {
-  const _ChatTranscriptSnapshot({
-    required this.messages,
-    required this.isStreaming,
-    required this.busy,
-    required this.streamingMessageId,
-    required this.streamTick,
-    required this.loadingHistory,
-    required this.hasMoreHistory,
-    required this.loadingTranscript,
-    required this.historyError,
-    required this.hasNewerWindow,
-    required this.versionPreviewSignature,
-    required this.tailStatusLabel,
-    required this.transcriptRevision,
-    required this.transcriptStructureRevision,
-  });
-
-  final List<ChatMessage> messages;
-  final bool isStreaming;
-  final bool busy;
-  final String? streamingMessageId;
-  final int streamTick;
-  final bool loadingHistory;
-  final bool hasMoreHistory;
-  final bool loadingTranscript;
-  final String? historyError;
-  final bool hasNewerWindow;
-  final String? versionPreviewSignature;
-  final String? tailStatusLabel;
-  final int transcriptRevision;
-  final int transcriptStructureRevision;
-
-  factory _ChatTranscriptSnapshot.from(ChatStore chat) {
-    return _ChatTranscriptSnapshot(
-      messages: chat.transcriptStructure,
-      isStreaming: chat.isStreaming,
-      busy: chat.busy,
-      streamingMessageId: chat.streamingMessageId,
-      streamTick: chat.streamTick,
-      loadingHistory: chat.loadingHistory,
-      hasMoreHistory: chat.hasMoreHistory,
-      loadingTranscript: chat.loadingTranscript,
-      historyError: chat.historyError,
-      hasNewerWindow: chat.hasNewerTranscriptWindow,
-      versionPreviewSignature: chat.versionPreviewSignature,
-      tailStatusLabel: chat.tailStatusLabel,
-      transcriptRevision: chat.transcriptRevision,
-      transcriptStructureRevision: chat.transcriptStructureRevision,
-    );
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is _ChatTranscriptSnapshot &&
-        other.isStreaming == isStreaming &&
-        other.busy == busy &&
-        other.streamingMessageId == streamingMessageId &&
-        other.loadingHistory == loadingHistory &&
-        other.hasMoreHistory == hasMoreHistory &&
-        other.loadingTranscript == loadingTranscript &&
-        other.historyError == historyError &&
-        other.hasNewerWindow == hasNewerWindow &&
-        other.versionPreviewSignature == versionPreviewSignature &&
-        other.tailStatusLabel == tailStatusLabel &&
-        other.transcriptRevision == transcriptRevision &&
-        other.transcriptStructureRevision == transcriptStructureRevision &&
-        other.messages.length == messages.length &&
-        (messages.isEmpty || other.messages.last.id == messages.last.id);
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    isStreaming,
-    busy,
-    streamingMessageId,
-    loadingHistory,
-    hasMoreHistory,
-    loadingTranscript,
-    historyError,
-    hasNewerWindow,
-    versionPreviewSignature,
-    tailStatusLabel,
-    transcriptRevision,
-    transcriptStructureRevision,
-    messages.length,
-    messages.isEmpty ? null : messages.last.id,
-  );
-}
-
-class _ChatTranscriptPanel extends StatefulWidget {
-  final ScrollController scrollCtrl;
-  final ChatScrollCoordinator scrollCoordinator;
-  final void Function(int messageCount, int streamTick, bool isStreaming)
-  onTranscriptChanged;
-  final void Function(ChatMessage) onMessageLongPress;
-  final void Function(ChatMessage)? onRegenerate;
-  final void Function(ChatMessage)? onBranch;
-  final void Function(ChatMessage) onJumpToQuestion;
-  final void Function(ChatMessage)? onQuoteMessage;
-  final GlobalKey Function(ChatMessage) keyForMessage;
-  final void Function(String id, bool mounted) onUserMessageMountChanged;
-  final String? highlightMessageId;
-  final String? editingMessageId;
-  final TextEditingController? editController;
-  final FocusNode? editFocusNode;
-  final void Function(ChatMessage)? onEditSubmit;
-  final VoidCallback? onEditCancel;
-
-  /// Re-send the turn version currently previewed (desktop BranchPicker /
-  /// checkpoint "restore" parity).
-  final Future<void> Function()? onRestoreVersion;
-
-  /// F1: inline-edit completions overlay + attach button + staged count.
-  final Widget? editSuggestions;
-  final VoidCallback? onEditAttach;
-  final int editAttachmentCount;
-
-  /// Last transcript/session load failure (ConnectionStore.error). Rendered
-  /// in place of the empty state so a failed load doesn't masquerade as an
-  /// empty session.
-  final String? loadError;
-  final VoidCallback? onRetryLoad;
-  final ValueChanged<String>? onPromptSelected;
-
-  const _ChatTranscriptPanel({
-    required this.scrollCtrl,
-    required this.scrollCoordinator,
-    required this.onTranscriptChanged,
-    required this.onMessageLongPress,
-    this.onRegenerate,
-    this.onBranch,
-    required this.onJumpToQuestion,
-    this.onQuoteMessage,
-    required this.keyForMessage,
-    required this.onUserMessageMountChanged,
-    required this.highlightMessageId,
-    this.editingMessageId,
-    this.editController,
-    this.editFocusNode,
-    this.onEditSubmit,
-    this.onEditCancel,
-    this.onRestoreVersion,
-    this.editSuggestions,
-    this.onEditAttach,
-    this.editAttachmentCount = 0,
-    this.loadError,
-    this.onRetryLoad,
-    this.onPromptSelected,
-  });
-
-  @override
-  State<_ChatTranscriptPanel> createState() => _ChatTranscriptPanelState();
-}
-
-class _ChatTranscriptPanelState extends State<_ChatTranscriptPanel> {
-  int _lastMessageCount = -1;
-  List<ChatTimelineItem> _timeline = const [];
-  int _timelineMessageCount = -1;
-  ChatMessage? _timelineFirst;
-  ChatMessage? _timelineLast;
-  String? _timelineStreamingId;
-  String? _timelineVersionSignature;
-  int _timelineRevision = -1;
-
-  List<ChatTimelineItem> _timelineFor(_ChatTranscriptSnapshot snapshot) {
-    final messages = snapshot.messages;
-    final first = messages.firstOrNull;
-    final last = messages.lastOrNull;
-    if (_timelineMessageCount == messages.length &&
-        identical(_timelineFirst, first) &&
-        identical(_timelineLast, last) &&
-        _timelineStreamingId == snapshot.streamingMessageId &&
-        _timelineVersionSignature == snapshot.versionPreviewSignature &&
-        _timelineRevision == snapshot.transcriptRevision) {
-      return _timeline;
-    }
-    _timelineMessageCount = messages.length;
-    _timelineFirst = first;
-    _timelineLast = last;
-    _timelineStreamingId = snapshot.streamingMessageId;
-    _timelineVersionSignature = snapshot.versionPreviewSignature;
-    _timelineRevision = snapshot.transcriptRevision;
-    final started = Stopwatch()..start();
-    _timeline = buildChatTimeline(
-      messages,
-      preserveMessageId: snapshot.streamingMessageId,
-    );
-    started.stop();
-    final metrics = ClientPerformanceMetrics.instance;
-    if (started.elapsedMicroseconds > metrics.maxTimelineBuildMicros) {
-      metrics.maxTimelineBuildMicros = started.elapsedMicroseconds;
-    }
-    return _timeline;
-  }
-
-  void _notifyTranscriptChanged(_ChatTranscriptSnapshot snapshot) {
-    if (_lastMessageCount != snapshot.messages.length) {
-      _lastMessageCount = snapshot.messages.length;
-      widget.onTranscriptChanged(
-        snapshot.messages.length,
-        snapshot.streamTick,
-        snapshot.isStreaming,
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Selector<ChatStore, _ChatTranscriptSnapshot>(
-      selector: (_, chat) => _ChatTranscriptSnapshot.from(chat),
-      builder: (context, snapshot, _) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _notifyTranscriptChanged(snapshot);
-        });
-        if (snapshot.messages.isEmpty && !snapshot.busy) {
-          if (snapshot.loadingTranscript) {
-            return const Center(
-              key: ValueKey('transcript-loading'),
-              child: CircularProgressIndicator(),
-            );
-          }
-          final loadError = widget.loadError;
-          if (loadError != null) {
-            return _TranscriptLoadError(
-              message: loadError,
-              onRetry: widget.onRetryLoad,
-            );
-          }
-          return _EmptyChat(onPromptSelected: widget.onPromptSelected);
-        }
-        return Column(
-          children: [
-            Expanded(
-              child: _MessageList(
-                snapshot: snapshot,
-                timeline: _timelineFor(snapshot),
-                scrollCtrl: widget.scrollCtrl,
-                onTranscriptChanged: widget.onTranscriptChanged,
-                onMessageLongPress: widget.onMessageLongPress,
-                onRegenerate: widget.onRegenerate,
-                onBranch: widget.onBranch,
-                onJumpToQuestion: widget.onJumpToQuestion,
-                onQuoteMessage: widget.onQuoteMessage,
-                keyForMessage: widget.keyForMessage,
-                onUserMessageMountChanged: widget.onUserMessageMountChanged,
-                highlightMessageId: widget.highlightMessageId,
-                editingMessageId: widget.editingMessageId,
-                editController: widget.editController,
-                editFocusNode: widget.editFocusNode,
-                onEditSubmit: widget.onEditSubmit,
-                onEditCancel: widget.onEditCancel,
-                onRestoreVersion: widget.onRestoreVersion,
-                editSuggestions: widget.editSuggestions,
-                onEditAttach: widget.onEditAttach,
-                editAttachmentCount: widget.editAttachmentCount,
-              ),
-            ),
-            const _BackgroundResumeNotice(),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Desktop `BackgroundResumeNotice` parity: while the session is idle but a
-/// top-level delegated agent is still running in the background, a slim
-/// shimmer line reminds the user the turn will resume when it finishes.
-class _BackgroundResumeNotice extends StatelessWidget {
-  const _BackgroundResumeNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    final busy = context.select<ChatStore, bool>((chat) => chat.busy);
-    final status = context.maybeRead<ComposerStatusStore>();
-    if (busy || status == null) return const SizedBox.shrink();
-    final sid = context.select<SessionStore, String?>(
-      (session) => session.runtimeId ?? session.durableId,
-    );
-    return ListenableBuilder(
-      listenable: status,
-      builder: (context, _) => _buildNotice(context, status, sid),
-    );
-  }
-
-  Widget _buildNotice(
-    BuildContext context,
-    ComposerStatusStore status,
-    String? sid,
-  ) {
-    final running = status
-        .itemsFor(sid)
-        .where(
-          (item) =>
-              item.type == ComposerStatusType.subagent &&
-              item.state == ComposerStatusState.running,
-        )
-        .toList();
-    if (running.isEmpty) return const SizedBox.shrink();
-    final palette = HermesPalette.of(context);
-    return Container(
-      key: const ValueKey('background-resume-notice'),
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-      alignment: Alignment.center,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 12,
-            height: 12,
-            child: CircularProgressIndicator(
-              strokeWidth: 1.6,
-              color: palette.text3,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              running.length == 1
-                  ? context.l10n.chatBackgroundAgentRunning
-                  : context.l10n.chatBackgroundAgentsRunning(running.length),
-              style: TextStyle(fontSize: 11, color: palette.text3),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Message list with date separators (Phase 6 Wave 2): a "today / yesterday /
-/// date" chip is inserted whenever the message day changes.
-class _MessageList extends StatelessWidget {
-  final _ChatTranscriptSnapshot snapshot;
-  final List<ChatTimelineItem> timeline;
-  final ScrollController scrollCtrl;
-  final void Function(int messageCount, int streamTick, bool isStreaming)
-  onTranscriptChanged;
-  final void Function(ChatMessage) onMessageLongPress;
-  final void Function(ChatMessage)? onRegenerate;
-  final void Function(ChatMessage)? onBranch;
-  final void Function(ChatMessage userMessage) onJumpToQuestion;
-  final void Function(ChatMessage)? onQuoteMessage;
-  final GlobalKey Function(ChatMessage) keyForMessage;
-  final void Function(String id, bool mounted) onUserMessageMountChanged;
-  final String? highlightMessageId;
-  final String? editingMessageId;
-  final TextEditingController? editController;
-  final FocusNode? editFocusNode;
-  final void Function(ChatMessage)? onEditSubmit;
-  final VoidCallback? onEditCancel;
-  final Future<void> Function()? onRestoreVersion;
-  final Widget? editSuggestions;
-  final VoidCallback? onEditAttach;
-  final int editAttachmentCount;
-
-  const _MessageList({
-    required this.snapshot,
-    required this.timeline,
-    required this.scrollCtrl,
-    required this.onTranscriptChanged,
-    required this.onMessageLongPress,
-    this.onRegenerate,
-    this.onBranch,
-    required this.onJumpToQuestion,
-    this.onQuoteMessage,
-    required this.keyForMessage,
-    required this.onUserMessageMountChanged,
-    required this.highlightMessageId,
-    this.editingMessageId,
-    this.editController,
-    this.editFocusNode,
-    this.onEditSubmit,
-    this.onEditCancel,
-    this.onRestoreVersion,
-    this.editSuggestions,
-    this.onEditAttach,
-    this.editAttachmentCount = 0,
-  });
-
-  bool _showDateDivider(List<ChatMessage> msgs, int index) {
-    final ts = msgs[index].timestamp?.toLocal();
-    if (ts == null) return false;
-    final day = DateTime(ts.year, ts.month, ts.day);
-    if (index == 0) return true;
-    final prev = msgs[index - 1].timestamp?.toLocal();
-    if (prev == null) return true;
-    return day != DateTime(prev.year, prev.month, prev.day);
-  }
-
-  Widget _wrapRow(BuildContext context, Widget row) {
-    final width = MediaQuery.sizeOf(context).width;
-    return Center(
-      child: ConstrainedBox(
-        key: const ValueKey('transcript-content-column'),
-        constraints: BoxConstraints(maxWidth: width < 600 ? width : 820),
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: width < 600 ? 8 : 12),
-          child: row,
-        ),
-      ),
-    );
-  }
-
-  Widget _messageRow(
-    BuildContext context,
-    ChatTimelineMessage item,
-    List<ChatMessage> messages, {
-    required bool firstForSource,
-    required bool lastForSource,
-  }) {
-    final m = item.message;
-    final logical = item.sourceMessage;
-    final sourceIndex = item.sourceIndex;
-    final assistantLike = logical.role == 'assistant' || logical.interim;
-    final previous = sourceIndex > 0 ? messages[sourceIndex - 1] : null;
-    final continues =
-        previous != null &&
-        (previous.role == 'assistant' || previous.interim) &&
-        assistantLike;
-    final question =
-        logical.role == 'assistant' && !logical.interim && !logical.pending
-        ? item.ownerUserMessage
-        : null;
-    final isEditing =
-        editingMessageId == item.sourceMessage.id &&
-        editController != null &&
-        item.sourceMessage.role == 'user';
-    final isStreaming =
-        snapshot.isStreaming &&
-        snapshot.streamingMessageId == item.sourceMessage.id;
-    // Desktop BranchPicker / checkpoint parity: per-user-turn version nav.
-    final chatStore = context.read<ChatStore>();
-    final versionAnchor = logical.role == 'user'
-        ? ChatStore.turnAnchorKey(logical)
-        : null;
-    final versionTotal = versionAnchor == null
-        ? 1
-        : chatStore.turnVersionCount(versionAnchor);
-    final versionIndex = versionAnchor == null
-        ? 0
-        : chatStore.turnVersionCurrent(versionAnchor);
-    final rowMessage = isStreaming
-        ? (context.read<ChatStore>().streamingMessage ?? m)
-        : m;
-    final children = <Widget>[];
-    if (firstForSource && _showDateDivider(messages, sourceIndex)) {
-      children.add(
-        _DateDivider(
-          date: item.sourceMessage.timestamp?.toLocal() ?? DateTime.now(),
-        ),
-      );
-    }
-    Widget messageRow = AnimatedContainer(
-      key: firstForSource
-          ? keyForMessage(logical)
-          : ValueKey('timeline-row-${item.key}'),
-      duration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : HermesMotion.standard,
-      decoration: BoxDecoration(
-        color: highlightMessageId == logical.id
-            ? Theme.of(context).colorScheme.primary.withValues(alpha: .14)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: isEditing
-          ? _InlineMessageEditor(
-              controller: editController!,
-              focusNode: editFocusNode,
-              onSubmit: () => onEditSubmit?.call(logical),
-              onCancel: onEditCancel,
-              suggestions: editSuggestions,
-              onAttach: onEditAttach,
-              attachmentCount: editAttachmentCount,
-            )
-          : Dismissible(
-              key: ValueKey('msg_dismiss_${item.key}'),
-              direction: onQuoteMessage != null
-                  ? DismissDirection.endToStart
-                  : DismissDirection.none,
-              dismissThresholds: const {DismissDirection.endToStart: .45},
-              confirmDismiss: (_) async {
-                HapticFeedback.lightImpact();
-                onQuoteMessage?.call(logical);
-                return false;
-              },
-              background: const SizedBox.shrink(),
-              secondaryBackground: Container(
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 20),
-                child: Icon(
-                  Icons.reply,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              child: GestureDetector(
-                onLongPress: () {
-                  HapticFeedback.mediumImpact();
-                  onMessageLongPress(logical);
-                },
-                child: isStreaming
-                    ? _StreamingBubble(
-                        fallback: rowMessage,
-                        showRoleHeader:
-                            firstForSource && assistantLike && !continues,
-                        onRegenerate: onRegenerate,
-                        onJumpToQuestion: question == null
-                            ? null
-                            : () => onJumpToQuestion(question),
-                        onTick: (tick) =>
-                            onTranscriptChanged(messages.length, tick, true),
-                      )
-                    : MessageBubble(
-                        message: rowMessage,
-                        showFooter: lastForSource,
-                        showRoleHeader:
-                            firstForSource && assistantLike && !continues,
-                        onRegenerate: onRegenerate,
-                        onBranch: assistantLike ? onBranch : null,
-                        onMore: () => onMessageLongPress(logical),
-                        onJumpToQuestion: question == null
-                            ? null
-                            : () => onJumpToQuestion(question),
-                        isActivelyStreaming: false,
-                        agentReplySender:
-                            (assistantLike &&
-                                firstForSource &&
-                                lastForSource &&
-                                question != null)
-                            ? agentDeliverySender(question.fullText)
-                            : null,
-                        turnVersionTotal: versionTotal,
-                        turnVersionIndex: versionIndex,
-                        onSelectTurnVersion: versionAnchor == null
-                            ? null
-                            : (i) =>
-                                  chatStore.selectTurnVersion(versionAnchor, i),
-                        onRestoreTurnVersion:
-                            (versionAnchor == null ||
-                                versionIndex >= versionTotal - 1)
-                            ? null
-                            : onRestoreVersion,
-                      ),
-              ),
-            ),
-    );
-    if (logical.role == 'user' && firstForSource) {
-      messageRow = _UserMessageMountMarker(
-        messageId: logical.id,
-        onMountChanged: onUserMessageMountChanged,
-        child: messageRow,
-      );
-    }
-    children.add(messageRow);
-    return _wrapRow(
-      context,
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final messages = snapshot.messages;
-    final itemCount = 1 + timeline.length + (snapshot.hasNewerWindow ? 1 : 0);
-    return RefreshIndicator(
-      onRefresh: () async {
-        final session = context.read<SessionStore>();
-        if (session.chat.hasMoreHistory && !session.chat.loadingHistory) {
-          await session.loadOlderMessages();
-        }
-      },
-      child: ListView.builder(
-        controller: scrollCtrl,
-        scrollCacheExtent: const ScrollCacheExtent.pixels(640),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: itemCount,
-        itemBuilder: (context, i) {
-          if (i == 0) {
-            return _wrapRow(
-              context,
-              _HistoryHeader(
-                loadingHistory: snapshot.loadingHistory,
-                hasMoreHistory: snapshot.hasMoreHistory,
-                historyError: snapshot.historyError,
-              ),
-            );
-          }
-          final index = i - 1;
-          if (snapshot.hasNewerWindow && index == timeline.length) {
-            return _wrapRow(
-              context,
-              Center(
-                child: OutlinedButton.icon(
-                  key: const ValueKey('restore-newer-transcript-window'),
-                  onPressed: () {
-                    context.read<ChatStore>().restoreNewerTranscriptWindow();
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (scrollCtrl.hasClients) {
-                        scrollCtrl.jumpTo(scrollCtrl.position.maxScrollExtent);
-                      }
-                    });
-                  },
-                  icon: const Icon(Icons.south),
-                  label: Text(context.l10n.chatBackToNewerMessages),
-                ),
-              ),
-            );
-          }
-          final item = timeline[index];
-          final firstForSource =
-              index == 0 || timeline[index - 1].sourceIndex != item.sourceIndex;
-          final lastForSource =
-              index + 1 >= timeline.length ||
-              timeline[index + 1].sourceIndex != item.sourceIndex;
-          if (item is ChatTimelineToolGroup) {
-            return _wrapRow(
-              context,
-              Container(
-                key: firstForSource
-                    ? keyForMessage(item.sourceMessage)
-                    : ValueKey('timeline-row-${item.key}'),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: ToolGroupCard(
-                  groupId: item.id,
-                  parts: item.tools,
-                  interactions: item.interactions,
-                  detailBuilder: buildToolCallCard,
-                ),
-              ),
-            );
-          }
-          if (item is ChatTimelineTurnActivity) {
-            // Unkeyed rows here used to let ListView's default index-based
-            // element reuse silently attach a *different* turn's stats to a
-            // recycled Element once older messages were prepended by
-            // pagination — visibly wrong content at a given scroll position
-            // ("错屏") once the transcript had enough messages to page.
-            return _wrapRow(
-              context,
-              TurnActivityCard(
-                key: firstForSource
-                    ? keyForMessage(item.sourceMessage)
-                    : ValueKey('timeline-row-${item.key}'),
-                activity: item.activity,
-              ),
-            );
-          }
-          if (item is ChatTimelineChangedFiles) {
-            return _wrapRow(
-              context,
-              Container(
-                key: firstForSource
-                    ? keyForMessage(item.sourceMessage)
-                    : ValueKey('timeline-row-${item.key}'),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: ChangedFilesCard(files: item.files),
-              ),
-            );
-          }
-          return _messageRow(
-            context,
-            item as ChatTimelineMessage,
-            messages,
-            firstForSource: firstForSource,
-            lastForSource: lastForSource,
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _UserMessageMountMarker extends StatefulWidget {
-  const _UserMessageMountMarker({
-    required this.messageId,
-    required this.onMountChanged,
-    required this.child,
-  });
-
-  final String messageId;
-  final void Function(String id, bool mounted) onMountChanged;
-  final Widget child;
-
-  @override
-  State<_UserMessageMountMarker> createState() =>
-      _UserMessageMountMarkerState();
-}
-
-class _UserMessageMountMarkerState extends State<_UserMessageMountMarker> {
-  @override
-  void initState() {
-    super.initState();
-    widget.onMountChanged(widget.messageId, true);
-  }
-
-  @override
-  void didUpdateWidget(covariant _UserMessageMountMarker oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.messageId == widget.messageId &&
-        oldWidget.onMountChanged == widget.onMountChanged) {
-      return;
-    }
-    oldWidget.onMountChanged(oldWidget.messageId, false);
-    widget.onMountChanged(widget.messageId, true);
-  }
-
-  @override
-  void dispose() {
-    widget.onMountChanged(widget.messageId, false);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
-
-/// The actively-streaming bubble: subscribes to the throttled stream tick so
-/// only this row rebuilds during streaming — historical rows keep their
-/// parsed Markdown/tool cards untouched. Reads the live buffer through
-/// [ChatStore.streamingMessage] once per tick.
-class _StreamingBubble extends StatelessWidget {
-  final ChatMessage fallback;
-  final bool showRoleHeader;
-  final void Function(ChatMessage)? onRegenerate;
-  final VoidCallback? onJumpToQuestion;
-  final void Function(int streamTick) onTick;
-
-  const _StreamingBubble({
-    required this.fallback,
-    required this.showRoleHeader,
-    this.onRegenerate,
-    this.onJumpToQuestion,
-    required this.onTick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Selector<ChatStore, int>(
-      selector: (_, chat) => chat.streamTick,
-      builder: (context, tick, _) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => onTick(tick));
-        final live = context.read<ChatStore>().streamingMessage;
-        return MessageBubble(
-          message: live != null && live.id == fallback.id ? live : fallback,
-          showRoleHeader: showRoleHeader,
-          onRegenerate: onRegenerate,
-          onJumpToQuestion: onJumpToQuestion,
-          isActivelyStreaming: true,
-        );
-      },
-    );
-  }
-}
-
-/// WebUI `.msg-edit-area` parity: an in-place multiline editor that replaces
-/// the user bubble while editing. Layout mirrors the user bubble (§6.5);
-/// desktop keeps Enter/Esc shortcuts, touch platforms rely on buttons.
-class _InlineMessageEditor extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode? focusNode;
-  final VoidCallback onSubmit;
-  final VoidCallback? onCancel;
-
-  /// F1: slash / @path / @session completions overlay (built by the screen),
-  /// an attach-image button, and the count of staged attachments.
-  final Widget? suggestions;
-  final VoidCallback? onAttach;
-  final int attachmentCount;
-
-  const _InlineMessageEditor({
-    required this.controller,
-    this.focusNode,
-    required this.onSubmit,
-    this.onCancel,
-    this.suggestions,
-    this.onAttach,
-    this.attachmentCount = 0,
-  });
-
-  static bool _isTouchPlatform(TargetPlatform platform) {
-    return platform == TargetPlatform.android ||
-        platform == TargetPlatform.iOS ||
-        platform == TargetPlatform.fuchsia;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
-    final platform = Theme.of(context).platform;
-    final touch = _isTouchPlatform(platform);
-    final width = MediaQuery.sizeOf(context).width;
-    final maxWidth = width >= HermesBreakpoints.tablet
-        ? HermesLayout.contentNarrow
-        : width * 0.9;
-    final onBubble = palette.bubbleUserText;
-    final hint = touch
-        ? context.l10n.chatEditMessageHint
-        : context.l10n.chatEditMessageKeyboardHint;
-    final cancelLabel = touch
-        ? context.l10n.commonCancel
-        : context.l10n.chatCancelKeyboardHint;
-
-    return Align(
-      alignment: Alignment.centerRight,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // F1: completions overlay sits above the edit bubble, like the
-            // main composer's suggestions card.
-            if (suggestions != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: suggestions,
-              ),
-            Container(
-              margin: const EdgeInsets.only(top: 6, bottom: 10),
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-              decoration: BoxDecoration(
-                color: palette.bubbleUser,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(HermesRadius.bubble),
-                  topRight: Radius.circular(HermesRadius.bubble),
-                  bottomLeft: Radius.circular(HermesRadius.bubble),
-                  bottomRight: Radius.circular(4),
-                ),
-                border: Border.all(
-                  color: onBubble.withValues(alpha: 0.55),
-                  width: 1.4,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  CallbackShortcuts(
-                    bindings: {
-                      const SingleActivator(LogicalKeyboardKey.escape):
-                          onCancel ?? () {},
-                    },
-                    child: Focus(
-                      onKeyEvent: (node, event) =>
-                          handleChatEnterToSend(node, event, onSubmit),
-                      child: TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        minLines: 1,
-                        maxLines: 8,
-                        cursorColor: onBubble,
-                        textInputAction: TextInputAction.newline,
-                        style: HermesType.messageBody.copyWith(
-                          color: onBubble,
-                          height: 1.5,
-                        ),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          border: InputBorder.none,
-                          hintText: hint,
-                          hintStyle: HermesType.messageBody.copyWith(
-                            color: onBubble.withValues(alpha: 0.55),
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      if (onAttach != null)
-                        IconButton(
-                          tooltip: context.l10n.chatAddImage,
-                          visualDensity: VisualDensity.compact,
-                          color: onBubble,
-                          onPressed: onAttach,
-                          icon: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              const Icon(
-                                Icons.add_photo_alternate_outlined,
-                                size: 18,
-                              ),
-                              Positioned(
-                                right: -6,
-                                top: -4,
-                                child: HermesBadge(count: attachmentCount),
-                              ),
-                            ],
-                          ),
-                        ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: onCancel,
-                        style: TextButton.styleFrom(
-                          foregroundColor: onBubble,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: Text(cancelLabel),
-                      ),
-                      const SizedBox(width: 4),
-                      FilledButton.tonalIcon(
-                        onPressed: onSubmit,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: onBubble.withValues(alpha: 0.18),
-                          foregroundColor: onBubble,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        icon: const Icon(Icons.check, size: 16),
-                        label: Text(context.l10n.chatSendEdit),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DateDivider extends StatelessWidget {
-  final DateTime date;
-  const _DateDivider({required this.date});
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(date.year, date.month, date.day);
-    final diff = today.difference(day).inDays;
-    final label = switch (diff) {
-      0 => context.l10n.chatToday,
-      1 => context.l10n.chatYesterday,
-      _ => context.l10n.chatMonthDay(date.month, date.day),
-    };
-    final palette = HermesPalette.of(context);
-    return Padding(
-      key: const ValueKey('transcript-date-divider'),
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Expanded(child: Divider(height: 1, color: palette.border)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: palette.text3),
-            ),
-          ),
-          Expanded(child: Divider(height: 1, color: palette.border)),
-        ],
-      ),
-    );
-  }
-}
-
-class _HistoryHeader extends StatelessWidget {
-  final bool loadingHistory;
-  final bool hasMoreHistory;
-  final String? historyError;
-
-  const _HistoryHeader({
-    required this.loadingHistory,
-    required this.hasMoreHistory,
-    this.historyError,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
-    if (loadingHistory) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: palette.text3,
-            ),
-          ),
-        ),
-      );
-    }
-    if (historyError != null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Center(
-          child: TextButton.icon(
-            key: const ValueKey('history-retry'),
-            onPressed: () => context.read<SessionStore>().loadOlderMessages(),
-            icon: const Icon(Icons.refresh, size: 16),
-            label: Text(context.l10n.chatOlderMessagesLoadFailed),
-          ),
-        ),
-      );
-    }
-    if (hasMoreHistory) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Center(
-          child: Text(
-            context.l10n.chatLoadOlderMessagesHint,
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(color: palette.text3),
-          ),
-        ),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Center(
-        child: Text(
-          context.l10n.chatAllHistoryShown,
-          style: Theme.of(
-            context,
-          ).textTheme.labelSmall?.copyWith(color: palette.text3),
-        ),
-      ),
-    );
-  }
-}
-
-class _TranscriptLoadError extends StatelessWidget {
-  const _TranscriptLoadError({required this.message, this.onRetry});
-
-  final String message;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_outlined, size: 42, color: palette.text3),
-            const SizedBox(height: 12),
-            Text(context.l10n.chatTranscriptLoadFailed),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            if (onRetry != null) ...[
-              const SizedBox(height: 12),
-              FilledButton.tonalIcon(
-                key: const ValueKey('transcript-retry'),
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: Text(context.l10n.commonReload),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyChat extends StatelessWidget {
-  const _EmptyChat({this.onPromptSelected});
-
-  final ValueChanged<String>? onPromptSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.psychology_alt_outlined,
-              size: 56,
-              color: HermesSemantic.purple.withValues(alpha: 0.6),
-            ),
-            const SizedBox(height: 12),
-            Text(context.l10n.chatEmptyTitle),
-            const SizedBox(height: 4),
-            Text(
-              context.l10n.chatEmptyDescription,
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-            if (onPromptSelected != null) ...[
-              const SizedBox(height: 20),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final prompt in [
-                    (
-                      context.l10n.chatStarterExplainProject,
-                      context.l10n.chatStarterExplainProjectPrompt,
-                    ),
-                    (
-                      context.l10n.chatStarterReviewChanges,
-                      context.l10n.chatStarterReviewChangesPrompt,
-                    ),
-                    (
-                      context.l10n.chatStarterDebugIssue,
-                      context.l10n.chatStarterDebugIssuePrompt,
-                    ),
-                  ])
-                    ActionChip(
-                      avatar: const Icon(Icons.auto_awesome_outlined, size: 16),
-                      label: Text(prompt.$1),
-                      onPressed: () => onPromptSelected!(prompt.$2),
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Compact session list for the tablet chat layout (spec §176 left rail).
-class TabletSessionRail extends StatefulWidget {
-  final double width;
-  final Future<void> Function(SessionRow row) onOpen;
-  final Future<void> Function() onNew;
-  final List<SessionRow>? rows;
-  final String? currentId;
-
-  const TabletSessionRail({
-    super.key,
-    required this.width,
-    required this.onOpen,
-    required this.onNew,
-    this.rows,
-    this.currentId,
-  });
-
-  @override
-  State<TabletSessionRail> createState() => _TabletSessionRailState();
-}
-
-class _TabletSessionRailState extends State<TabletSessionRail> {
-  final Set<String> _expandedIds = {};
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.rows == null) {
-      context.read<SessionStore>().refreshList(limit: HermesPolicy.pageSize);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final session = context.watch<SessionStore>();
-    final rows = widget.rows ?? session.sessions ?? [];
-    final items = buildVisibleSessionTree(rows, _expandedIds);
-    final parentIds = {
-      for (final row in rows)
-        if (row.parentSessionId?.isNotEmpty == true) row.parentSessionId!,
-    };
-    final currentId = widget.currentId ?? session.durableId;
-
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      child: SizedBox(
-        width: widget.width,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 8, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      context.l10n.chatSessions,
-                      style: HermesType.onSurface(
-                        HermesType.headline,
-                        Theme.of(context),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: rows.isEmpty
-                  ? Center(
-                      child: Text(
-                        context.l10n.chatNoSessions,
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: items.length,
-                      itemBuilder: (context, i) {
-                        final item = items[i];
-                        final s = item.row;
-                        final selected = s.id == currentId;
-                        final hasChildren = parentIds.contains(s.id);
-                        final expanded = _expandedIds.contains(s.id);
-                        return ListTile(
-                          key: ValueKey('tablet-session-tile-${s.id}'),
-                          dense: true,
-                          contentPadding: EdgeInsets.only(
-                            left: 16 + item.depth * 18.0,
-                            right: 16,
-                          ),
-                          selected: selected,
-                          selectedTileColor: Theme.of(
-                            context,
-                          ).colorScheme.primaryContainer,
-                          leading: s.needsAttention || s.isActivelyWorking
-                              ? SessionStatusIndicator(
-                                  attention: s.needsAttention,
-                                  working: s.isActivelyWorking,
-                                  size: 18,
-                                )
-                              : Icon(
-                                  key: ValueKey(
-                                    'tablet-session-leading-${s.id}',
-                                  ),
-                                  item.depth > 0
-                                      ? Icons.account_tree_outlined
-                                      : sessionSourceIcon(s),
-                                  size: 18,
-                                ),
-                          title: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  s.title?.isNotEmpty == true
-                                      ? s.title!
-                                      : context.l10n.chatUntitledSession,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: selected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                              SessionMetaBadges(row: s, iconSize: 12),
-                            ],
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (s.preview?.trim().isNotEmpty == true)
-                                Text(
-                                  s.preview!.trim(),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              Text(
-                                [
-                                  context.l10n.chatMessageCount(
-                                    s.messageCount ?? 0,
-                                  ),
-                                  context.l10n.chatToolCount(s.toolCallCount),
-                                  '${s.apiCallCount} API',
-                                  '${_compactSessionTokens(s.totalTokens)} Token',
-                                  if ((s.actualCostUsd ?? s.estimatedCostUsd) >
-                                      0)
-                                    '\$${(s.actualCostUsd ?? s.estimatedCostUsd).toStringAsFixed(4)}',
-                                  if (s.model?.isNotEmpty == true) s.model!,
-                                  if (s.profile?.isNotEmpty == true) s.profile!,
-                                  sessionSourceLabel(s),
-                                ].join(' · '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                            ],
-                          ),
-                          trailing: hasChildren
-                              ? IconButton(
-                                  key: ValueKey(
-                                    'tablet-session-toggle-${s.id}',
-                                  ),
-                                  tooltip: expanded
-                                      ? context.l10n.chatCollapseSubsessions
-                                      : context.l10n.chatExpandSubsessions,
-                                  visualDensity: VisualDensity.compact,
-                                  iconSize: 18,
-                                  onPressed: () => setState(() {
-                                    if (!_expandedIds.add(s.id)) {
-                                      _expandedIds.remove(s.id);
-                                    }
-                                  }),
-                                  icon: Icon(
-                                    expanded
-                                        ? Icons.expand_more
-                                        : Icons.chevron_right,
-                                  ),
-                                )
-                              : null,
-                          onTap: () => widget.onOpen(s),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-String _compactSessionTokens(int value) {
-  if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
-  if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)}K';
-  return '$value';
-}
-
-class _ToolsetCountChip extends StatelessWidget {
-  final String label;
-  final String count;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  const _ToolsetCountChip({
-    required this.label,
-    required this.count,
-    this.selected = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: selected
-          ? scheme.primaryContainer
-          : scheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(HermesRadius.card),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(HermesRadius.card),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          child: Text(
-            '$label：$count',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: selected
-                  ? scheme.onPrimaryContainer
-                  : scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Desktop-parity Ctrl+Z / Cmd+Z undo wrapper (see use-composer-undo.ts).
-///
-/// Listens for the platform undo intent and fires [onUndo]. Intentionally a
-/// lightweight wrapper so the Shortcuts/Action layer doesn't double-trigger
-/// on editable TextFields inside (composer already handles its own undo).
-class _WithUndoShortcuts extends StatelessWidget {
-  final Widget child;
-  final Future<void> Function() onUndo;
-  final VoidCallback onFind;
-
-  const _WithUndoShortcuts({
-    required this.child,
-    required this.onUndo,
-    required this.onFind,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Ctrl+Z / Cmd+Z undo is a hardware-keyboard affordance; touch platforms
-    // get the plain child without a Shortcuts layer intercepting key events.
-    final platform = Theme.of(context).platform;
-    if (platform == TargetPlatform.android ||
-        platform == TargetPlatform.iOS ||
-        platform == TargetPlatform.fuchsia) {
-      return child;
-    }
-    return Shortcuts(
-      shortcuts: const {
-        SingleActivator(LogicalKeyboardKey.keyZ, control: true): _UndoIntent(),
-        SingleActivator(LogicalKeyboardKey.keyZ, meta: true): _UndoIntent(),
-        SingleActivator(LogicalKeyboardKey.keyF, control: true): _FindIntent(),
-        SingleActivator(LogicalKeyboardKey.keyF, meta: true): _FindIntent(),
-      },
-      child: Actions(
-        actions: {
-          _UndoIntent: CallbackAction<_UndoIntent>(
-            onInvoke: (_) async {
-              await onUndo();
-              return null;
-            },
-          ),
-          _FindIntent: CallbackAction<_FindIntent>(
-            onInvoke: (_) {
-              onFind();
-              return null;
-            },
-          ),
-        },
-        child: child,
-      ),
-    );
-  }
-}
-
-/// Parsed `session.context_breakdown` result: total usage plus the optional
-/// per-source token categories (system prompt / tools / history / files —
-/// desktop parity), used by the context-usage popover.
-class ContextUsageSnapshot {
-  final double used;
-  final double max;
-  final double percent;
-  final List<Map<String, dynamic>> categories;
-
-  const ContextUsageSnapshot({
-    required this.used,
-    required this.max,
-    required this.percent,
-    required this.categories,
-  });
-}
-
-Color? _parseHexColor(dynamic value) {
-  final hex = value?.toString().trim();
-  if (hex == null || hex.isEmpty) return null;
-  final cleaned = hex.startsWith('#') ? hex.substring(1) : hex;
-  final normalized = cleaned.length == 6 ? 'FF$cleaned' : cleaned;
-  final parsed = int.tryParse(normalized, radix: 16);
-  return parsed == null ? null : Color(parsed);
-}
-
-/// A slim colored segment bar plus a scrollable legend list — the mobile
-/// take on desktop's `ContextUsagePanel`, which shows the same categories as
-/// hover-labeled bar segments; here they're tappable-height rows instead.
-class _ContextUsageBreakdown extends StatelessWidget {
-  final List<Map<String, dynamic>> categories;
-
-  const _ContextUsageBreakdown({required this.categories});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final fallbackColors = [
-      theme.colorScheme.primary,
-      theme.colorScheme.secondary,
-      theme.colorScheme.tertiary,
-      theme.colorScheme.error,
-      theme.colorScheme.outline,
-    ];
-    final total = categories.fold<double>(
-      0,
-      (sum, c) => sum + (((c['tokens'] as num?) ?? 0).toDouble()),
-    );
-    Color colorFor(int index, Map<String, dynamic> category) =>
-        _parseHexColor(category['color']) ??
-        fallbackColors[index % fallbackColors.length];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: SizedBox(
-            height: 5,
-            child: Row(
-              children: [
-                for (var i = 0; i < categories.length; i++)
-                  Expanded(
-                    flex: (((categories[i]['tokens'] as num?) ?? 0) * 1000)
-                        .round()
-                        .clamp(1, 1 << 30),
-                    child: Container(color: colorFor(i, categories[i])),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 180),
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                for (var i = 0; i < categories.length; i++)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: colorFor(i, categories[i]),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            categories[i]['label']?.toString() ??
-                                categories[i]['id']?.toString() ??
-                                '',
-                            style: theme.textTheme.bodySmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Text(
-                          _ChatScreenState._formatContextLimit(
-                            (((categories[i]['tokens'] as num?) ?? 0))
-                                .toDouble(),
-                          ),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        if (total <= 0) const SizedBox.shrink(),
-      ],
-    );
-  }
-}
-
-class _UndoIntent extends Intent {
-  const _UndoIntent();
-}
-
-class _FindIntent extends Intent {
-  const _FindIntent();
 }

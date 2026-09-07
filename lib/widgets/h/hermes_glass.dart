@@ -1,5 +1,8 @@
-/// HermesGlassCard — core surface component (Phase 6: solid card + border +
-/// shadow per the H5 design system; the old translucent look is gone, ADR 0004).
+/// HermesGlassCard — core surface component (design-system.md §6.3: solid
+/// card + border + shadow; the old translucent look is gone, ADR 0004).
+///
+/// 命名说明：名字里的 "Glass" 是历史遗留——组件早已改为实心卡片，但因调用方
+/// 遍布全仓库而保留旧名，不要再按字面理解为玻璃拟态。
 library;
 
 import 'package:flutter/material.dart';
@@ -65,18 +68,24 @@ class HermesSectionHeader extends StatelessWidget {
   final String title;
   final Widget? trailing;
 
-  const HermesSectionHeader({super.key, required this.title, this.trailing});
+  /// 覆盖默认 padding（fromLTRB(16, 18, 16, 8)）。移动端分组标签等已有
+  /// 布局用此保持原位（见 HermesMobileSectionLabel 兼容委托）。
+  final EdgeInsetsGeometry? padding;
+
+  const HermesSectionHeader({
+    super.key,
+    required this.title,
+    this.trailing,
+    this.padding,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        HermesSpacing.md,
-        18,
-        HermesSpacing.md,
-        8,
-      ),
+      padding:
+          padding ??
+          const EdgeInsets.fromLTRB(HermesSpacing.md, 18, HermesSpacing.md, 8),
       child: Row(
         children: [
           Expanded(

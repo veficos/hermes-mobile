@@ -81,11 +81,11 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get botGroupRoundCapReached =>
-      'This round of discussion reached its limit. Send a new message to continue.';
+      'このディスカッションのラウンドは上限に達しました。新しいメッセージを送信すると続行できます。';
 
   @override
   String get botGroupMessageCapReached =>
-      'This conversation reached its message limit. Send a new message to continue.';
+      'この会話はメッセージ数の上限に達しました。新しいメッセージを送信すると続行できます。';
 
   @override
   String get botRoutineFieldsRequired => 'タスク名、指示、スケジュールは必須です';
@@ -393,6 +393,50 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get appearanceKeepAwakeDesc => 'チャットを開いている間、画面が自動ロックされないようにします';
+
+  @override
+  String get embedPrivacySettingsTitle => '外部コンテンツのプライバシー';
+
+  @override
+  String get embedPrivacySettingsDescription =>
+      'メッセージのプレビューが YouTube や Spotify などの外部サービスに接続できるかを管理します。';
+
+  @override
+  String get embedModeAsk => '毎回確認';
+
+  @override
+  String get embedModeAlways => '常に許可';
+
+  @override
+  String get embedModeOff => 'オフ';
+
+  @override
+  String embedClearAllowed(int count) {
+    return '許可済みサービスを消去（$count）';
+  }
+
+  @override
+  String richLinkPrivacyTitle(String provider) {
+    return '$provider のコンテンツを読み込みますか？';
+  }
+
+  @override
+  String get richLinkPrivacyDescription =>
+      'このプレビューを読み込むと外部サービスに接続し、IP アドレス、参照元、Cookie が共有される場合があります。';
+
+  @override
+  String get richLinkLoadOnce => '今回のみ読み込む';
+
+  @override
+  String richLinkAlwaysAllow(String provider) {
+    return '$provider を常に許可';
+  }
+
+  @override
+  String get richLinkOpenOnly => 'リンクのみ開く';
+
+  @override
+  String get richLinkCloseAnotherPreview => '先に他のライブプレビューを閉じてください。';
 
   @override
   String get appearanceModeDark => 'ダーク';
@@ -1489,6 +1533,34 @@ class AppLocalizationsJa extends AppLocalizations {
   String get chatSavedPrompts => '保存済みのプロンプト';
 
   @override
+  String get chatRecentInputs => '最近の入力';
+
+  @override
+  String chatPluginPrepareFailed(String error) {
+    return 'プラグインがメッセージを処理できませんでした: $error';
+  }
+
+  @override
+  String get chatPasteImage => '画像を貼り付け';
+
+  @override
+  String get workspaceLayoutBalanced => '2ペイン · 1:1';
+
+  @override
+  String get workspaceLayoutMainWide => 'メインを広く · 2:1';
+
+  @override
+  String get workspaceLayoutToolsWide => 'ツールを広く · 1:2';
+
+  @override
+  String get chatClipboardHasNoImage => 'クリップボードに画像がありません';
+
+  @override
+  String chatClipboardImageFailed(String error) {
+    return 'クリップボード画像を貼り付けられませんでした: $error';
+  }
+
+  @override
   String chatSavedPromptsLoadFailed(String error) {
     return '保存済みのプロンプトを読み込めませんでした：$error';
   }
@@ -1498,6 +1570,21 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get chatSearchLoadedHistory => '読み込み済みの履歴を検索';
+
+  @override
+  String get chatHistoryLocatorPartial =>
+      '古いメッセージはまだ読み込まれていないため、検索結果が不完全な場合があります';
+
+  @override
+  String get chatLoadAllHistory => 'すべての履歴を読み込む';
+
+  @override
+  String get chatLoadingAllHistory => 'すべての履歴を読み込み中…';
+
+  @override
+  String chatLoadAllHistoryFailed(Object error) {
+    return '履歴を読み込めませんでした：$error';
+  }
 
   @override
   String chatSelectFilesFailed(String error) {
@@ -3423,6 +3510,22 @@ class AppLocalizationsJa extends AppLocalizations {
   String get previewRefresh => 'プレビューを更新';
 
   @override
+  String get previewReloadWithoutCache => 'キャッシュを使わずに再読み込み';
+
+  @override
+  String get previewRetry => '再試行';
+
+  @override
+  String get previewServerNotFound => 'このサーバーに接続できません';
+
+  @override
+  String get previewAppFailedToBoot => 'アプリを読み込めませんでした';
+
+  @override
+  String get previewRemoteLoopbackHint =>
+      'このアドレスはこのデバイスに存在しないマシンを指しています。Agent の開発サーバーはおそらく接続先のコンピューター上で動作しているため、そちらで開いてみてください。';
+
+  @override
   String get previewRunJavascript => 'JavaScript を実行';
 
   @override
@@ -5098,6 +5201,9 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get historyEndOfList => '— 履歴の末尾 —';
+
+  @override
   String get historyPinned => '固定';
 
   @override
@@ -5581,6 +5687,28 @@ class AppLocalizationsJa extends AppLocalizations {
   String get profilesModel => 'モデル';
 
   @override
+  String get profilesModelChangeWarningTitle => '旧モデルを固定している定期タスクがあります';
+
+  @override
+  String profilesModelChangeWarningBody(int count, String profile) {
+    return '$profile の $count 件の定期タスクには独自のモデル上書きが設定されており、自動では切り替わりません。それでも保存しますか？';
+  }
+
+  @override
+  String get profilesModelChangeViewRoutines => '定期タスクを表示';
+
+  @override
+  String get profilesModelChangeSaveAnyway => 'それでも保存';
+
+  @override
+  String get profilesModelChangeCheckFailedTitle => '定期タスクを確認できませんでした';
+
+  @override
+  String profilesModelChangeCheckFailedBody(String profile) {
+    return '$profile の定期タスクに独自のモデル上書きが設定されているか確認できなかったため、この変更の影響を判断できません。それでも保存しますか？';
+  }
+
+  @override
   String get profilesSystemPrompt => 'システムプロンプト';
 
   @override
@@ -5737,7 +5865,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String memoryInvalidNumber(Object field) {
-    return '$field is not a valid number';
+    return '$field は有効な数値ではありません';
   }
 
   @override
@@ -5790,34 +5918,33 @@ class AppLocalizationsJa extends AppLocalizations {
   String get memoryKeepSecretHint => '現在の値を保持するには空欄のままにします';
 
   @override
-  String get memoryProviderSetup => 'Provider runtime';
+  String get memoryProviderSetup => 'プロバイダーの実行環境';
 
   @override
   String get memoryProviderSetupDescription =>
-      'This provider needs dependencies installed in Hermes Server before it can run.';
+      'このプロバイダーを実行するには、先に Hermes Server に依存関係をインストールする必要があります。';
 
   @override
-  String get memoryPythonDependencies => 'Python dependencies';
+  String get memoryPythonDependencies => 'Python 依存関係';
 
   @override
-  String get memoryRequiredEnvironment => 'Required environment values';
+  String get memoryRequiredEnvironment => '必要な環境変数';
 
   @override
-  String get memoryInstallDependencies => 'Install provider dependencies';
+  String get memoryInstallDependencies => 'プロバイダーの依存関係をインストール';
 
   @override
-  String get memoryInstallingDependencies => 'Installing...';
+  String get memoryInstallingDependencies => 'インストール中…';
 
   @override
-  String get memorySetupFinished => 'Provider dependencies installed';
+  String get memorySetupFinished => 'プロバイダーの依存関係をインストールしました';
 
   @override
-  String get memorySetupFailed =>
-      'Some provider dependencies failed to install. Review the results.';
+  String get memorySetupFailed => '一部のプロバイダー依存関係のインストールに失敗しました。結果を確認してください。';
 
   @override
   String memorySetupError(Object error) {
-    return 'Could not install provider dependencies: $error';
+    return 'プロバイダーの依存関係をインストールできませんでした：$error';
   }
 
   @override
@@ -5835,18 +5962,21 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentGroupName => 'グループチャット名';
 
   @override
-  String get agentSelectMembers => 'Select members';
+  String get agentSelectMembers => 'メンバーを選択';
 
   @override
   String agentGroupMemberCount(Object count, Object max) {
-    return '$count/$max selected';
+    return '$count/$max 人を選択中';
   }
 
   @override
-  String get agentSearchBots => 'Search bots';
+  String get agentSearchBots => 'Bot を検索';
 
   @override
-  String get agentSearchNoMatches => 'No matching bots';
+  String get agentSearchNoMatches => '一致する Bot はありません';
+
+  @override
+  String get agentBotUnreachable => '接続できません';
 
   @override
   String agentGroupSaveFailed(Object error) {
@@ -5939,37 +6069,37 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentNoData => 'データがありません';
 
   @override
-  String get agentBotDirectoryTitle => 'Bot Center';
+  String get agentBotDirectoryTitle => 'Bot センター';
 
   @override
   String agentBotDirectorySummary(int bots, int groups) {
-    return '$bots bots · $groups groups';
+    return 'Bot $bots 件 · グループ $groups 件';
   }
 
   @override
-  String get agentStopped => 'Stopped';
+  String get agentStopped => '停止';
 
   @override
-  String get agentGroupChatsSection => 'Group chats';
+  String get agentGroupChatsSection => 'グループチャット';
 
   @override
-  String get agentIndividualBotsSection => 'Bots';
+  String get agentIndividualBotsSection => 'Bot';
 
   @override
   String get agentManageBots => 'Bot の管理または作成';
 
   @override
-  String get agentBotRoutinesMenuItem => 'Bot routines';
+  String get agentBotRoutinesMenuItem => 'Bot の定期タスク';
 
   @override
-  String get agentBotsEmptyTitle => 'No bots yet';
+  String get agentBotsEmptyTitle => 'Bot はまだありません';
 
   @override
   String get agentBotsEmptyDescription =>
-      'A bot is a standalone chat identity tied to a profile. Create a profile from the top-right icon to get started.';
+      'Bot はプロファイルに紐づいた独立したチャットアイデンティティです。右上のアイコンからプロファイルを作成して始めてください。';
 
   @override
-  String get agentMentionAll => 'Everyone';
+  String get agentMentionAll => '全員';
 
   @override
   String get agentRefreshRoster => 'Bot 名簿を更新';
@@ -6013,6 +6143,76 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get agentDeleteBot => 'Bot を削除';
+
+  @override
+  String get agentEditAvatarMenuItem => 'アバターを編集';
+
+  @override
+  String get avatarEditorShapeLabel => '形状';
+
+  @override
+  String get avatarEditorColorLabel => '色';
+
+  @override
+  String get avatarEditorRandomize => 'ランダム';
+
+  @override
+  String get avatarEditorUploadPhoto => '写真をアップロード';
+
+  @override
+  String get avatarEditorRemovePhoto => '写真を削除';
+
+  @override
+  String get avatarEditorImageTooLarge => '画像が大きすぎます（最大 15MB）';
+
+  @override
+  String get avatarEditorGenerate => 'AI で生成';
+
+  @override
+  String get avatarEditorGenerateHint => '希望の外観を説明してください（任意）';
+
+  @override
+  String avatarEditorGenerateFailed(String error) {
+    return '生成に失敗しました：$error';
+  }
+
+  @override
+  String get avatarEditorChoosePet => 'ペットを選択';
+
+  @override
+  String get avatarEditorPetSearchHint => 'ペットを検索';
+
+  @override
+  String get avatarEditorPetLoadFailed => 'ペットギャラリーを読み込めませんでした';
+
+  @override
+  String get avatarEditorSaved => 'アバターを更新しました';
+
+  @override
+  String avatarEditorSaveFailed(String error) {
+    return 'アバターを更新できませんでした：$error';
+  }
+
+  @override
+  String get agentBotMcpMenuItem => 'MCP サーバー';
+
+  @override
+  String get agentBotModelMenuItem => 'モデルとツール';
+
+  @override
+  String get agentHiddenBotsSection => '非表示';
+
+  @override
+  String get agentHideBot => '非表示';
+
+  @override
+  String get agentUnhideBot => '再表示';
+
+  @override
+  String get agentPinBot => 'ピン留め';
+
+  @override
+  String get agentUnpinBot => 'ピン留めを解除';
 
   @override
   String get agentGateway => 'ゲートウェイ';
@@ -6152,6 +6352,25 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get botRoutineDelete => 'Cronjob を削除';
+
+  @override
+  String get botRoutineEdit => '編集';
+
+  @override
+  String botRoutineEditTitle(Object name) {
+    return '定期タスクを編集 · $name';
+  }
+
+  @override
+  String get botRoutineSaving => '保存中…';
+
+  @override
+  String get botRoutineSave => '変更を保存';
+
+  @override
+  String botRoutineLoadFailed(Object error) {
+    return '定期タスクの詳細を読み込めませんでした：$error';
+  }
 
   @override
   String botRoutineScheduleOnce(Object duration) {
@@ -6296,6 +6515,24 @@ class AppLocalizationsJa extends AppLocalizations {
   String mcpOperationFailed(Object error) {
     return '操作に失敗しました：$error';
   }
+
+  @override
+  String mcpHealthNeedsAuthTitle(String name) {
+    return '$name の再認証が必要です';
+  }
+
+  @override
+  String get mcpHealthNeedsAuthBody =>
+      'バックグラウンドチェックでこのサーバーの接続が期限切れになっていることが検出されました。再接続して引き続き利用してください。';
+
+  @override
+  String mcpHealthErrorTitle(String name) {
+    return '$name に接続できません';
+  }
+
+  @override
+  String get mcpHealthErrorBody =>
+      'バックグラウンドチェックでこのサーバーに接続できませんでした。MCP 設定を開いて確認してください。';
 
   @override
   String get mcpPersistenceFailed => 'サーバーが MCP 設定の変更を永続化しませんでした。';
@@ -7760,11 +7997,11 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String kanbanCreatedAt(Object time) {
-    return 'Created $time';
+    return '作成：$time';
   }
 
   @override
-  String get kanbanTaskIdCopied => 'Task ID copied';
+  String get kanbanTaskIdCopied => 'タスク ID をコピーしました';
 
   @override
   String get kanbanEstimate => '見積もり';
@@ -8495,6 +8732,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get fileTreeAttachToChat => 'チャットに添付';
 
   @override
+  String get sessionActionMarkUnread => '未読にする';
+
+  @override
+  String get sessionMarkedUnread => '未読にしました';
+
+  @override
   String get projectAddFolder => 'フォルダーを追加';
 
   @override
@@ -9083,36 +9326,56 @@ class AppLocalizationsJa extends AppLocalizations {
       'これはバイナリファイル（画像、アーカイブ、実行ファイルなど）のようです。テキストエディターで開いて保存すると破損する可能性があるため、編集は無効になっています。代わりにデバイスにダウンロードしてください。';
 
   @override
+  String get fileEditorFindReplaceTitle => '検索と置換';
+
+  @override
+  String get fileEditorFindLabel => '検索';
+
+  @override
+  String get fileEditorReplaceWithLabel => '置換後';
+
+  @override
+  String get fileEditorReplaceAll => 'すべて置換';
+
+  @override
+  String get fileEditorNoMatches => '一致する項目はありません';
+
+  @override
+  String fileEditorReplacedCount(int count) {
+    return '$count 件を置換しました';
+  }
+
+  @override
+  String get fileEditorNoChanges => '変更はありません';
+
+  @override
   String kanbanTaskCreatedLinkFailed(String error) {
     return 'タスクは作成されましたが、親タスクリンクを追加できませんでした：$error';
   }
 
   @override
-  String get kanbanTaskContentSection => 'Task details';
+  String get kanbanTaskContentSection => 'タスクの詳細';
 
   @override
-  String get kanbanTaskArrangementSection => 'Assignment';
+  String get kanbanTaskArrangementSection => '割り当て';
 
   @override
-  String get kanbanTaskRuntimeSection => 'Runtime options';
+  String get kanbanTaskRuntimeSection => '実行オプション';
 
   @override
-  String get kanbanTaskRuntimeDescription =>
-      'Optional workspace, model, and task relationship settings';
+  String get kanbanTaskRuntimeDescription => 'ワークスペース、モデル、タスク関連付けのオプション設定';
 
   @override
-  String get kanbanCreateTaskDescription =>
-      'Describe the work to complete, then choose its status and owner.';
+  String get kanbanCreateTaskDescription => '完了すべき作業を説明し、ステータスと担当者を選択してください。';
 
   @override
-  String get kanbanTaskTitleHint => 'Enter a clear, concise task name';
+  String get kanbanTaskTitleHint => '明確で簡潔なタスク名を入力してください';
 
   @override
-  String get kanbanTaskTitleRequired => 'Enter a task title';
+  String get kanbanTaskTitleRequired => 'タスクタイトルを入力してください';
 
   @override
-  String get kanbanTaskDescriptionHint =>
-      'Add goals, acceptance criteria, or implementation notes';
+  String get kanbanTaskDescriptionHint => '目標、受け入れ条件、実装メモを追加';
 
   @override
   String get kanbanTaskStatus => 'ステータス';
@@ -10942,6 +11205,38 @@ class AppLocalizationsJa extends AppLocalizations {
   String get botProfileNameUnavailable => '利用できるプロファイル名がありません';
 
   @override
+  String get botProfileNameInvalid => '名前は英字または数字で始まり、小文字・数字・-・_ のみを使用できます';
+
+  @override
+  String get botCreateTitle => 'Bot を作成';
+
+  @override
+  String get botCreateNameHelper => '小文字・数字・-・_ のみ使用できます';
+
+  @override
+  String botCreateNameTaken(String name) {
+    return '「$name」という名前の Bot はすでに存在します';
+  }
+
+  @override
+  String get botCreateRoleLabel => '役割（任意）';
+
+  @override
+  String get botCreateMissionLabel => 'ミッション（任意）';
+
+  @override
+  String get botCreateCloneFromLabel => '複製元';
+
+  @override
+  String get botCreateCustomSoulLabel => 'カスタム SOUL を書く';
+
+  @override
+  String get botCreateCustomSoulHint => 'この Bot のアイデンティティを自分の言葉で説明してください';
+
+  @override
+  String get botCreateSuccess => 'Bot を作成しました';
+
+  @override
   String get botDefaultProfileDeleteForbidden => 'デフォルトプロファイルは削除できません';
 
   @override
@@ -10962,5 +11257,152 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String httpStatusError(int statusCode) {
     return 'サーバーが HTTP $statusCode を返しました';
+  }
+
+  @override
+  String get voiceMuteMicrophone => 'マイクをミュート';
+
+  @override
+  String get voiceMicrophoneMuted => 'マイクがミュートされています';
+
+  @override
+  String get voiceRecordingDroppedMuted => 'マイクがミュートされていたため、録音を中断して破棄しました';
+
+  @override
+  String get keybindsTitle => 'キーボードショートカット';
+
+  @override
+  String get settingsKeybindsDesc => '物理キーボードのショートカットをカスタマイズ';
+
+  @override
+  String get keybindActionChatUndo => '元に戻す';
+
+  @override
+  String get keybindActionChatFind => '検索';
+
+  @override
+  String get keybindChange => '変更';
+
+  @override
+  String get keybindReset => 'リセット';
+
+  @override
+  String get keybindResetAll => 'すべてリセット';
+
+  @override
+  String get keybindCustomizedBadge => 'カスタマイズ済み';
+
+  @override
+  String get keybindCapturePrompt => 'キーの組み合わせを押してください…';
+
+  @override
+  String get keybindCaptureModifierRequired =>
+      '修飾キー（Ctrl、⌘、Alt、Shift のいずれか）を含めてください';
+
+  @override
+  String keybindConflictWith(String action) {
+    return '「$action」ですでに使用されています';
+  }
+
+  @override
+  String get keybindNoHardwareKeyboardHint =>
+      'ショートカットはこのデバイスに物理キーボードが接続されている場合にのみ有効です';
+
+  @override
+  String get previewSource => 'ソース';
+
+  @override
+  String get previewRendered => 'プレビュー';
+
+  @override
+  String get previewDiff => '変更';
+
+  @override
+  String get previewLargeFileTitle => '大きなファイルのプレビューを一時停止しました';
+
+  @override
+  String get previewLargeFileDescription =>
+      'このファイルの読み込みには多くのメモリを使用する可能性があります。必要な場合のみ続行してください。';
+
+  @override
+  String get pluginComposerBlocked => 'プラグインがこのメッセージをブロックしました。';
+
+  @override
+  String get pluginComposerInvalidResponse => '入力プラグインが無効な応答を返しました';
+
+  @override
+  String get pluginComposerTextTooLarge => '入力プラグインが生成したメッセージが大きすぎます';
+
+  @override
+  String get workspaceRenameTab => 'タブ名を変更';
+
+  @override
+  String get workspaceCloseOtherTabs => '他のタブを閉じる';
+
+  @override
+  String get workspaceCloseTabsToRight => '右側のタブを閉じる';
+
+  @override
+  String get chatReadingAttachments => '添付ファイルを読み込み中…';
+
+  @override
+  String get chatSendingEllipsis => '送信中…';
+
+  @override
+  String chatUploadingPercent(int percent) {
+    return 'アップロード中 $percent%';
+  }
+
+  @override
+  String get chatUploadingEllipsis => 'アップロード中…';
+
+  @override
+  String get chatPreparingAttachments => '添付ファイルを準備中…';
+
+  @override
+  String chatUploadingProgress(int current, int total) {
+    return 'アップロード中 $current/$total';
+  }
+
+  @override
+  String chatUploadingProgressPercent(int percent) {
+    return 'アップロード中 · $percent%';
+  }
+
+  @override
+  String get chatSendCancelledRetry => '送信がキャンセルされました。再試行できます';
+
+  @override
+  String chatSuggestionUseSkill(String id) {
+    return 'スキルを使用：$id';
+  }
+
+  @override
+  String get chatSuggestionConfigureGithub => 'GitHub 機能を設定';
+
+  @override
+  String chatSuggestionConnectMcp(String id) {
+    return '$id MCP に接続';
+  }
+
+  @override
+  String chatSuggestionRepairMcp(String id) {
+    return '$id MCP 接続を修復';
+  }
+
+  @override
+  String chatSuggestionTriggerReason(String trigger) {
+    return '下書きまたは現在のセッションで $trigger に言及されたため';
+  }
+
+  @override
+  String get chatInvalidPublicUrl => '有効な公開 http/https アドレスを入力してください';
+
+  @override
+  String get messageBubbleAttachmentSendFailed => '添付ファイルを送信できませんでした。タップして再試行';
+
+  @override
+  String messageBubbleAttachmentUploading(String percent) {
+    return '添付ファイルをアップロード中 $percent';
   }
 }

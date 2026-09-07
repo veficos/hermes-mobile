@@ -119,6 +119,75 @@ void main() {
     expect(restored.panes[logsId]!.kind, WorkspacePaneKind.logs);
   });
 
+  test('file preview metadata survives workspace restoration', () async {
+    const owner = OwnerRoute(connectionId: ConnectionId('primary'));
+    final store = PaneWorkspaceStore();
+    await store.load();
+    final id = await store.openCorePane(
+      kind: WorkspacePaneKind.preview,
+      title: 'README',
+      referenceId: '/workspace/README.md',
+      repositoryRoot: '/workspace',
+      byteSize: 4096,
+      mimeType: 'text/markdown',
+      owner: owner,
+    );
+    await store.flush();
+
+    final restored = PaneWorkspaceStore();
+    await restored.load();
+    final pane = restored.panes[id]!;
+    expect(pane.repositoryRoot, '/workspace');
+    expect(pane.byteSize, 4096);
+    expect(pane.mimeType, 'text/markdown');
+  });
+
+  test(
+    'oversized or negative pane metadata is dropped, not the whole pane',
+    () async {
+      const owner = OwnerRoute(connectionId: ConnectionId('primary'));
+      final oversizedMimeType = 'x' * 257;
+      final validJson = {
+        'id': 'preview-1',
+        'kind': WorkspacePaneKind.preview.name,
+        'reference_id': '/workspace/README.md',
+        'title': 'README',
+        'connection_id': owner.connectionId.value,
+        'repository_root': '/workspace',
+        'byte_size': 4096,
+        'mime_type': 'text/markdown',
+      };
+
+      final withBadMimeType = Map<String, Object?>.of(validJson)
+        ..['mime_type'] = oversizedMimeType;
+      final paneWithBadMimeType = WorkspacePane.fromJson(withBadMimeType);
+      expect(paneWithBadMimeType, isNotNull);
+      expect(paneWithBadMimeType!.mimeType, isNull);
+      expect(paneWithBadMimeType.repositoryRoot, '/workspace');
+      expect(paneWithBadMimeType.byteSize, 4096);
+
+      final withNegativeByteSize = Map<String, Object?>.of(validJson)
+        ..['byte_size'] = -1;
+      final paneWithNegativeByteSize = WorkspacePane.fromJson(
+        withNegativeByteSize,
+      );
+      expect(paneWithNegativeByteSize, isNotNull);
+      expect(paneWithNegativeByteSize!.byteSize, isNull);
+      expect(paneWithNegativeByteSize.mimeType, 'text/markdown');
+      expect(paneWithNegativeByteSize.repositoryRoot, '/workspace');
+
+      final withBadRepositoryRoot = Map<String, Object?>.of(validJson)
+        ..['repository_root'] = 'x' * 4097;
+      final paneWithBadRepositoryRoot = WorkspacePane.fromJson(
+        withBadRepositoryRoot,
+      );
+      expect(paneWithBadRepositoryRoot, isNotNull);
+      expect(paneWithBadRepositoryRoot!.repositoryRoot, isNull);
+      expect(paneWithBadRepositoryRoot.byteSize, 4096);
+      expect(paneWithBadRepositoryRoot.mimeType, 'text/markdown');
+    },
+  );
+
   test('all layout presets preserve each pane exactly once', () async {
     const owner = OwnerRoute(connectionId: ConnectionId('primary'));
     final store = PaneWorkspaceStore();
@@ -142,5 +211,60 @@ void main() {
       expect(ids.length, expected.length, reason: preset.name);
     }
     expect(store.tree, isA<PaneSplit>());
+  });
+
+  test('touch tab management renames and closes every sibling', () async {
+    const owner = OwnerRoute(connectionId: ConnectionId('primary'));
+    final store = PaneWorkspaceStore();
+    await store.load();
+    final keep = await store.openSession(
+      durableId: 'keep',
+      title: 'Original',
+      owner: owner,
+    );
+    await store.openSession(durableId: 'drop', title: 'Drop', owner: owner);
+    await store.openCorePane(
+      kind: WorkspacePaneKind.files,
+      title: 'Files',
+      owner: owner,
+    );
+
+    store.rename(keep, 'Renamed');
+    store.closeOthers(keep);
+    await store.flush();
+
+    expect(store.panes.keys, [keep]);
+    expect(store.panes[keep]?.title, 'Renamed');
+    expect(paneIds(store.tree), [keep]);
+    expect(store.focusedPaneId, keep);
+  });
+
+  test('close to right removes later tabs in the same group only', () async {
+    const owner = OwnerRoute(connectionId: ConnectionId('primary'));
+    final store = PaneWorkspaceStore();
+    await store.load();
+    final first = await store.openSession(
+      durableId: 'first',
+      title: 'First',
+      owner: owner,
+      position: PaneDropPosition.center,
+    );
+    final keep = await store.openSession(
+      durableId: 'keep',
+      title: 'Keep',
+      owner: owner,
+      position: PaneDropPosition.center,
+    );
+    await store.openSession(
+      durableId: 'third',
+      title: 'Third',
+      owner: owner,
+      position: PaneDropPosition.center,
+    );
+
+    store.closeToRight(keep);
+
+    expect(store.panes.keys.toSet(), {first, keep});
+    expect(paneIds(store.tree), [first, keep]);
   });
 }

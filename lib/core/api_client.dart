@@ -7,15 +7,17 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:yaml/yaml.dart';
 
 import 'model_catalog.dart';
 import 'models.dart';
 import 'composer_draft_store.dart';
+import 'client_capabilities.dart';
 import 'performance_metrics.dart';
+import 'upload_progress.dart';
 import '../theme/hermes_tokens.dart';
 import '../l10n/runtime_l10n.dart';
 
@@ -135,6 +137,12 @@ class ApiClient {
   late final ApiCapabilities capabilities = ApiCapabilities.forTransport(
     directGateway: directGateway,
   );
+
+  /// Gate for verbose diagnostic `developer.log` calls in this client (e.g.
+  /// the subagent projection RPCs) so they don't fire on every call in
+  /// production release builds. Mirrors the `_diagnosticLogging` convention
+  /// used by `chat_store.dart` / `chat_screen.dart`.
+  bool get _diagnosticLogging => kDebugMode || kProfileMode;
 
   bool get supportsSessionSharing => capabilities.sessionSharing;
 
@@ -460,6 +468,8 @@ class ApiClient {
     required Uint8List bytes,
     Map<String, String>? query,
     Duration? timeout,
+    void Function(int sent, int total)? onProgress,
+    UploadCancellation? cancellation,
   }) async {
     // Retries only a transport-level failure (the request never reached a
     // server response) — the same policy as `_getWithRetry`, and safe for
@@ -476,8 +486,21 @@ class ApiClient {
         final headers = (await _headers())..remove('Content-Type');
         request.headers.addAll(headers);
         request.fields.addAll(fields);
+        var sent = 0;
+        final stream = _progressStream(bytes, (count) {
+          if (cancellation?.isCancelled == true) {
+            throw StateError('attachment send cancelled');
+          }
+          sent += count;
+          onProgress?.call(sent, bytes.length);
+        });
         request.files.add(
-          http.MultipartFile.fromBytes(field, bytes, filename: filename),
+          http.MultipartFile(
+            field,
+            http.ByteStream(stream),
+            bytes.length,
+            filename: filename,
+          ),
         );
         // NOT `request.send()`: per the `http` package's own docs, that
         // spins up a brand-new default `Client()` per call, silently
@@ -500,6 +523,88 @@ class ApiClient {
       }
     }
     Error.throwWithStackTrace(lastError!, lastStackTrace!);
+  }
+
+  Stream<Uint8List> _progressStream(
+    Uint8List bytes,
+    void Function(int) onChunk,
+  ) async* {
+    const size = 64 * 1024;
+    for (var offset = 0; offset < bytes.length; offset += size) {
+      final end = (offset + size < bytes.length) ? offset + size : bytes.length;
+      final chunk = Uint8List.sublistView(bytes, offset, end);
+      onChunk(chunk.length);
+      yield chunk;
+    }
+  }
+
+  /// Upload a local attachment using the streaming multipart endpoint.
+  /// [onProgress] receives bytes sent and total bytes (0..total before the
+  /// request, total on completion).
+  Future<Map<String, dynamic>> uploadFileStream(
+    String path,
+    Uint8List bytes,
+    String filename, {
+    void Function(int sent, int total)? onProgress,
+    UploadCancellation? cancellation,
+  }) async {
+    if (cancellation?.isCancelled == true) {
+      throw StateError('attachment send cancelled');
+    }
+    onProgress?.call(0, bytes.length);
+    dynamic data;
+    if (kIsWeb) {
+      try {
+        data = await uploadMultipartWithProgress(
+          url: _uri('/api/v1/files/upload-stream').toString(),
+          headers: await _headers(),
+          path: path,
+          filename: filename,
+          bytes: bytes,
+          onProgress: onProgress ?? (_, _) {},
+          cancellation: cancellation,
+        );
+      } on UnsupportedError {
+        data = null;
+      } on UploadHttpException catch (error) {
+        if (error.statusCode != 404 && error.statusCode != 405) rethrow;
+        data = null;
+      }
+      if (data != null) {
+        onProgress?.call(bytes.length, bytes.length);
+        return _asMap(data);
+      }
+      // A Web request cannot reuse the XHR body stream through `http`; use
+      // the legacy JSON route immediately after an unsupported multipart
+      // response instead of posting the same multipart payload twice.
+      final encoded =
+          'data:application/octet-stream;base64,${base64Encode(bytes)}';
+      data = await uploadFile(path, encoded);
+      onProgress?.call(bytes.length, bytes.length);
+      return _asMap(data);
+    }
+    try {
+      data = await postMultipart(
+        '/api/v1/files/upload-stream',
+        fields: {'path': path, 'overwrite': 'false'},
+        field: 'file',
+        filename: filename,
+        bytes: bytes,
+        timeout: const Duration(minutes: 2),
+        onProgress: onProgress,
+        cancellation: cancellation,
+      );
+    } on ApiException catch (error) {
+      // Older Hermes gateways do not expose the streaming route. Preserve
+      // compatibility by falling back to the legacy endpoint only when the
+      // server explicitly reports that multipart is unavailable.
+      if (error.statusCode != 404 && error.statusCode != 405) rethrow;
+      final encoded =
+          'data:application/octet-stream;base64,${base64Encode(bytes)}';
+      data = await uploadFile(path, encoded);
+    }
+    onProgress?.call(bytes.length, bytes.length);
+    return _asMap(data);
   }
 
   Future<({Uint8List bytes, String filename})> downloadBytes(
@@ -777,16 +882,22 @@ class ApiClient {
     String? profile,
   }) async {
     final normalizedTitle = title?.trim();
+    // Branching resumes the stored session (which may need to spin up a
+    // fresh runtime process) before copying its history — widen the
+    // per-call timeout so a slow resume/branch pair isn't aborted client
+    // side while the server is still legitimately working on it. Applied
+    // to both transports so they behave consistently for this operation.
+    const timeout = Duration(minutes: 2);
     if (directGateway) {
       final request = gatewayRequest;
       if (request == null) _unsupportedDirectGateway('Branch sessions');
       final resumed = await request('session.resume', {
         'session_id': id,
         'cols': 48,
-        'source': 'mobile',
+        ...hermesMobileSessionClientFields(),
         'omit_messages': true,
         'profile': ?profile,
-      });
+      }, timeout: timeout);
       final runtimeId = resumed['session_id']?.toString() ?? '';
       if (runtimeId.isEmpty) {
         throw ApiException(502, runtimeL10n.sessionRuntimeIdMissing);
@@ -795,7 +906,7 @@ class ApiClient {
         'session_id': runtimeId,
         'count': ?keepCount,
         if (normalizedTitle?.isNotEmpty == true) 'name': normalizedTitle,
-      });
+      }, timeout: timeout);
       final newId =
           (result['stored_session_id'] ?? result['session_id'])?.toString() ??
           '';
@@ -823,6 +934,7 @@ class ApiClient {
             ? normalizedTitle
             : null),
       },
+      timeout: timeout,
     );
     final raw = (data as Map)['session'] ?? data;
     return SessionRow.fromJson((raw as Map).cast<String, dynamic>());
@@ -968,7 +1080,7 @@ class ApiClient {
       final resumed = await request('session.resume', {
         'session_id': id,
         'cols': 48,
-        'source': 'mobile',
+        ...hermesMobileSessionClientFields(),
         'omit_messages': true,
         'profile': ?profile,
       });
@@ -1122,7 +1234,7 @@ class ApiClient {
       final resumed = await request('session.resume', {
         'session_id': id,
         'cols': 48,
-        'source': 'mobile',
+        ...hermesMobileSessionClientFields(),
         'omit_messages': true,
         'profile': ?profile,
       });
@@ -1418,7 +1530,12 @@ class ApiClient {
     } finally {
       try {
         await fsDelete(archive);
-      } catch (_) {}
+      } catch (e) {
+        developer.log(
+          'export temp archive cleanup failed for $archive: $e',
+          name: 'hermes.profile.api',
+        );
+      }
     }
   }
 
@@ -1454,7 +1571,12 @@ class ApiClient {
     } finally {
       try {
         await fsDelete(archive);
-      } catch (_) {}
+      } catch (e) {
+        developer.log(
+          'import temp archive cleanup failed for $archive: $e',
+          name: 'hermes.profile.api',
+        );
+      }
     }
   }
 
@@ -2202,6 +2324,9 @@ class ApiClient {
     return list.map((e) => (e as Map).cast<String, dynamic>()).toList();
   }
 
+  Future<Map<String, dynamic>> ghAuthStatus({String? profile}) async =>
+      _asMap(await get('/api/git/gh-auth', query: {'profile': ?profile}));
+
   Future<void> mcpSetEnabled(
     String name,
     bool enabled, {
@@ -2413,8 +2538,11 @@ class ApiClient {
   /// Reads a file as text. Throws [BinaryFileException] if the file's bytes
   /// don't look like text — callers must not silently edit/save in that case,
   /// since doing so would corrupt the original file on write-back.
-  Future<String> fsReadText(String path) async {
-    final data = await get('/api/v1/files/read', query: {'path': path});
+  Future<String> fsReadText(String path, {String? profile}) async {
+    final data = await get(
+      '/api/v1/files/read',
+      query: {'path': path, 'profile': ?profile},
+    );
     final map = _asMap(data);
     final text = map['text'];
     if (text != null) return text.toString();
@@ -2431,20 +2559,29 @@ class ApiClient {
   }
 
   /// Overwrite (or create) a UTF-8 text file on the server (spot editor).
-  Future<Map<String, dynamic>> fsWriteText(String path, String content) async {
+  Future<Map<String, dynamic>> fsWriteText(
+    String path,
+    String content, {
+    String? profile,
+  }) async {
     if (directGateway) {
       final dataUrl =
           'data:text/plain;charset=utf-8;base64,${base64Encode(utf8.encode(content))}';
       return _asMap(
         await post(
           '/api/v1/files/upload',
-          body: {'path': path, 'data_url': dataUrl, 'overwrite': true},
+          body: {
+            'path': path,
+            'data_url': dataUrl,
+            'overwrite': true,
+            'profile': ?profile,
+          },
         ),
       );
     }
     final data = await post(
       '/api/v1/files/write',
-      body: {'path': path, 'content': content},
+      body: {'path': path, 'content': content, 'profile': ?profile},
     );
     return _asMap(data);
   }
@@ -2695,6 +2832,18 @@ class ApiClient {
       },
     );
     return (data as Map?)?['diff']?.toString() ?? '';
+  }
+
+  Future<Map<String, dynamic>?> gitReviewPrComment(
+    String path,
+    String url,
+  ) async {
+    final data = await get(
+      '/api/v1/git/review/pr-comment',
+      query: {'path': path, 'url': url},
+    );
+    final comment = (data as Map?)?['comment'];
+    return comment is Map ? comment.cast<String, dynamic>() : null;
   }
 
   Future<Map<String, dynamic>> gitCommitContext(String path) async {
@@ -3070,14 +3219,18 @@ class ApiClient {
 
   // ----------------------------------------------------------- subagents
   Future<SubagentProjection> subagentProjection() async {
-    developer.log('request projection', name: 'hermes.subagent.api');
+    if (_diagnosticLogging) {
+      developer.log('request projection', name: 'hermes.subagent.api');
+    }
     final data = await get('/api/v1/subagents/projection');
     final projection = SubagentProjection.fromJson(_asMap(data));
-    developer.log(
-      'response projection sessions=${projection.sessions.length} '
-      'groups=${projection.bySession.length} total=${projection.total}',
-      name: 'hermes.subagent.api',
-    );
+    if (_diagnosticLogging) {
+      developer.log(
+        'response projection sessions=${projection.sessions.length} '
+        'groups=${projection.bySession.length} total=${projection.total}',
+        name: 'hermes.subagent.api',
+      );
+    }
     return projection;
   }
 
@@ -3100,29 +3253,35 @@ class ApiClient {
     Iterable<String> sessionIds,
   ) async {
     final ids = sessionIds.toList();
-    developer.log(
-      'request batch parents=${ids.length} ids=$ids',
-      name: 'hermes.subagent.api',
-    );
+    if (_diagnosticLogging) {
+      developer.log(
+        'request batch parents=${ids.length} ids=$ids',
+        name: 'hermes.subagent.api',
+      );
+    }
     final data = await post(
       '/api/v1/subagents/query',
       body: {'session_ids': ids},
     );
     final grouped = ((data as Map)['by_session'] as Map?) ?? const {};
-    developer.log(
-      'response batch groups=${grouped.length} rawCounts=${{for (final entry in grouped.entries) entry.key.toString(): (entry.value as List?)?.length ?? 0}}',
-      name: 'hermes.subagent.api',
-    );
+    if (_diagnosticLogging) {
+      developer.log(
+        'response batch groups=${grouped.length} rawCounts=${{for (final entry in grouped.entries) entry.key.toString(): (entry.value as List?)?.length ?? 0}}',
+        name: 'hermes.subagent.api',
+      );
+    }
     final parsed = grouped.map((key, value) {
       final nodes = (value as List? ?? const [])
           .map((e) => SubagentNode.fromJson((e as Map).cast<String, dynamic>()))
           .toList();
       return MapEntry(key.toString(), nodes);
     });
-    developer.log(
-      'parsed batch counts=${{for (final entry in parsed.entries) entry.key: entry.value.length}}',
-      name: 'hermes.subagent.api',
-    );
+    if (_diagnosticLogging) {
+      developer.log(
+        'parsed batch counts=${{for (final entry in parsed.entries) entry.key: entry.value.length}}',
+        name: 'hermes.subagent.api',
+      );
+    }
     return parsed;
   }
 

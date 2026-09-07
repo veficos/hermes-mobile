@@ -20,6 +20,10 @@ import '../../core/terminal_interactions.dart';
 import '../../core/stores/terminal_store.dart';
 import '../../screens/chat_screen.dart';
 import '../../theme/hermes_tokens.dart';
+import '../h/hermes_confirm_dialog.dart';
+import '../h/hermes_states.dart';
+import '../h/hermes_toast.dart';
+import '../mobile/mobile_page_scaffold.dart';
 import 'terminal_cwd_picker.dart';
 import 'terminal_visuals.dart';
 
@@ -76,7 +80,6 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
 
   Future<void> _newSession({String? cwd}) async {
     final store = context.read<TerminalStore>();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await store.newSession(cwd: cwd);
       _ensureCmdFocus();
@@ -85,8 +88,10 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
         if (store.sessions.length >= store.maxSessions) {
           await _showSessionManager(store, createAfterClose: true, cwd: cwd);
         } else {
-          messenger.showSnackBar(
-            SnackBar(content: Text(context.l10n.terminalStartFailed('$error'))),
+          showHermesErrorSnackBar(
+            context,
+            error,
+            fallback: context.l10n.terminalStartFailed('$error'),
           );
         }
       }
@@ -183,8 +188,10 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
       await context.read<TerminalStore>().newSshSession(target);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.terminalSshFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.terminalSshFailed('$e'),
         );
       }
     }
@@ -203,24 +210,12 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     TerminalSession s,
   ) async {
     if (!s.isAlive) return true;
-    return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(context.l10n.terminalCloseRunningQuestion),
-            content: Text(context.l10n.terminalCloseRunningWarning(s.title)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: Text(context.l10n.commonCancel),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: Text(context.l10n.terminalClose),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    return showHermesConfirmDialog(
+      context: context,
+      title: context.l10n.terminalCloseRunningQuestion,
+      message: context.l10n.terminalCloseRunningWarning(s.title),
+      confirmLabel: context.l10n.terminalClose,
+    );
   }
 
   Future<void> _closeSession(TerminalStore store, TerminalSession s) async {
@@ -244,10 +239,11 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     bool createAfterClose = false,
     String? cwd,
   }) async {
-    final closed = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
+    final closed = await showMobileSheet<bool>(
+      context,
+      isScrollControlled: false,
+      avoidViewInsets: false,
+      (ctx) => SafeArea(
         child: ListView(
           shrinkWrap: true,
           children: [
@@ -320,9 +316,7 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     final text = store.selectedText(id, controller);
     if (text.trim().isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.terminalSelectTextFirst)),
-        );
+        showHermesToast(context, message: context.l10n.terminalSelectTextFirst);
       }
       return;
     }
@@ -377,8 +371,9 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     final text = store.selectedText(id, _controller(id)).trim();
     if (text.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.terminalSelectTerminalTextFirst)),
+        showHermesToast(
+          context,
+          message: context.l10n.terminalSelectTerminalTextFirst,
         );
       }
       return;
@@ -392,9 +387,11 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
         context,
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } else {
-      ScaffoldMessenger.of(
+      showHermesToast(
         context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.terminalSentToChat)));
+        message: context.l10n.terminalSentToChat,
+        kind: HermesToastKind.success,
+      );
     }
   }
 
@@ -422,8 +419,10 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
       mode: LaunchMode.externalApplication,
     );
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.terminalOpenLinkFailed(link))),
+      showHermesErrorSnackBar(
+        context,
+        link,
+        fallback: context.l10n.terminalOpenLinkFailed(link),
       );
     }
   }
@@ -1013,10 +1012,11 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
       (context.l10n.terminalControlBackWord, '\x1bb'),
       (context.l10n.terminalControlForwardWord, '\x1bf'),
     ];
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
+    await showMobileSheet<void>(
+      context,
+      isScrollControlled: false,
+      avoidViewInsets: false,
+      (ctx) => SafeArea(
         child: Wrap(
           children: [
             ListTile(title: Text(context.l10n.terminalControlKeys)),
@@ -1064,11 +1064,10 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
   }
 
   Future<void> _showDisplaySettings(TerminalStore store) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
+    await showMobileSheet<void>(
+      context,
+      avoidViewInsets: false,
+      (sheetContext) => SafeArea(
         child: StatefulBuilder(
           builder: (context, setSheetState) {
             Future<void> update({
@@ -1157,6 +1156,8 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<TerminalColorPreset>(
+                    dropdownColor: hermesDropdownColor(context),
+                    borderRadius: hermesDropdownBorderRadius,
                     initialValue: store.terminalColorPreset,
                     decoration: InputDecoration(
                       labelText: context.l10n.terminalColorTheme,
@@ -1185,6 +1186,8 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<TerminalCursorPreset>(
+                    dropdownColor: hermesDropdownColor(context),
+                    borderRadius: hermesDropdownBorderRadius,
                     initialValue: store.terminalCursorPreset,
                     decoration: InputDecoration(
                       labelText: context.l10n.terminalCursorStyle,
@@ -1435,10 +1438,11 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     TerminalStore store,
     String activeId,
   ) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
+    await showMobileSheet<void>(
+      context,
+      isScrollControlled: false,
+      avoidViewInsets: false,
+      (ctx) => SafeArea(
         child: Wrap(
           children: [
             ListTile(
@@ -1496,10 +1500,11 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
   }
 
   Future<void> _showPrivacySheet(TerminalStore store) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
+    await showMobileSheet<void>(
+      context,
+      isScrollControlled: false,
+      avoidViewInsets: false,
+      (ctx) => SafeArea(
         child: StatefulBuilder(
           builder: (ctx, setSheetState) => Wrap(
             children: [
@@ -1527,24 +1532,14 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
                 leading: const Icon(Icons.delete_outline),
                 title: Text(context.l10n.terminalClearSavedData),
                 onTap: () async {
-                  final confirmed = await showDialog<bool>(
+                  final confirmed = await showHermesConfirmDialog(
                     context: ctx,
-                    builder: (dialogCtx) => AlertDialog(
-                      title: Text(context.l10n.terminalClearDataQuestion),
-                      content: Text(context.l10n.terminalClearDataWarning),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(dialogCtx).pop(false),
-                          child: Text(context.l10n.commonCancel),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.of(dialogCtx).pop(true),
-                          child: Text(context.l10n.terminalClear),
-                        ),
-                      ],
-                    ),
+                    title: context.l10n.terminalClearDataQuestion,
+                    message: context.l10n.terminalClearDataWarning,
+                    confirmLabel: context.l10n.terminalClear,
+                    destructive: true,
                   );
-                  if (confirmed != true) return;
+                  if (!confirmed) return;
                   await store.clearPrivateData();
                   if (ctx.mounted) Navigator.of(ctx).pop();
                 },

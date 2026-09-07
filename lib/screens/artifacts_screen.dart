@@ -21,14 +21,20 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/models.dart';
 import '../core/clipboard.dart';
 import '../core/connection_reload_mixin.dart';
+import '../core/connections/connection_registry.dart';
 import '../core/http_status_exception.dart';
 import '../core/stores/connection_store.dart';
+import '../core/stores/composer_handoff_store.dart';
+import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
+import 'chat_screen.dart';
+import 'document_editor_screen.dart';
 
 class ArtifactsScreen extends StatefulWidget {
   const ArtifactsScreen({super.key});
@@ -123,17 +129,15 @@ class _ArtifactsScreenState extends State<ArtifactsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.artifactsTitle),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _loadArtifacts,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.artifactsTitle,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _loadArtifacts,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: Column(
         children: [
           Padding(
@@ -591,6 +595,88 @@ class _ArtifactDetailScreenState extends State<_ArtifactDetailScreen> {
 
   ArtifactItem get artifact => widget.artifact;
 
+  Future<void> _edit() async {
+    final title = artifact.label ?? artifact.value.split('\n').first;
+    final trimmed = artifact.value.trimLeft();
+    final json = trimmed.startsWith('{') || trimmed.startsWith('[');
+    final edited = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => DocumentEditorScreen(
+          title: title,
+          initialValue: artifact.value,
+          json: json,
+        ),
+      ),
+    );
+    if (!mounted || edited == null || edited == artifact.value) return;
+
+    // ArtifactsScreen aggregates artifacts across every session, so the
+    // artifact being edited is frequently NOT the currently active session.
+    // Route the result to the artifact's own source session
+    // (`artifact.sessionId`) rather than whatever session happens to be
+    // active right now.
+    final sessions = context.read<SessionStore>();
+    final connection = context.read<ConnectionStore>();
+    final sourceSessionId = artifact.sessionId;
+    final owner = sourceSessionId.isEmpty
+        ? sessions.owner?.route
+        : connection.sessionOwners.byDurable(sourceSessionId)?.route ??
+              OwnerRoute(
+                connectionId: connection.activeConnectionId,
+                profile: sessions.activeProfile,
+              );
+    if (owner == null) {
+      await Clipboard.setData(ClipboardData(text: edited));
+      return;
+    }
+
+    // If that session isn't already the active one, resume it and bring its
+    // chat screen forward so the handoff lands where the user can see it
+    // instead of silently sitting in a composer nobody is looking at.
+    final needsSwitch =
+        sourceSessionId.isNotEmpty && sessions.durableId != sourceSessionId;
+    if (needsSwitch) {
+      try {
+        await sessions.resumeOwnedSession(sourceSessionId, owner);
+      } catch (error) {
+        if (!mounted) return;
+        showHermesToast(
+          context,
+          message: context.l10n.workspaceOpenSessionFailed('$error'),
+          kind: HermesToastKind.error,
+        );
+        return;
+      }
+      if (!mounted) return;
+    }
+
+    context.read<ComposerHandoffStore>().addText(
+      ComposerTextHandoff(
+        owner: owner,
+        kind: 'edited_artifact',
+        text: 'Edited artifact: $title\n```\n$edited\n```',
+        metadata: {
+          'artifact_id': artifact.id,
+          'artifact_kind': artifact.kind,
+          'source_session_id': artifact.sessionId,
+        },
+      ),
+    );
+
+    if (needsSwitch) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => const ChatScreen()),
+      );
+      if (!mounted) return;
+    }
+
+    showHermesToast(
+      context,
+      message: context.l10n.commonDone,
+      kind: HermesToastKind.success,
+    );
+  }
+
   Future<void> _save() async {
     final l10n = context.l10n;
     setState(() => _saving = true);
@@ -635,6 +721,12 @@ class _ArtifactDetailScreenState extends State<_ArtifactDetailScreen> {
       appBar: AppBar(
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          if (artifact.kind == 'code' || artifact.kind == 'file')
+            IconButton(
+              tooltip: context.l10n.commonEdit,
+              onPressed: _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
           IconButton(
             tooltip: context.l10n.artifactsSaveToDevice,
             onPressed: _saving ? null : _save,

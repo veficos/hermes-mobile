@@ -12,11 +12,13 @@ import '../core/external_links.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/profile_scope_selector.dart';
 import '../l10n/l10n.dart';
 
@@ -152,11 +154,9 @@ class _MemoryScreenState extends State<MemoryScreen>
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
     final profile = _profile;
-    final changed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _MemoryProviderSheet(
+    final changed = await showMobileSheet<bool>(
+      context,
+      (_) => _MemoryProviderSheet(
         api: api,
         provider: name,
         providerInfo: provider,
@@ -176,9 +176,9 @@ class _MemoryScreenState extends State<MemoryScreen>
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
     final profile = _profile;
-    final target = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
+    final target = await showMobileSheet<String>(
+      context,
+      (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -217,24 +217,14 @@ class _MemoryScreenState extends State<MemoryScreen>
       );
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.memoryResetQuestion),
-        content: Text(context.l10n.memoryResetWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(context.l10n.commonReset),
-          ),
-        ],
-      ),
+      title: context.l10n.memoryResetQuestion,
+      message: context.l10n.memoryResetWarning,
+      confirmLabel: context.l10n.commonReset,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     if (!identical(api, connection.api) || profile != _profile) {
       showHermesToast(
         context,
@@ -338,17 +328,15 @@ class _MemoryScreenState extends State<MemoryScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.memoryTitle),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.memoryTitle,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _busy ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: _buildBody(),
     );
   }
@@ -491,12 +479,12 @@ class _MemoryScreenState extends State<MemoryScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           if (selected)
-            HermesMobileStatusChip(
+            HermesStatusChip(
               color: HermesSemantic.green,
               label: context.l10n.memoryInUse,
             )
           else if (configured)
-            HermesMobileStatusChip(
+            HermesStatusChip(
               color: HermesSemantic.blue,
               label: context.l10n.memoryConfigured,
             ),
@@ -1273,6 +1261,8 @@ class _MemoryProviderSheetState extends State<_MemoryProviderSheet>
         selectedDescription ?? '',
       ].where((value) => value.isNotEmpty).join('\n');
       return DropdownButtonFormField<String>(
+        dropdownColor: hermesDropdownColor(context),
+        borderRadius: hermesDropdownBorderRadius,
         initialValue: values.contains(controller.text) ? controller.text : null,
         decoration: InputDecoration(
           labelText: displayLabel,

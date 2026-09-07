@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
 import 'package:hermes_mobile/core/models.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/cron_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -101,7 +102,12 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: connection,
-        child: const MaterialApp(home: CronScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: CronScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -153,7 +159,12 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider.value(
           value: connection,
-          child: const MaterialApp(home: CronScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: CronScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -197,7 +208,12 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider.value(
           value: connection,
-          child: const MaterialApp(home: CronScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: CronScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -256,7 +272,12 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider.value(
           value: connection,
-          child: const MaterialApp(home: CronScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: CronScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -281,7 +302,12 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider.value(
           value: connection,
-          child: const MaterialApp(home: CronScreen()),
+          child: MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: CronScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -312,7 +338,12 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: connection,
-        child: const MaterialApp(home: CronScreen()),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: CronScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();

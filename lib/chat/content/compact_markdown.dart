@@ -5,6 +5,7 @@ import 'package:markdown/markdown.dart' as md;
 import '../../widgets/h/hermes_markdown.dart';
 import '../../widgets/web_preview.dart' show openChatLink;
 import 'ansi_text.dart';
+import 'code_block.dart';
 
 /// Compact markdown for tool-detail / result bodies: clickable links, inline
 /// code, emphasis — but no headings blow-up, and ANSI-coloured output is
@@ -32,6 +33,7 @@ class CompactMarkdown extends StatelessWidget {
       data: text,
       selectable: selectable,
       extensionSet: md.ExtensionSet.gitHubFlavored,
+      builders: {'code': HermesCodeBlockBuilder()},
       onTapLink: (_, href, _) {
         if (href != null && href.isNotEmpty) openChatLink(context, href);
       },

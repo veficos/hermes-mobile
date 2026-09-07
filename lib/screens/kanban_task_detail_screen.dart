@@ -7,10 +7,14 @@ import '../core/clipboard.dart';
 import '../core/local_file_io.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
-import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
+import '../widgets/mobile/hermes_mobile_surfaces.dart';
 
 /// Full-screen task detail — previously a `showModalBottomSheet` that
 /// squeezed this much content (description, diagnostics, comments, runs,
@@ -106,24 +110,14 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
   }
 
   Future<void> deleteAttachment(KanbanAttachment attachment) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.kanbanDeleteAttachment(attachment.filename)),
-        content: Text(context.l10n.kanbanCannotUndo),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.kanbanDeleteAttachment(attachment.filename),
+      message: context.l10n.kanbanCannotUndo,
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await run(() => _requireTarget().deleteAttachment(attachment.id));
   }
 
@@ -139,8 +133,10 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
       if (mounted && d != null) setState(() => detail = d);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.kanbanOperationFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.kanbanOperationFailed('$e'),
         );
       }
     }
@@ -161,8 +157,10 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
       if (mounted && d != null) setState(() => detail = d);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.kanbanOperationFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.kanbanOperationFailed('$e'),
         );
       }
     } finally {
@@ -174,17 +172,19 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
     try {
       final value = await _requireTarget().inspectRun(id);
       if (!mounted) return;
-      showModalBottomSheet(
-        context: context,
-        builder: (_) => SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+      showMobileSheet<void>(
+        context,
+        (_) => SingleChildScrollView(
+          padding: const EdgeInsets.all(HermesSpacing.md),
           child: SelectableText(value.toString()),
         ),
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.kanbanOperationFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.kanbanOperationFailed('$e'),
         );
       }
     }
@@ -194,10 +194,10 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
     try {
       final value = await _requireTarget().log(detail.task.id);
       if (!mounted) return;
-      showModalBottomSheet(
-        context: context,
-        builder: (_) => SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+      showMobileSheet<void>(
+        context,
+        (_) => SingleChildScrollView(
+          padding: const EdgeInsets.all(HermesSpacing.md),
           child: SelectableText(
             value['content']?.toString() ?? context.l10n.kanbanNoLog,
           ),
@@ -205,8 +205,10 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.kanbanOperationFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.kanbanOperationFailed('$e'),
         );
       }
     }
@@ -216,17 +218,19 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
     try {
       final value = await _requireTarget().estimate(detail.task.id);
       if (!mounted) return;
-      showModalBottomSheet(
-        context: context,
-        builder: (_) => Padding(
-          padding: const EdgeInsets.all(16),
+      showMobileSheet<void>(
+        context,
+        (_) => Padding(
+          padding: const EdgeInsets.all(HermesSpacing.md),
           child: Text(value.toString()),
         ),
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.kanbanOperationFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.kanbanOperationFailed('$e'),
         );
       }
     }
@@ -307,9 +311,9 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
   Future<void> changeStatus() async {
     final columns = widget.store.boardData?.columns ?? const [];
     if (columns.isEmpty || busy) return;
-    final next = await showModalBottomSheet<String>(
-      context: context,
-      builder: (sheet) => SafeArea(
+    final next = await showMobileSheet<String>(
+      context,
+      (sheet) => SafeArea(
         child: ListView(
           shrinkWrap: true,
           children: [
@@ -353,7 +357,7 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
     final columns = widget.store.boardData?.columns ?? const [];
     final assignees = widget.store.boardData?.assignees ?? const [];
     final value =
-        await showModalBottomSheet<
+        await showMobileSheet<
           ({
             String title,
             String body,
@@ -366,16 +370,10 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
             String effort,
           })
         >(
-          context: context,
-          isScrollControlled: true,
-          builder: (sheet) => StatefulBuilder(
+          context,
+          (sheet) => StatefulBuilder(
             builder: (sheet, setSheetState) => Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                MediaQuery.viewInsetsOf(sheet).bottom + 16,
-              ),
+              padding: const EdgeInsets.all(HermesSpacing.md),
               child: ListView(
                 shrinkWrap: true,
                 children: [
@@ -394,6 +392,8 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                     ),
                   ),
                   DropdownButtonFormField<String>(
+                    dropdownColor: hermesDropdownColor(sheet),
+                    borderRadius: hermesDropdownBorderRadius,
                     initialValue: columns.any((c) => c.name == status)
                         ? status
                         : null,
@@ -410,6 +410,8 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                     onChanged: (v) => setSheetState(() => status = v ?? status),
                   ),
                   DropdownButtonFormField<int>(
+                    dropdownColor: hermesDropdownColor(sheet),
+                    borderRadius: hermesDropdownBorderRadius,
                     initialValue: priority,
                     decoration: InputDecoration(
                       labelText: sheet.l10n.kanbanPriority,
@@ -432,6 +434,8 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                         setSheetState(() => priority = v ?? priority),
                   ),
                   DropdownButtonFormField<String>(
+                    dropdownColor: hermesDropdownColor(sheet),
+                    borderRadius: hermesDropdownBorderRadius,
                     initialValue: assignee,
                     decoration: InputDecoration(
                       labelText: sheet.l10n.kanbanAssignee,
@@ -466,6 +470,8 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                     ),
                   ),
                   DropdownButtonFormField<String>(
+                    dropdownColor: hermesDropdownColor(sheet),
+                    borderRadius: hermesDropdownBorderRadius,
                     initialValue: effort,
                     decoration: InputDecoration(
                       labelText: sheet.l10n.kanbanEffort,
@@ -535,8 +541,10 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
       });
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.kanbanOperationFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.kanbanOperationFailed('$error'),
         );
       }
     }
@@ -550,14 +558,18 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
         data.bytes,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.filesDownloadedPath(path))),
+        showHermesToast(
+          context,
+          message: context.l10n.filesDownloadedPath(path),
+          kind: HermesToastKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.filesDownloadFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.filesDownloadFailed('$e'),
         );
       }
     }
@@ -575,8 +587,10 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
       await _loadHomes();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.kanbanOperationFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.kanbanOperationFailed('$e'),
         );
       }
     }
@@ -662,17 +676,19 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
         ).toLocal().toString().substring(0, 16);
 
   Widget _emptyHint(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
+    padding: const EdgeInsets.symmetric(vertical: HermesSpacing.xs),
     child: Text(
       context.l10n.commonNoData,
-      style: TextStyle(color: HermesPalette.of(context).text3, fontSize: 13),
+      style: HermesType.subheadline.copyWith(
+        color: HermesPalette.of(context).text3,
+      ),
     ),
   );
 
   Widget _sectionCard(BuildContext context, {required Widget child}) =>
       HermesGlassCard(
         radius: HermesRadius.card,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(HermesMobileMetrics.pagePadding),
         child: child,
       );
 
@@ -681,7 +697,7 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
     final hasBody = detail.task.body?.trim().isNotEmpty == true;
     return HermesGlassCard(
       radius: HermesRadius.largeCard,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(HermesSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -718,12 +734,12 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                   ),
                 ),
               ),
-              HermesMobileStatusChip(
+              HermesStatusChip(
                 label: _priorityLabel(context, detail.task.priority),
                 color: _priorityColor(context, detail.task.priority),
               ),
               if (detail.task.assignee?.isNotEmpty == true)
-                HermesMobileStatusChip(
+                HermesStatusChip(
                   label: detail.task.assignee!,
                   color: palette.text3,
                   icon: Icons.person_outline,
@@ -737,25 +753,38 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                 Expanded(
                   child: Text(
                     context.l10n.kanbanCreatedAt(_fmtTime(createdAt)),
-                    style: TextStyle(color: palette.text4, fontSize: 11.5),
+                    style: HermesType.caption.copyWith(color: palette.text4),
                   ),
                 ),
-              GestureDetector(
+              Semantics(
+                button: true,
+                label: '${context.l10n.kanbanTaskId}: ${detail.task.id}',
                 onTap: () => copyTextOrNotify(
                   context,
                   detail.task.id,
                   successMessage: context.l10n.kanbanTaskIdCopied,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${context.l10n.kanbanTaskId}: ${detail.task.id}',
-                      style: TextStyle(color: palette.text4, fontSize: 11.5),
+                child: ExcludeSemantics(
+                  child: GestureDetector(
+                    onTap: () => copyTextOrNotify(
+                      context,
+                      detail.task.id,
+                      successMessage: context.l10n.kanbanTaskIdCopied,
                     ),
-                    const SizedBox(width: 3),
-                    Icon(Icons.copy, size: 12, color: palette.text4),
-                  ],
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${context.l10n.kanbanTaskId}: ${detail.task.id}',
+                          style: HermesType.caption.copyWith(
+                            color: palette.text4,
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Icon(Icons.copy, size: 12, color: palette.text4),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -774,7 +803,7 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
         HermesSectionHeader(title: context.l10n.kanbanDiagnostics),
         for (final d in detail.diagnostics)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: HermesSpacing.xs),
             child: Builder(
               builder: (context) {
                 final severityColor = d.severity == 'critical'
@@ -798,7 +827,7 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                       ),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(11, 10, 12, 10),
+                      padding: const EdgeInsets.all(HermesSpacing.sm),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -821,9 +850,8 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                                 const SizedBox(height: 2),
                                 Text(
                                   d.detail,
-                                  style: TextStyle(
+                                  style: HermesType.subheadline.copyWith(
                                     color: palette.text3,
-                                    fontSize: 12.5,
                                   ),
                                 ),
                                 if (d.actions.isNotEmpty) ...[
@@ -881,18 +909,16 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                               children: [
                                 Text(
                                   x.author,
-                                  style: const TextStyle(
+                                  style: HermesType.subheadline.copyWith(
                                     fontWeight: FontWeight.w700,
-                                    fontSize: 13,
                                   ),
                                 ),
                                 if (x.createdAt != 0) ...[
                                   const SizedBox(width: 6),
                                   Text(
                                     _fmtTime(x.createdAt),
-                                    style: TextStyle(
+                                    style: HermesType.caption.copyWith(
                                       color: palette.text4,
-                                      fontSize: 11,
                                     ),
                                   ),
                                 ],
@@ -907,12 +933,14 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                   ),
                   if (x != detail.comments.last)
                     const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
+                      padding: EdgeInsets.symmetric(
+                        vertical: HermesSpacing.sm,
+                      ),
                       child: Divider(height: 1),
                     ),
                 ],
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+                padding: EdgeInsets.symmetric(vertical: HermesSpacing.sm),
                 child: Divider(height: 1),
               ),
               Row(
@@ -964,61 +992,68 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
         else
           for (final r in detail.runs)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: HermesGlassCard(
-                radius: HermesRadius.card,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 4,
-                ),
-                onTap: () => inspect(r.id),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Row(
-                    children: [
-                      HermesMobileStatusChip(
-                        label: _statusLabel(context, r.status),
-                        color: _statusColor(context, r.status),
-                      ),
-                      if (r.startedAt != null) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          _fmtTime(r.startedAt!),
-                          style: TextStyle(color: palette.text4, fontSize: 11),
-                        ),
-                      ],
-                    ],
+              padding: const EdgeInsets.only(bottom: HermesSpacing.xs),
+              child: Semantics(
+                button: true,
+                child: HermesGlassCard(
+                  radius: HermesRadius.card,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: HermesMobileMetrics.pagePadding,
+                    vertical: HermesSpacing.xxs,
                   ),
-                  subtitle: (r.summary ?? r.error)?.isNotEmpty == true
-                      ? Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            r.summary ?? r.error!,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: r.summary == null && r.error != null
-                                ? TextStyle(
-                                    color: hermesSemantic(
-                                      context,
-                                      HermesSemantic.red,
-                                      HermesSemanticDark.red,
-                                    ),
-                                  )
-                                : null,
+                  onTap: () => inspect(r.id),
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Row(
+                      children: [
+                        HermesStatusChip(
+                          label: _statusLabel(context, r.status),
+                          color: _statusColor(context, r.status),
+                        ),
+                        if (r.startedAt != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            _fmtTime(r.startedAt!),
+                            style: HermesType.caption.copyWith(
+                              color: palette.text4,
+                            ),
                           ),
-                        )
-                      : null,
-                  trailing: r.status == 'running'
-                      ? IconButton(
-                          onPressed: busy
-                              ? null
-                              : () => run(
-                                  () => _requireTarget().terminateRun(r.id),
-                                ),
-                          icon: const Icon(Icons.stop_circle_outlined),
-                          tooltip: context.l10n.commonStop,
-                        )
-                      : const Icon(Icons.chevron_right, size: 18),
+                        ],
+                      ],
+                    ),
+                    subtitle: (r.summary ?? r.error)?.isNotEmpty == true
+                        ? Padding(
+                            padding: const EdgeInsets.only(
+                              top: HermesSpacing.xxs,
+                            ),
+                            child: Text(
+                              r.summary ?? r.error!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: r.summary == null && r.error != null
+                                  ? TextStyle(
+                                      color: hermesSemantic(
+                                        context,
+                                        HermesSemantic.red,
+                                        HermesSemanticDark.red,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                          )
+                        : null,
+                    trailing: r.status == 'running'
+                        ? IconButton(
+                            onPressed: busy
+                                ? null
+                                : () => run(
+                                    () => _requireTarget().terminateRun(r.id),
+                                  ),
+                            icon: const Icon(Icons.stop_circle_outlined),
+                            tooltip: context.l10n.commonStop,
+                          )
+                        : const Icon(Icons.chevron_right, size: 18),
+                  ),
                 ),
               ),
             ),
@@ -1126,7 +1161,9 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
             children: [
               for (final event in detail.events.reversed)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: HermesSpacing.xxs,
+                  ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1135,13 +1172,15 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
                       Expanded(
                         child: Text(
                           _eventKindLabel(context, event.kind),
-                          style: const TextStyle(fontSize: 13),
+                          style: HermesType.subheadline,
                         ),
                       ),
                       if (event.createdAt != 0)
                         Text(
                           _fmtTime(event.createdAt),
-                          style: TextStyle(color: palette.text4, fontSize: 11),
+                          style: HermesType.caption.copyWith(
+                            color: palette.text4,
+                          ),
                         ),
                     ],
                   ),
@@ -1162,7 +1201,7 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
           context,
           child: homesLoading
               ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
+                  padding: EdgeInsets.symmetric(vertical: HermesSpacing.md),
                   child: Center(child: CircularProgressIndicator()),
                 )
               : homesError != null
@@ -1235,7 +1274,12 @@ class _KanbanTaskDetailScreenState extends State<KanbanTaskDetailScreen> {
           child: RefreshIndicator(
             onRefresh: _refresh,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+              padding: const EdgeInsets.fromLTRB(
+                HermesMobileMetrics.pagePadding,
+                HermesSpacing.sm,
+                HermesMobileMetrics.pagePadding,
+                HermesSpacing.xl,
+              ),
               children: [
                 _headerCard(context),
                 _diagnosticsSection(context),

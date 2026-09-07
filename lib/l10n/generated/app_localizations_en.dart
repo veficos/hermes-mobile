@@ -418,6 +418,50 @@ class AppLocalizationsEn extends AppLocalizations {
       'Prevent the screen from sleeping while a chat is open';
 
   @override
+  String get embedPrivacySettingsTitle => 'External content privacy';
+
+  @override
+  String get embedPrivacySettingsDescription =>
+      'Control whether message previews may contact services such as YouTube or Spotify.';
+
+  @override
+  String get embedModeAsk => 'Ask';
+
+  @override
+  String get embedModeAlways => 'Always';
+
+  @override
+  String get embedModeOff => 'Off';
+
+  @override
+  String embedClearAllowed(int count) {
+    return 'Clear allowed services ($count)';
+  }
+
+  @override
+  String richLinkPrivacyTitle(String provider) {
+    return 'Load content from $provider?';
+  }
+
+  @override
+  String get richLinkPrivacyDescription =>
+      'Loading this preview contacts a third party and may reveal your IP address, referrer, or cookies.';
+
+  @override
+  String get richLinkLoadOnce => 'Load once';
+
+  @override
+  String richLinkAlwaysAllow(String provider) {
+    return 'Always allow $provider';
+  }
+
+  @override
+  String get richLinkOpenOnly => 'Open link only';
+
+  @override
+  String get richLinkCloseAnotherPreview => 'Close another live preview first.';
+
+  @override
   String get appearanceModeDark => 'Dark';
 
   @override
@@ -1537,6 +1581,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSavedPrompts => 'Saved prompts';
 
   @override
+  String get chatRecentInputs => 'Recent inputs';
+
+  @override
+  String chatPluginPrepareFailed(String error) {
+    return 'A plugin could not prepare the message: $error';
+  }
+
+  @override
+  String get chatPasteImage => 'Paste image';
+
+  @override
+  String get workspaceLayoutBalanced => 'Two panes · 1:1';
+
+  @override
+  String get workspaceLayoutMainWide => 'Main wide · 2:1';
+
+  @override
+  String get workspaceLayoutToolsWide => 'Tools wide · 1:2';
+
+  @override
+  String get chatClipboardHasNoImage =>
+      'The clipboard does not contain an image';
+
+  @override
+  String chatClipboardImageFailed(String error) {
+    return 'Could not paste the clipboard image: $error';
+  }
+
+  @override
   String chatSavedPromptsLoadFailed(String error) {
     return 'Could not load saved prompts: $error';
   }
@@ -1546,6 +1619,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatSearchLoadedHistory => 'Search loaded history';
+
+  @override
+  String get chatHistoryLocatorPartial =>
+      'Older messages aren\'t loaded yet — search results may be incomplete';
+
+  @override
+  String get chatLoadAllHistory => 'Load all history';
+
+  @override
+  String get chatLoadingAllHistory => 'Loading all history…';
+
+  @override
+  String chatLoadAllHistoryFailed(Object error) {
+    return 'Failed to load history: $error';
+  }
 
   @override
   String chatSelectFilesFailed(String error) {
@@ -3511,6 +3599,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get previewRefresh => 'Refresh preview';
 
   @override
+  String get previewReloadWithoutCache => 'Reload without cache';
+
+  @override
+  String get previewRetry => 'Try again';
+
+  @override
+  String get previewServerNotFound => 'Can\'t reach this server';
+
+  @override
+  String get previewAppFailedToBoot => 'The app failed to load';
+
+  @override
+  String get previewRemoteLoopbackHint =>
+      'This address points to a machine that doesn\'t exist on this device — the agent\'s dev server is probably running on the connected computer, not here. Try opening it there instead.';
+
+  @override
   String get previewRunJavascript => 'Run JavaScript';
 
   @override
@@ -5280,6 +5384,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get historyEndOfList => '— End of history —';
+
+  @override
   String get historyPinned => 'Pinned';
 
   @override
@@ -5766,6 +5873,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profilesModel => 'Model';
 
   @override
+  String get profilesModelChangeWarningTitle => 'Routines pin the old model';
+
+  @override
+  String profilesModelChangeWarningBody(int count, String profile) {
+    return '$count routine(s) on $profile have their own model override and won\'t switch automatically. Save anyway?';
+  }
+
+  @override
+  String get profilesModelChangeViewRoutines => 'View routines';
+
+  @override
+  String get profilesModelChangeSaveAnyway => 'Save anyway';
+
+  @override
+  String get profilesModelChangeCheckFailedTitle => 'Couldn\'t check routines';
+
+  @override
+  String profilesModelChangeCheckFailedBody(String profile) {
+    return 'We couldn\'t verify whether any routines on $profile pin their own model override, so we can\'t tell if this change affects them. Save anyway?';
+  }
+
+  @override
   String get profilesSystemPrompt => 'System prompt';
 
   @override
@@ -6036,6 +6165,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSearchNoMatches => 'No matching bots';
 
   @override
+  String get agentBotUnreachable => 'Unreachable';
+
+  @override
   String agentGroupSaveFailed(Object error) {
     return 'Could not save group chat: $error';
   }
@@ -6204,6 +6336,76 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentDeleteBot => 'Delete Bot';
 
   @override
+  String get agentEditAvatarMenuItem => 'Edit avatar';
+
+  @override
+  String get avatarEditorShapeLabel => 'Shape';
+
+  @override
+  String get avatarEditorColorLabel => 'Color';
+
+  @override
+  String get avatarEditorRandomize => 'Randomize';
+
+  @override
+  String get avatarEditorUploadPhoto => 'Upload photo';
+
+  @override
+  String get avatarEditorRemovePhoto => 'Remove photo';
+
+  @override
+  String get avatarEditorImageTooLarge => 'Image too large (max 15MB)';
+
+  @override
+  String get avatarEditorGenerate => 'Generate with AI';
+
+  @override
+  String get avatarEditorGenerateHint => 'Describe your bot\'s look (optional)';
+
+  @override
+  String avatarEditorGenerateFailed(String error) {
+    return 'Generation failed: $error';
+  }
+
+  @override
+  String get avatarEditorChoosePet => 'Choose pet';
+
+  @override
+  String get avatarEditorPetSearchHint => 'Search pets';
+
+  @override
+  String get avatarEditorPetLoadFailed => 'Couldn\'t load the pet gallery';
+
+  @override
+  String get avatarEditorSaved => 'Avatar updated';
+
+  @override
+  String avatarEditorSaveFailed(String error) {
+    return 'Failed to update avatar: $error';
+  }
+
+  @override
+  String get agentBotMcpMenuItem => 'MCP servers';
+
+  @override
+  String get agentBotModelMenuItem => 'Model & tools';
+
+  @override
+  String get agentHiddenBotsSection => 'Hidden';
+
+  @override
+  String get agentHideBot => 'Hide';
+
+  @override
+  String get agentUnhideBot => 'Unhide';
+
+  @override
+  String get agentPinBot => 'Pin';
+
+  @override
+  String get agentUnpinBot => 'Unpin';
+
+  @override
   String get agentGateway => 'Gateway';
 
   @override
@@ -6341,6 +6543,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get botRoutineDelete => 'Delete routine';
+
+  @override
+  String get botRoutineEdit => 'Edit';
+
+  @override
+  String botRoutineEditTitle(Object name) {
+    return 'Edit routine · $name';
+  }
+
+  @override
+  String get botRoutineSaving => 'Saving...';
+
+  @override
+  String get botRoutineSave => 'Save changes';
+
+  @override
+  String botRoutineLoadFailed(Object error) {
+    return 'Could not load routine details: $error';
+  }
 
   @override
   String botRoutineScheduleOnce(Object duration) {
@@ -6489,6 +6710,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String mcpOperationFailed(Object error) {
     return 'Operation failed: $error';
   }
+
+  @override
+  String mcpHealthNeedsAuthTitle(String name) {
+    return '$name needs reauthorization';
+  }
+
+  @override
+  String get mcpHealthNeedsAuthBody =>
+      'A background check found this server\'s connection has expired. Reconnect to keep using it.';
+
+  @override
+  String mcpHealthErrorTitle(String name) {
+    return '$name is unreachable';
+  }
+
+  @override
+  String get mcpHealthErrorBody =>
+      'A background check couldn\'t reach this server. Open MCP settings to investigate.';
 
   @override
   String get mcpPersistenceFailed =>
@@ -8724,6 +8963,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileTreeAttachToChat => 'Attach to chat';
 
   @override
+  String get sessionActionMarkUnread => 'Mark as unread';
+
+  @override
+  String get sessionMarkedUnread => 'Marked as unread';
+
+  @override
   String get projectAddFolder => 'Add folder';
 
   @override
@@ -9323,6 +9568,29 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get fileEditorBinaryDescription =>
       'It looks like a binary file (image, archive, or executable). Opening it in the text editor would corrupt it on save, so editing is disabled — download it to your device instead.';
+
+  @override
+  String get fileEditorFindReplaceTitle => 'Find and Replace';
+
+  @override
+  String get fileEditorFindLabel => 'Find';
+
+  @override
+  String get fileEditorReplaceWithLabel => 'Replace with';
+
+  @override
+  String get fileEditorReplaceAll => 'Replace all';
+
+  @override
+  String get fileEditorNoMatches => 'No matches found';
+
+  @override
+  String fileEditorReplacedCount(int count) {
+    return 'Replaced $count occurrences';
+  }
+
+  @override
+  String get fileEditorNoChanges => 'No changes';
 
   @override
   String kanbanTaskCreatedLinkFailed(String error) {
@@ -11286,6 +11554,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String get botProfileNameUnavailable => 'No free profile name is available';
 
   @override
+  String get botProfileNameInvalid =>
+      'Names must start with a letter or number and use only lowercase letters, numbers, - or _';
+
+  @override
+  String get botCreateTitle => 'Create bot';
+
+  @override
+  String get botCreateNameHelper => 'Lowercase letters, numbers, - or _';
+
+  @override
+  String botCreateNameTaken(String name) {
+    return 'A bot named \"$name\" already exists';
+  }
+
+  @override
+  String get botCreateRoleLabel => 'Role (optional)';
+
+  @override
+  String get botCreateMissionLabel => 'Mission (optional)';
+
+  @override
+  String get botCreateCloneFromLabel => 'Clone from';
+
+  @override
+  String get botCreateCustomSoulLabel => 'Write a custom SOUL';
+
+  @override
+  String get botCreateCustomSoulHint =>
+      'Describe this bot\'s identity in its own words';
+
+  @override
+  String get botCreateSuccess => 'Bot created';
+
+  @override
   String get botDefaultProfileDeleteForbidden =>
       'The default profile cannot be deleted';
 
@@ -11309,5 +11611,157 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String httpStatusError(int statusCode) {
     return 'The server returned HTTP $statusCode';
+  }
+
+  @override
+  String get voiceMuteMicrophone => 'Mute microphone';
+
+  @override
+  String get voiceMicrophoneMuted => 'Microphone muted';
+
+  @override
+  String get voiceRecordingDroppedMuted =>
+      'Recording stopped and discarded because the microphone was muted';
+
+  @override
+  String get keybindsTitle => 'Keyboard shortcuts';
+
+  @override
+  String get settingsKeybindsDesc =>
+      'Customize shortcuts for a physical keyboard';
+
+  @override
+  String get keybindActionChatUndo => 'Undo';
+
+  @override
+  String get keybindActionChatFind => 'Find';
+
+  @override
+  String get keybindChange => 'Change';
+
+  @override
+  String get keybindReset => 'Reset';
+
+  @override
+  String get keybindResetAll => 'Reset all';
+
+  @override
+  String get keybindCustomizedBadge => 'Customized';
+
+  @override
+  String get keybindCapturePrompt => 'Press a key combination…';
+
+  @override
+  String get keybindCaptureModifierRequired =>
+      'Include a modifier key (Ctrl, ⌘, Alt, or Shift)';
+
+  @override
+  String keybindConflictWith(String action) {
+    return 'Already used by \"$action\"';
+  }
+
+  @override
+  String get keybindNoHardwareKeyboardHint =>
+      'Shortcuts apply when this device has a physical keyboard attached';
+
+  @override
+  String get previewSource => 'Source';
+
+  @override
+  String get previewRendered => 'Rendered';
+
+  @override
+  String get previewDiff => 'Changes';
+
+  @override
+  String get previewLargeFileTitle => 'Large file preview is paused';
+
+  @override
+  String get previewLargeFileDescription =>
+      'Loading this file may use substantial memory. Open it only when you need the full preview.';
+
+  @override
+  String get pluginComposerBlocked => 'A plugin blocked this message.';
+
+  @override
+  String get pluginComposerInvalidResponse =>
+      'A composer plugin returned an invalid response';
+
+  @override
+  String get pluginComposerTextTooLarge =>
+      'The message produced by a composer plugin is too large';
+
+  @override
+  String get workspaceRenameTab => 'Rename tab';
+
+  @override
+  String get workspaceCloseOtherTabs => 'Close other tabs';
+
+  @override
+  String get workspaceCloseTabsToRight => 'Close tabs to the right';
+
+  @override
+  String get chatReadingAttachments => 'Reading attachment…';
+
+  @override
+  String get chatSendingEllipsis => 'Sending…';
+
+  @override
+  String chatUploadingPercent(int percent) {
+    return 'Uploading $percent%';
+  }
+
+  @override
+  String get chatUploadingEllipsis => 'Uploading…';
+
+  @override
+  String get chatPreparingAttachments => 'Preparing attachment…';
+
+  @override
+  String chatUploadingProgress(int current, int total) {
+    return 'Uploading $current/$total';
+  }
+
+  @override
+  String chatUploadingProgressPercent(int percent) {
+    return 'Uploading · $percent%';
+  }
+
+  @override
+  String get chatSendCancelledRetry => 'Send cancelled, you can retry';
+
+  @override
+  String chatSuggestionUseSkill(String id) {
+    return 'Use skill: $id';
+  }
+
+  @override
+  String get chatSuggestionConfigureGithub => 'Configure GitHub capability';
+
+  @override
+  String chatSuggestionConnectMcp(String id) {
+    return 'Connect $id MCP';
+  }
+
+  @override
+  String chatSuggestionRepairMcp(String id) {
+    return 'Repair $id MCP connection';
+  }
+
+  @override
+  String chatSuggestionTriggerReason(String trigger) {
+    return 'Because the draft or current session mentioned $trigger';
+  }
+
+  @override
+  String get chatInvalidPublicUrl => 'Enter a valid public http/https address';
+
+  @override
+  String get messageBubbleAttachmentSendFailed =>
+      'Attachment failed to send, tap to retry';
+
+  @override
+  String messageBubbleAttachmentUploading(String percent) {
+    return 'Uploading attachment $percent';
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -10,6 +12,7 @@ import '../../core/stores/plugin_contribution_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
 import '../../widgets/h/hermes_markdown.dart';
+import '../../widgets/h/hermes_states.dart';
 import '../../widgets/message_preview_attachments.dart';
 import '../../widgets/web_preview.dart' show openChatLink;
 import '../content/embed_registry.dart';
@@ -23,6 +26,7 @@ import 'pretty_links.dart';
 import 'reference_chips.dart';
 import 'resizable_markdown_table.dart';
 import 'streaming_remend.dart';
+import 'streaming_word_drain.dart';
 import 'zoomable_markdown_image.dart';
 
 /// How long a single text node may be before it is collapsed behind a
@@ -89,10 +93,30 @@ class StreamingInlineContentRenderer extends StatefulWidget {
 
 class _StreamingInlineContentRendererState
     extends State<StreamingInlineContentRenderer> {
+  static const _wordCadence = Duration(milliseconds: 42);
+  static const _maxRevealLag = Duration(milliseconds: 600);
   final IncrementalStreamingMarkdownScanner _scanner =
       IncrementalStreamingMarkdownScanner();
   final List<String> _stableBlocks = <String>[];
   int oldScannedLength = 0;
+  String _displayedText = '';
+  Timer? _paceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start at an empty prefix so a provider that puts the first whole burst
+    // in one event is paced too. On completion this streaming renderer is
+    // replaced by the regular renderer, which shows the authoritative final
+    // text immediately.
+    _displayedText = '';
+  }
+
+  @override
+  void dispose() {
+    _paceTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant StreamingInlineContentRenderer oldWidget) {
@@ -101,16 +125,51 @@ class _StreamingInlineContentRendererState
       _stableBlocks.clear();
       _scanner.reset();
       oldScannedLength = 0;
+      _displayedText = widget.text;
+    } else if (widget.text.length > _displayedText.length) {
+      _schedulePace();
     }
+  }
+
+  void _schedulePace() {
+    if (_paceTimer != null) return;
+    _paceTimer = Timer.periodic(_wordCadence, (_) {
+      if (!mounted) return;
+      final target = widget.text;
+      if (_displayedText.length >= target.length) {
+        _paceTimer?.cancel();
+        _paceTimer = null;
+        return;
+      }
+      final cursor = _displayedText.length;
+      // Normally reveal one word per cadence tick. If a provider delivered a
+      // large burst, increase the quota so the visible text catches up instead
+      // of leaving the UI many seconds behind the network stream (Hermex's
+      // lag-bound word drain behaves the same way).
+      final remainder = target.substring(cursor);
+      final quota = StreamingWordDrain.drainQuota(
+        backlogUnitCount: StreamingWordDrain.unitCount(remainder),
+        cadence: _wordCadence,
+        maxLag: _maxRevealLag,
+      );
+      final take = StreamingWordDrain.splitOffset(remainder, quota);
+      setState(() {
+        _displayedText = target.substring(0, cursor + take);
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final added = _scanner.update(widget.text);
+    // Keep the active tail readable while smoothing large token bursts. The
+    // final target is always reached verbatim, so pacing cannot lose content.
+    if (_displayedText.length < widget.text.length) _schedulePace();
+    final sourceText = _displayedText;
+    final added = _scanner.update(sourceText);
     final metrics = ClientPerformanceMetrics.instance;
-    metrics.markdownScannedChars += (widget.text.length - oldScannedLength)
-        .clamp(0, widget.text.length);
-    oldScannedLength = widget.text.length;
+    metrics.markdownScannedChars += (sourceText.length - oldScannedLength)
+        .clamp(0, sourceText.length);
+    oldScannedLength = sourceText.length;
     for (final block in added) {
       _stableBlocks.add(
         linkifySessionRefs(block, titleOf: widget.sessionTitleOf),
@@ -119,7 +178,7 @@ class _StreamingInlineContentRendererState
           block.length;
     }
     final tail = linkifySessionRefs(
-      _scanner.tail(widget.text),
+      _scanner.tail(sourceText),
       titleOf: widget.sessionTitleOf,
     );
     metrics.markdownTailChars += tail.length;
@@ -278,10 +337,10 @@ class _PluginDirectiveCard extends StatelessWidget {
             await store!.invoke(adapted);
           } catch (error) {
             if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(context.l10n.pluginsOperationFailed('$error')),
-                ),
+              showHermesErrorSnackBar(
+                context,
+                error,
+                fallback: context.l10n.pluginsOperationFailed('$error'),
               );
             }
           }

@@ -39,7 +39,7 @@ String formatCtxUsageLabel(int tokens) {
 }
 
 /// Attachment types supported in the composer (mirrors hermes-agent desktop).
-enum ComposerAttachmentKind { file, folder, image, url, snippet }
+enum ComposerAttachmentKind { file, folder, image, url, snippet, review }
 
 /// Simple data class for a composer attachment.
 ///
@@ -56,6 +56,19 @@ class ComposerAttachment {
   final String? localPath;
   final String? url;
   final String? snippetText;
+  final Map<String, dynamic>? detail;
+  final String? dataUrl;
+  final Uint8List? bytes;
+
+  /// True while a send is actively uploading this staged attachment (WebUI
+  /// `uploadState: 'uploading'` parity) — set at send-time, not at pick-time.
+  final bool uploading;
+
+  /// Non-null when the last upload attempt for this attachment failed; the
+  /// chip surfaces it inline in addition to the composer's global snackbar.
+  final String? uploadError;
+  final int uploadSent;
+  final int uploadTotal;
 
   const ComposerAttachment({
     required this.kind,
@@ -65,12 +78,24 @@ class ComposerAttachment {
     this.localPath,
     this.url,
     this.snippetText,
+    this.detail,
+    this.dataUrl,
+    this.bytes,
+    this.uploading = false,
+    this.uploadError,
+    this.uploadSent = 0,
+    this.uploadTotal = 0,
   });
 
   ComposerAttachment copyWith({
     String? occurrenceId,
     String? path,
     String? localPath,
+    Map<String, dynamic>? detail,
+    String? dataUrl,
+    Uint8List? bytes,
+    int? uploadSent,
+    int? uploadTotal,
   }) => ComposerAttachment(
     occurrenceId: occurrenceId ?? this.occurrenceId,
     kind: kind,
@@ -79,6 +104,38 @@ class ComposerAttachment {
     localPath: localPath ?? this.localPath,
     url: url,
     snippetText: snippetText,
+    detail: detail ?? this.detail,
+    dataUrl: dataUrl ?? this.dataUrl,
+    bytes: bytes ?? this.bytes,
+    uploading: uploading,
+    uploadError: uploadError,
+    uploadSent: uploadSent ?? this.uploadSent,
+    uploadTotal: uploadTotal ?? this.uploadTotal,
+  );
+
+  /// Sets the upload-in-flight state, replacing [uploadError] outright
+  /// (including clearing it to null) rather than falling back like
+  /// [copyWith] does — used from the send path to drive chip feedback.
+  ComposerAttachment withUploadStatus({
+    required bool uploading,
+    String? error,
+    int? sent,
+    int? total,
+  }) => ComposerAttachment(
+    occurrenceId: occurrenceId,
+    kind: kind,
+    label: label,
+    path: path,
+    localPath: localPath,
+    url: url,
+    snippetText: snippetText,
+    detail: detail,
+    dataUrl: dataUrl,
+    bytes: bytes,
+    uploading: uploading,
+    uploadError: error,
+    uploadSent: sent ?? uploadSent,
+    uploadTotal: total ?? uploadTotal,
   );
 
   /// True once the attachment points at a server-side path.
@@ -96,6 +153,8 @@ class ComposerAttachment {
         return Icons.link_outlined;
       case ComposerAttachmentKind.snippet:
         return Icons.notes;
+      case ComposerAttachmentKind.review:
+        return Icons.rate_review_outlined;
     }
   }
 }
@@ -117,10 +176,16 @@ class HermesComposer extends StatefulWidget {
   /// primary button steers the running turn instead of queuing/stopping.
   final ValueChanged<String>? onSteer;
   final VoidCallback? onModelTap;
-  final VoidCallback? onSpeak;
+  final Key? modelTargetKey;
   final VoidCallback? onUndo;
   final VoidCallback? onRedo;
-  final Widget? contextMenu;
+  final VoidCallback? onExpand;
+
+  /// Whether there is actually anything to undo/redo right now — drives the
+  /// editor-actions menu's item enablement so "Undo"/"Redo" don't sit
+  /// perpetually tappable-but-inert just because a callback is wired.
+  final bool canUndo;
+  final bool canRedo;
 
   /// Desktop-parity: personality pill label + callback
   final String? personalityLabel;
@@ -152,6 +217,8 @@ class HermesComposer extends StatefulWidget {
 
   /// Left-side action buttons (attachment, image, link, etc.)
   final List<Widget> leadingActions;
+  final List<Widget> topExtensions;
+  final List<Widget> bottomExtensions;
 
   /// Optional overlay rendered above the input when non-empty (slash /
   /// mention autocomplete).
@@ -175,6 +242,8 @@ class HermesComposer extends StatefulWidget {
   /// the composer card's top-right. Null when the session has no real usage
   /// data — the indicator is not rendered at all (no fake numbers).
   final String? ctxUsageLabel;
+  final String? sendStatusLabel;
+  final VoidCallback? onRetrySend;
 
   const HermesComposer({
     super.key,
@@ -187,10 +256,12 @@ class HermesComposer extends StatefulWidget {
     this.onStop,
     this.onSteer,
     this.onModelTap,
-    this.onSpeak,
+    this.modelTargetKey,
     this.onUndo,
     this.onRedo,
-    this.contextMenu,
+    this.onExpand,
+    this.canUndo = false,
+    this.canRedo = false,
     this.personalityLabel,
     this.onPersonalityTap,
     this.workspaceLabel,
@@ -205,6 +276,8 @@ class HermesComposer extends StatefulWidget {
     this.quotaLabel,
     this.onQuotaTap,
     this.leadingActions = const [],
+    this.topExtensions = const [],
+    this.bottomExtensions = const [],
     this.suggestions,
     this.onSuggestionKeyEvent,
     this.attachments = const [],
@@ -212,6 +285,8 @@ class HermesComposer extends StatefulWidget {
     this.footerActions = const [],
     this.beforeSendAction,
     this.ctxUsageLabel,
+    this.sendStatusLabel,
+    this.onRetrySend,
   });
 
   @override
@@ -405,6 +480,7 @@ class _HermesComposerState extends State<HermesComposer> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ...widget.topExtensions,
             // ── Suggestions overlay (slash / @mention autocomplete) ──
             if (widget.suggestions != null) widget.suggestions!,
             // ── Composer tools row: every tool (selectors, quota, emoji
@@ -419,6 +495,48 @@ class _HermesComposerState extends State<HermesComposer> {
                 child: _AttachmentsRow(
                   attachments: widget.attachments,
                   onChanged: widget.onAttachmentsChanged,
+                ),
+              ),
+            if (widget.sendStatusLabel != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          widget.sendStatusLabel!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: widget.onRetrySend == null
+                                ? palette.text3
+                                : hermesSemantic(
+                                    context,
+                                    HermesSemantic.red,
+                                    HermesSemanticDark.red,
+                                  ),
+                          ),
+                        ),
+                      ),
+                      if (widget.onRetrySend != null)
+                        TextButton.icon(
+                          onPressed: widget.onRetrySend,
+                          icon: const Icon(Icons.refresh, size: 15),
+                          label: Text(context.l10n.commonRetry),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 30),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            visualDensity: VisualDensity.compact,
+                            foregroundColor: hermesSemantic(
+                              context,
+                              HermesSemantic.red,
+                              HermesSemanticDark.red,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             // ── Main composer input surface (edit box): mention chips,
@@ -527,7 +645,7 @@ class _HermesComposerState extends State<HermesComposer> {
                             contextMenuBuilder: (context, editableTextState) {
                               final items = <ContextMenuButtonItem>[
                                 ...editableTextState.contextMenuButtonItems,
-                                if (widget.onUndo != null)
+                                if (widget.onUndo != null && widget.canUndo)
                                   ContextMenuButtonItem(
                                     label: context.l10n.composerUndoInput,
                                     onPressed: () {
@@ -535,7 +653,7 @@ class _HermesComposerState extends State<HermesComposer> {
                                       editableTextState.hideToolbar();
                                     },
                                   ),
-                                if (widget.onRedo != null)
+                                if (widget.onRedo != null && widget.canRedo)
                                   ContextMenuButtonItem(
                                     label: context.l10n.composerRedoInput,
                                     onPressed: () {
@@ -595,6 +713,7 @@ class _HermesComposerState extends State<HermesComposer> {
                 ],
               ),
             ),
+            ...widget.bottomExtensions,
             _buildInfoLine(context),
           ],
         ),
@@ -620,12 +739,15 @@ class _HermesComposerState extends State<HermesComposer> {
         onTap: widget.onWorkspaceTap,
       ),
     if (widget.onModelTap != null || widget.modelLabel != null)
-      _SelectorIconButton(
-        icon: Icons.smart_toy_outlined,
-        tooltip: widget.modelLabel?.isNotEmpty == true
-            ? context.l10n.composerModelValue(widget.modelLabel!)
-            : context.l10n.composerSelectModel,
-        onTap: widget.onModelTap,
+      KeyedSubtree(
+        key: widget.modelTargetKey,
+        child: _SelectorIconButton(
+          icon: Icons.smart_toy_outlined,
+          tooltip: widget.modelLabel?.isNotEmpty == true
+              ? context.l10n.composerModelValue(widget.modelLabel!)
+              : context.l10n.composerSelectModel,
+          onTap: widget.onModelTap,
+        ),
       ),
     if (widget.onDifficultyTap != null || widget.difficultyLabel != null)
       _SelectorIconButton(
@@ -713,12 +835,12 @@ class _HermesComposerState extends State<HermesComposer> {
           itemBuilder: (_) => [
             PopupMenuItem(
               value: 'undo',
-              enabled: widget.onUndo != null,
+              enabled: widget.onUndo != null && widget.canUndo,
               child: Text(context.l10n.composerUndoInput),
             ),
             PopupMenuItem(
               value: 'redo',
-              enabled: widget.onRedo != null,
+              enabled: widget.onRedo != null && widget.canRedo,
               child: Text(context.l10n.composerRedoInput),
             ),
             PopupMenuItem(
@@ -726,6 +848,12 @@ class _HermesComposerState extends State<HermesComposer> {
               child: Text(context.l10n.composerClearInput),
             ),
           ],
+        ),
+      if (widget.onExpand != null)
+        _SelectorIconButton(
+          icon: Icons.open_in_full,
+          tooltip: context.l10n.chatEditMessageHint,
+          onTap: widget.onExpand,
         ),
       ...widget.footerActions,
       if (mobilePlatform)
@@ -1087,6 +1215,7 @@ class _SendButtonState extends State<_SendButton> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final active = widget.enabled || widget.busy;
     // A compact 32px accent button lines up with the 24px composer text
@@ -1122,7 +1251,7 @@ class _SendButtonState extends State<_SendButton> {
               child: SizedBox(
                 width: 32,
                 height: 32,
-                child: Icon(icon, size: 16, color: Colors.white),
+                child: Icon(icon, size: 16, color: palette.bubbleUserText),
               ),
             ),
           ),
@@ -1148,16 +1277,144 @@ class _AttachmentsRow extends StatelessWidget {
     onChanged?.call(newList);
   }
 
+  Future<void> _previewAttachment(
+    BuildContext context,
+    ComposerAttachment attachment,
+  ) async {
+    final palette = HermesPalette.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: palette.surface,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Flexible(
+                child:
+                    attachment.kind == ComposerAttachmentKind.image &&
+                        attachment.bytes != null
+                    ? InteractiveViewer(
+                        minScale: 0.8,
+                        maxScale: 5,
+                        child: Image.memory(
+                          attachment.bytes!,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) =>
+                              _previewFallback(dialogContext, attachment),
+                        ),
+                      )
+                    : _previewFallback(dialogContext, attachment),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        attachment.label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: palette.text,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: MaterialLocalizations.of(
+                        dialogContext,
+                      ).closeButtonTooltip,
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _previewFallback(BuildContext context, ComposerAttachment attachment) {
+    final palette = HermesPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(attachment.icon, size: 56, color: palette.accent),
+          const SizedBox(height: 16),
+          Text(
+            attachment.path ?? attachment.localPath ?? attachment.label,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: palette.text3),
+          ),
+          if (_attachmentSize(attachment) case final size?) ...[
+            const SizedBox(height: 8),
+            Text(_formatBytes(size), style: TextStyle(color: palette.text3)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  int? _attachmentSize(ComposerAttachment attachment) {
+    if (attachment.bytes != null) return attachment.bytes!.length;
+    final raw = attachment.detail?['size'] ?? attachment.detail?['size_bytes'];
+    return raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '');
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  String _extension(String name) {
+    final dot = name.lastIndexOf('.');
+    if (dot < 0 || dot == name.length - 1) return 'FILE';
+    return name
+        .substring(dot + 1)
+        .toUpperCase()
+        .substring(0, (name.length - dot - 1).clamp(0, 5));
+  }
+
+  Color _fileColor(ComposerAttachment attachment, Color accent) {
+    final ext = _extension(attachment.label).toLowerCase();
+    if (const {'csv', 'tsv', 'xls', 'xlsx'}.contains(ext)) {
+      return HermesSemantic.green;
+    }
+    if (ext == 'pdf') return HermesSemantic.red;
+    if (const {
+      'json',
+      'md',
+      'txt',
+      'log',
+      'xml',
+      'yaml',
+      'yml',
+    }.contains(ext)) {
+      return HermesSemantic.blue;
+    }
+    return accent;
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
     final chipBg = palette.codeBg;
     final chipBorder = palette.border;
     final chipText = palette.text3;
-    BoxDecoration chipDecoration() => BoxDecoration(
+    BoxDecoration chipDecoration({bool card = false}) => BoxDecoration(
       color: chipBg,
       border: Border.all(color: chipBorder),
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(card ? 14 : 999),
     );
 
     return SingleChildScrollView(
@@ -1167,59 +1424,364 @@ class _AttachmentsRow extends StatelessWidget {
           ...attachments.asMap().entries.map((entry) {
             final index = entry.key;
             final att = entry.value;
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: chipDecoration(),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(att.icon, size: 14, color: chipText),
-                  const SizedBox(width: 4),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 180),
-                    child: Text(
-                      att.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: chipText),
-                    ),
-                  ),
-                  if (att.kind == ComposerAttachmentKind.folder) ...[
-                    const SizedBox(width: 4),
-                    Tooltip(
-                      message: context.l10n.composerFolderNotUploaded,
-                      child: Icon(
-                        Icons.link_off,
-                        size: 12,
-                        color: chipText.withValues(alpha: 0.7),
+            final isImage = att.kind == ComposerAttachmentKind.image;
+            final isFile = att.kind == ComposerAttachmentKind.file;
+            final isComplete = att.isUploaded && !att.uploading;
+            final attachmentSize = _attachmentSize(att);
+            final card = isImage || isFile;
+            return InkWell(
+              key: ValueKey('composer-attachment-${att.occurrenceId ?? index}'),
+              onTap: card ? () => _previewAttachment(context, att) : null,
+              borderRadius: BorderRadius.circular(card ? 14 : 999),
+              child: Container(
+                width: isImage
+                    ? 104
+                    : isFile
+                    ? 222
+                    : null,
+                height: isImage || isFile ? 104 : null,
+                margin: const EdgeInsets.only(right: 8),
+                padding: EdgeInsets.fromLTRB(
+                  isImage ? 6 : 10,
+                  isImage ? 6 : 5,
+                  isImage ? 6 : 4,
+                  isImage ? 6 : 5,
+                ),
+                decoration: chipDecoration(card: card),
+                child: isImage
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: att.bytes != null
+                                    ? Image.memory(
+                                        att.bytes!,
+                                        height: 68,
+                                        width: 92,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Container(
+                                        height: 68,
+                                        color: palette.codeBg,
+                                        child: Icon(att.icon, color: chipText),
+                                      ),
+                              ),
+                              Positioned(
+                                top: -2,
+                                right: -2,
+                                child: IconButton(
+                                  tooltip: context.l10n
+                                      .composerRemoveAttachment(att.label),
+                                  onPressed: onChanged == null
+                                      ? null
+                                      : () => _removeAttachment(index),
+                                  iconSize: 16,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 28,
+                                    minHeight: 28,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.black54,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  icon: const Icon(Icons.close),
+                                ),
+                              ),
+                              if (att.uploading)
+                                Positioned.fill(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black38,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Center(
+                                      child: SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (isComplete)
+                                const Positioned(
+                                  left: 4,
+                                  bottom: 4,
+                                  child: Icon(
+                                    Icons.check_circle,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            att.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: chipText),
+                          ),
+                          if (att.uploadError != null)
+                            Text(
+                              context.l10n.messageBubbleAttachmentSendFailed,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: HermesSemantic.red,
+                              ),
+                            ),
+                          if (att.uploading && att.uploadTotal > 0)
+                            Text(
+                              '${((att.uploadSent / att.uploadTotal) * 100).round()}%',
+                              style: TextStyle(fontSize: 10, color: chipText),
+                            ),
+                        ],
+                      )
+                    : isFile
+                    ? Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 58,
+                                height: 68,
+                                decoration: BoxDecoration(
+                                  color: _fileColor(
+                                    att,
+                                    palette.accent,
+                                  ).withValues(alpha: .14),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      att.icon,
+                                      size: 25,
+                                      color: _fileColor(att, palette.accent),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      _extension(att.label),
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: _fileColor(att, palette.accent),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      att.label,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                        color: palette.text,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      attachmentSize == null
+                                          ? _extension(att.label)
+                                          : _formatBytes(attachmentSize),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: chipText,
+                                      ),
+                                    ),
+                                    if (att.uploading &&
+                                        att.uploadTotal > 0) ...[
+                                      const SizedBox(height: 6),
+                                      LinearProgressIndicator(
+                                        minHeight: 3,
+                                        value:
+                                            (att.uploadSent / att.uploadTotal)
+                                                .clamp(0.0, 1.0),
+                                      ),
+                                    ],
+                                    if (att.uploadError != null)
+                                      Text(
+                                        context
+                                            .l10n
+                                            .messageBubbleAttachmentSendFailed,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: HermesSemantic.red,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          Positioned(
+                            top: -7,
+                            right: -7,
+                            child: IconButton.filledTonal(
+                              tooltip: context.l10n.composerRemoveAttachment(
+                                att.label,
+                              ),
+                              onPressed: onChanged == null
+                                  ? null
+                                  : () => _removeAttachment(index),
+                              iconSize: 14,
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.close),
+                            ),
+                          ),
+                          if (att.uploading && att.uploadTotal <= 0)
+                            Positioned(
+                              right: 30,
+                              bottom: 4,
+                              child: SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.7,
+                                  color: palette.accent,
+                                ),
+                              ),
+                            ),
+                          if (!att.isUploaded &&
+                              !att.uploading &&
+                              att.uploadError == null &&
+                              att.localPath != null)
+                            Positioned(
+                              right: 4,
+                              bottom: 2,
+                              child: Icon(
+                                Icons.cloud_upload_outlined,
+                                size: 16,
+                                color: chipText.withValues(alpha: .75),
+                              ),
+                            ),
+                          if (isComplete)
+                            const Positioned(
+                              right: 4,
+                              bottom: 2,
+                              child: Icon(
+                                Icons.check_circle,
+                                size: 17,
+                                color: HermesSemantic.green,
+                              ),
+                            ),
+                        ],
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(att.icon, size: 14, color: chipText),
+                          const SizedBox(width: 4),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 180),
+                            child: Text(
+                              att.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12, color: chipText),
+                            ),
+                          ),
+                          if (att.uploading && att.uploadTotal > 0) ...[
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              width: 38,
+                              child: LinearProgressIndicator(
+                                minHeight: 3,
+                                value: (att.uploadSent / att.uploadTotal).clamp(
+                                  0.0,
+                                  1.0,
+                                ),
+                                color: HermesSemantic.blue,
+                                backgroundColor: chipBorder,
+                              ),
+                            ),
+                          ],
+                          if (att.kind == ComposerAttachmentKind.folder) ...[
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message: context.l10n.composerFolderNotUploaded,
+                              child: Icon(
+                                Icons.link_off,
+                                size: 12,
+                                color: chipText.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ] else if (att.uploading) ...[
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.6,
+                                color: HermesPalette.of(context).accent,
+                              ),
+                            ),
+                          ] else if (att.uploadError != null) ...[
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message: att.uploadError!,
+                              child: Icon(
+                                Icons.error_outline,
+                                size: 14,
+                                color: HermesSemantic.red,
+                              ),
+                            ),
+                          ] else if (!att.isUploaded &&
+                              att.localPath != null) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.cloud_upload_outlined,
+                              size: 12,
+                              color: chipText.withValues(alpha: 0.7),
+                            ),
+                          ],
+                          IconButton(
+                            tooltip: context.l10n.composerRemoveAttachment(
+                              att.label,
+                            ),
+                            onPressed: onChanged == null
+                                ? null
+                                : () => _removeAttachment(index),
+                            iconSize: 16,
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(
+                              minWidth: 44,
+                              minHeight: 44,
+                            ),
+                            padding: EdgeInsets.zero,
+                            icon: Icon(
+                              Icons.close,
+                              color: chipText.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ] else if (!att.isUploaded && att.localPath != null) ...[
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.cloud_upload_outlined,
-                      size: 12,
-                      color: chipText.withValues(alpha: 0.7),
-                    ),
-                  ],
-                  IconButton(
-                    tooltip: context.l10n.composerRemoveAttachment(att.label),
-                    onPressed: onChanged == null
-                        ? null
-                        : () => _removeAttachment(index),
-                    iconSize: 16,
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 44,
-                      minHeight: 44,
-                    ),
-                    padding: EdgeInsets.zero,
-                    icon: Icon(
-                      Icons.close,
-                      color: chipText.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ],
               ),
             );
           }),

@@ -33,6 +33,7 @@ import '../screens/terminal_screen.dart';
 import '../theme/hermes_tokens.dart';
 import 'h/hermes_glass.dart';
 import 'h/hermes_kbd.dart';
+import 'h/hermes_states.dart';
 import 'pet_overlay.dart';
 
 class CommandPalette extends StatelessWidget {
@@ -426,9 +427,7 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
       }
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.commonOperationFailed)),
-        );
+        showHermesErrorSnackBar(context, error);
       }
       return;
     }

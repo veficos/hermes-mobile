@@ -27,6 +27,7 @@ import '../core/stores/billing_store.dart';
 import '../core/stores/bot_store.dart';
 import '../core/stores/coding_status_store.dart';
 import '../core/stores/connection_store.dart';
+import '../core/stores/mobile_surface_store.dart';
 import '../core/stores/notification_store.dart';
 import '../core/stores/pet_store.dart';
 import '../core/stores/profile_scope_store.dart';
@@ -41,26 +42,25 @@ import '../theme/hermes_tokens.dart';
 import '../widgets/command_palette.dart';
 import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_logo.dart';
+import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/pet_overlay.dart';
-import 'agent_screen.dart';
-import 'about_screen.dart';
+import '../widgets/mobile/mobile_tour_overlay.dart';
 import 'chat_screen.dart';
 import 'connect_screen.dart';
-import 'files_screen.dart';
-import 'git_screen.dart';
+import 'feature_registry.dart';
 import 'home_screen.dart';
 import 'more_screen.dart';
 import 'mcp_screen.dart';
 import 'onboarding_screen.dart';
+import 'pane_workspace_screen.dart';
 import 'new_session_screen.dart';
 import 'notification_screen.dart';
 import 'plugins_screen.dart';
 import 'request_sheet.dart';
 import 'session_list_screen.dart';
 import 'settings_hub_screen.dart';
-import 'skills_screen.dart';
 import 'kanban_canonical_screen.dart';
-import 'terminal_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -87,6 +87,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   UpdateStore? _updateStore;
   bool _updateDialogScheduled = false;
   StreamSubscription<bool>? _connectivitySub;
+  MobileSurfaceStore? _mobileSurfaces;
 
   // Spec §194: tabs are built lazily — only the visited ones stay alive in
   // the IndexedStack, so cold start only pays for the visible tab.
@@ -109,6 +110,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _mobileSurfaces = Provider.of<MobileSurfaceStore?>(context, listen: false);
+    _mobileSurfaces?.bindReveal(_revealAgentSurface);
     _notificationsService = Provider.of<NotificationsService?>(
       context,
       listen: false,
@@ -171,9 +174,45 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _revealAgentSurface(MobileSurface surface) async {
+    if (!mounted) return;
+    switch (surface) {
+      case MobileSurface.home:
+        // Remote-triggered: only update the underlying tab selection. Any
+        // screen the user has pushed on top (Settings, a form, a dialog)
+        // stays put — the tab becomes correct whenever they navigate back
+        // to the root themselves, without an unannounced pop losing state.
+        _selectTab(0);
+        return;
+      case MobileSurface.chat:
+        // pane.reveal is accepted only for the visible chat session, so the
+        // conversation is already on top. Avoid stacking a duplicate route.
+        return;
+      case MobileSurface.sessions:
+        _selectTab(1);
+        return;
+      case MobileSurface.tasks:
+        _selectTab(2);
+        return;
+      case MobileSurface.more:
+        _selectTab(3);
+        return;
+      case MobileSurface.files:
+      case MobileSurface.terminal:
+      case MobileSurface.review:
+      case MobileSurface.preview:
+      case MobileSurface.workspace:
+        final navigator = hermesNavigatorKey.currentState;
+        if (navigator == null) return;
+        unawaited(openWorkspaceScreen(navigator));
+        await WidgetsBinding.instance.endOfFrame;
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _mobileSurfaces?.bindReveal(null);
     _notificationsService?.onTapTarget = null;
     _deepLinkService?.handler = null;
     _updateStore?.removeListener(_onUpdateStateChanged);
@@ -347,10 +386,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     } catch (error) {
       final navContext = hermesNavigatorKey.currentContext ?? context;
       if (!navContext.mounted) return;
-      ScaffoldMessenger.of(navContext).showSnackBar(
-        SnackBar(
-          content: Text(navContext.l10n.appOpenNotificationFailed('$error')),
-        ),
+      showHermesErrorSnackBar(
+        navContext,
+        error,
+        fallback: navContext.l10n.appOpenNotificationFailed('$error'),
       );
     }
   }
@@ -604,11 +643,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _showDeepLinkMessage(String message, {bool error = false}) {
     final navContext = hermesNavigatorKey.currentContext ?? context;
     if (!navContext.mounted) return;
-    ScaffoldMessenger.of(navContext).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: error ? HermesSemantic.red : null,
-      ),
+    showHermesToast(
+      navContext,
+      message: message,
+      kind: error ? HermesToastKind.error : HermesToastKind.info,
     );
   }
 
@@ -719,28 +757,30 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     if (isXl) {
       // XL 档：类 IDE 三栏工作台（design-system §7.2）。
-      return PetOverlay(
-        child: Stack(
-          children: [
-            Scaffold(
-              body: Column(
-                children: [
-                  _XlTopBar(title: _tabLabels(context)[_index]),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        _buildXlSideNav(context, connection, requests),
-                        const VerticalDivider(width: 1),
-                        Expanded(child: body),
-                      ],
+      return MobileTourOverlay(
+        child: PetOverlay(
+          child: Stack(
+            children: [
+              Scaffold(
+                body: Column(
+                  children: [
+                    _XlTopBar(title: _tabLabels(context)[_index]),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          _buildXlSideNav(context, connection, requests),
+                          const VerticalDivider(width: 1),
+                          Expanded(child: body),
+                        ],
+                      ),
                     ),
-                  ),
-                  const _XlStatusBar(),
-                ],
+                    const _XlStatusBar(),
+                  ],
+                ),
               ),
-            ),
-            const CommandPalette(),
-          ],
+              const CommandPalette(),
+            ],
+          ),
         ),
       );
     }
@@ -748,93 +788,118 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (isTablet) {
       // Tablet: NavigationRail + Main + ContextRail (spec §164).
       // Rail 目的地与手机 Tab 对齐（首页/会话/任务/更多）。
-      return PetOverlay(
-        child: Stack(
-          children: [
-            Scaffold(
-              body: Row(
-                children: [
-                  NavigationRail(
-                    key: const ValueKey('app-shell-tablet-navigation'),
-                    selectedIndex: _index,
-                    onDestinationSelected: _selectTab,
-                    labelType: NavigationRailLabelType.all,
-                    backgroundColor: Theme.of(context).colorScheme.surface,
-                    leading: FloatingActionButton.small(
-                      heroTag: 'palette_rail',
-                      tooltip: context.l10n.commonSearch,
-                      onPressed: () =>
-                          context.read<CommandPaletteStore>().open(),
-                      child: const Icon(Icons.search),
+      // 选中态与手机档 NavigationBar 对齐：accentBg 胶囊 + accent 图标/label
+      // （hermes_theme.dart 暂无 navigationRailTheme，本地补齐）。
+      final palette = HermesPalette.of(context);
+      return MobileTourOverlay(
+        child: PetOverlay(
+          child: Stack(
+            children: [
+              Scaffold(
+                body: Row(
+                  children: [
+                    NavigationRailTheme(
+                      data: NavigationRailThemeData(
+                        indicatorColor: palette.accentBg,
+                        selectedIconTheme: IconThemeData(
+                          color: palette.accent,
+                        ),
+                        unselectedIconTheme: IconThemeData(
+                          color: palette.text3,
+                        ),
+                        selectedLabelTextStyle: TextStyle(
+                          color: palette.accent,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        unselectedLabelTextStyle: TextStyle(
+                          color: palette.text3,
+                        ),
+                      ),
+                      child: NavigationRail(
+                        key: const ValueKey('app-shell-tablet-navigation'),
+                        selectedIndex: _index,
+                        onDestinationSelected: _selectTab,
+                        labelType: NavigationRailLabelType.all,
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                        leading: FloatingActionButton.small(
+                          heroTag: 'palette_rail',
+                          tooltip: context.l10n.commonSearch,
+                          onPressed: () =>
+                              context.read<CommandPaletteStore>().open(),
+                          child: const Icon(Icons.search),
+                        ),
+                        destinations: [
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.home_outlined),
+                            selectedIcon: const Icon(Icons.home),
+                            label: Text(context.l10n.navHome),
+                          ),
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.chat_bubble_outline),
+                            selectedIcon: const Icon(Icons.chat_bubble),
+                            label: Text(context.l10n.navSessions),
+                          ),
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.task_alt_outlined),
+                            selectedIcon: const Icon(Icons.task_alt),
+                            label: Text(context.l10n.navTasks),
+                          ),
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.more_horiz),
+                            selectedIcon: const Icon(Icons.more_horiz),
+                            label: Text(context.l10n.navMore),
+                          ),
+                        ],
+                      ),
                     ),
-                    destinations: [
-                      NavigationRailDestination(
-                        icon: const Icon(Icons.home_outlined),
-                        selectedIcon: const Icon(Icons.home),
-                        label: Text(context.l10n.navHome),
-                      ),
-                      NavigationRailDestination(
-                        icon: const Icon(Icons.chat_bubble_outline),
-                        selectedIcon: const Icon(Icons.chat_bubble),
-                        label: Text(context.l10n.navSessions),
-                      ),
-                      NavigationRailDestination(
-                        icon: const Icon(Icons.task_alt_outlined),
-                        selectedIcon: const Icon(Icons.task_alt),
-                        label: Text(context.l10n.navTasks),
-                      ),
-                      NavigationRailDestination(
-                        icon: const Icon(Icons.more_horiz),
-                        selectedIcon: const Icon(Icons.more_horiz),
-                        label: Text(context.l10n.navMore),
-                      ),
-                    ],
-                  ),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: body),
-                ],
+                    const VerticalDivider(width: 1),
+                    Expanded(child: body),
+                  ],
+                ),
               ),
-            ),
-            const CommandPalette(),
-          ],
+              const CommandPalette(),
+            ],
+          ),
         ),
       );
     }
 
-    // Phone: compact four-tab navigation matching the mobile prototype.
+    // Phone: Material NavigationBar（样式见 NavigationBarTheme）。
     // Search is exposed by page headers so it no longer obscures content.
-    return PetOverlay(
-      child: Stack(
-        children: [
-          Scaffold(
-            body: body,
-            bottomNavigationBar: _PrototypeBottomNavigation(
-              selectedIndex: _index,
-              pendingRequests: requests.pendingCount,
-              onSelected: _selectTab,
+    return MobileTourOverlay(
+      child: PetOverlay(
+        child: Stack(
+          children: [
+            Scaffold(
+              body: body,
+              bottomNavigationBar: _PhoneNavigationBar(
+                selectedIndex: _index,
+                pendingRequests: requests.pendingCount,
+                onSelected: _selectTab,
+              ),
+              floatingActionButton: requests.pendingCount > 0
+                  ? FloatingActionButton.small(
+                      heroTag: 'requests',
+                      onPressed: () => showRequestSheet(context),
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          const Icon(Icons.rule),
+                          Positioned(
+                            right: -6,
+                            top: -4,
+                            child: HermesBadge(count: requests.pendingCount),
+                          ),
+                        ],
+                      ),
+                    )
+                  : null,
             ),
-            floatingActionButton: requests.pendingCount > 0
-                ? FloatingActionButton.small(
-                    heroTag: 'requests',
-                    onPressed: () => showRequestSheet(context),
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        const Icon(Icons.rule),
-                        Positioned(
-                          right: -6,
-                          top: -4,
-                          child: HermesBadge(count: requests.pendingCount),
-                        ),
-                      ],
-                    ),
-                  )
-                : null,
-          ),
-          const CommandPalette(),
-        ],
+            const CommandPalette(),
+          ],
+        ),
       ),
     );
   }
@@ -942,43 +1007,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     selected: _index == 2,
                     onTap: () => _selectTab(2),
                   ),
-                  _xlNavItem(
-                    context,
-                    icon: Icons.folder_open_outlined,
-                    label: l10n.featureFiles,
-                    selected: false,
-                    onTap: () => _pushPage(context, const FilesScreen()),
-                  ),
-                  _xlNavItem(
-                    context,
-                    icon: Icons.terminal_outlined,
-                    label: l10n.featureTerminal,
-                    selected: false,
-                    onTap: () => _pushPage(context, const TerminalScreen()),
-                  ),
-                  _xlNavItem(
-                    context,
-                    icon: Icons.account_tree_outlined,
-                    label: l10n.featureGit,
-                    selected: false,
-                    onTap: () => _pushPage(context, const GitScreen()),
-                  ),
+                  _xlFeatureNavItem(context, 'files'),
+                  _xlFeatureNavItem(context, 'terminal'),
+                  _xlFeatureNavItem(context, 'git'),
                   if (expanded)
                     _xlSectionLabel(context, l10n.shellIntelligenceArea),
-                  _xlNavItem(
-                    context,
-                    icon: Icons.bolt_outlined,
-                    label: l10n.featureAgent,
-                    selected: false,
-                    onTap: () => _pushPage(context, const AgentScreen()),
-                  ),
-                  _xlNavItem(
-                    context,
-                    icon: Icons.auto_awesome_outlined,
-                    label: l10n.featureSkills,
-                    selected: false,
-                    onTap: () => _pushPage(context, const SkillsScreen()),
-                  ),
+                  _xlFeatureNavItem(context, 'agent'),
+                  _xlFeatureNavItem(context, 'skills'),
                   _xlNavItem(
                     context,
                     icon: _tabIcons[3],
@@ -991,22 +1026,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             ),
           ),
           Divider(height: 1, color: palette.border),
-          _xlNavItem(
-            context,
-            icon: Icons.settings_outlined,
-            label: l10n.featureSettings,
-            selected: false,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
-            ),
-          ),
-          _xlNavItem(
-            context,
-            icon: Icons.info_outline,
-            label: l10n.featureAbout,
-            selected: false,
-            onTap: () => _pushPage(context, const AboutScreen()),
-          ),
+          _xlFeatureNavItem(context, 'settings'),
+          _xlFeatureNavItem(context, 'about'),
           _xlNavItem(
             context,
             icon: connection.isConnected
@@ -1026,8 +1047,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
   }
 
-  void _pushPage(BuildContext context, Widget page) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  /// XL 侧栏功能入口：图标/标题/目标统一取自 `feature_registry.dart`。
+  Widget _xlFeatureNavItem(BuildContext context, String id) {
+    final entry = hermesFeaturesById[id]!;
+    return _xlNavItem(
+      context,
+      icon: entry.icon,
+      label: entry.title(context.l10n),
+      selected: false,
+      onTap: () => entry.open(context),
+    );
   }
 
   Widget _xlSectionLabel(BuildContext context, String label) {
@@ -1123,8 +1152,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 }
 
-class _PrototypeBottomNavigation extends StatelessWidget {
-  const _PrototypeBottomNavigation({
+/// 手机档底部导航：Material [NavigationBar]，样式统一来自
+/// `NavigationBarTheme`（hermes_theme.dart：66px、accentBg 胶囊选中态、
+/// 11px label、accent/text3 图标色）。角标/tour 目标键叠加在 destination
+/// icon 上；Semantics（selected/button/"Tab x of 4"）由组件内置。
+class _PhoneNavigationBar extends StatelessWidget {
+  const _PhoneNavigationBar({
     required this.selectedIndex,
     required this.pendingRequests,
     required this.onSelected,
@@ -1134,101 +1167,52 @@ class _PrototypeBottomNavigation extends StatelessWidget {
   final int pendingRequests;
   final ValueChanged<int> onSelected;
 
+  static const _targetSelectors = [
+    'nav.home',
+    'nav.sessions',
+    'nav.tasks',
+    'nav.more',
+  ];
+
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
     final labels = _tabLabels(context);
-    const icons = [
-      Icons.home_outlined,
-      Icons.chat_bubble_outline,
-      Icons.task_alt_outlined,
-      Icons.more_horiz,
-    ];
+    const icons = _AppShellState._tabIcons;
+    final surfaces = Provider.of<MobileSurfaceStore?>(context, listen: false);
+    // NavigationBar 内部自带 SafeArea 与 Material；外层仅补 surface 底色 +
+    // 顶部分隔线（NavigationBarTheme 无 shape/border 入口）。
     return DecoratedBox(
-      key: const ValueKey('app-shell-phone-navigation'),
       decoration: BoxDecoration(
         color: palette.surface,
         border: Border(top: BorderSide(color: palette.border)),
       ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 66,
-          child: Row(
-            children: [
-              for (var index = 0; index < labels.length; index++)
-                Expanded(
-                  child: Semantics(
-                    selected: selectedIndex == index,
-                    button: true,
-                    label: labels[index],
-                    child: InkWell(
-                      onTap: () => onSelected(index),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+      child: NavigationBar(
+        key: const ValueKey('app-shell-phone-navigation'),
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onSelected,
+        destinations: [
+          for (var index = 0; index < labels.length; index++)
+            NavigationDestination(
+              icon: KeyedSubtree(
+                key: surfaces?.targetKey(_targetSelectors[index]),
+                child: index == 1 && pendingRequests > 0
+                    ? Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          Container(
-                            width: 44,
-                            height: 28,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: selectedIndex == index
-                                  ? palette.accentBg
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: index == 1 && pendingRequests > 0
-                                ? Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      Icon(
-                                        icons[index],
-                                        size: 19,
-                                        color: selectedIndex == index
-                                            ? palette.accent
-                                            : palette.text3,
-                                      ),
-                                      Positioned(
-                                        right: -6,
-                                        top: -4,
-                                        child: HermesBadge(
-                                          count: pendingRequests,
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                : Icon(
-                                    icons[index],
-                                    size: 19,
-                                    color: selectedIndex == index
-                                        ? palette.accent
-                                        : palette.text3,
-                                  ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            labels[index],
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: selectedIndex == index
-                                  ? palette.accent
-                                  : palette.text3,
-                              fontSize: 11,
-                              height: 1.1,
-                              fontWeight: selectedIndex == index
-                                  ? FontWeight.w700
-                                  : FontWeight.w600,
-                            ),
+                          Icon(icons[index]),
+                          Positioned(
+                            right: -6,
+                            top: -4,
+                            child: HermesBadge(count: pendingRequests),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
+                      )
+                    : Icon(icons[index]),
+              ),
+              label: labels[index],
+            ),
+        ],
       ),
     );
   }

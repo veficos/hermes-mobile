@@ -11,7 +11,10 @@ import '../core/connection_reload_mixin.dart';
 import '../core/performance_metrics.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/session_store.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/session/session_list_meta.dart';
 import '../widgets/session/session_rich_card.dart';
 import '../widgets/session/session_detail_panel.dart';
@@ -219,8 +222,10 @@ class _HistoryScreenState extends State<HistoryScreen>
       ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
     } catch (e) {
       if (!mounted || !identical(api, connection.api)) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.historyResumeFailed('$e'))),
+      showHermesErrorSnackBar(
+        context,
+        e,
+        fallback: context.l10n.historyResumeFailed('$e'),
       );
     }
   }
@@ -363,7 +368,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                   child: ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 24),
-                    itemCount: visibleItems.length + (_hasMore ? 1 : 0),
+                    itemCount: visibleItems.length + 1,
                     itemBuilder: (context, index) {
                       if (index < visibleItems.length) {
                         final item = visibleItems[index];
@@ -380,18 +385,29 @@ class _HistoryScreenState extends State<HistoryScreen>
                           expanded: session.expanded,
                         );
                       }
+                      if (_hasMore) {
+                        return Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: OutlinedButton.icon(
+                            onPressed: _loading ? null : _loadMore,
+                            icon: const Icon(Icons.expand_more),
+                            label: Text(
+                              _total == null
+                                  ? context.l10n.historyLoadMore
+                                  : context.l10n.historyLoadMoreCount(
+                                      _rows.length,
+                                      _total!,
+                                    ),
+                            ),
+                          ),
+                        );
+                      }
                       return Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: OutlinedButton.icon(
-                          onPressed: _loading ? null : _loadMore,
-                          icon: const Icon(Icons.expand_more),
-                          label: Text(
-                            _total == null
-                                ? context.l10n.historyLoadMore
-                                : context.l10n.historyLoadMoreCount(
-                                    _rows.length,
-                                    _total!,
-                                  ),
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Center(
+                          child: Text(
+                            context.l10n.historyEndOfList,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),
                       );
@@ -855,25 +871,14 @@ class _HistoryScreenState extends State<HistoryScreen>
     final title = row.title?.trim().isNotEmpty == true
         ? row.title!.trim()
         : context.l10n.historyUntitled;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ctx.l10n.historyDeleteQuestion),
-        content: Text(ctx.l10n.historyDeletePrompt(title)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(ctx.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(ctx.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.historyDeleteQuestion,
+      message: context.l10n.historyDeletePrompt(title),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
+    if (!confirmed || !mounted) return;
     try {
       requireActiveApi(context, connection, api);
       await api.deleteSession(row.id);
@@ -883,8 +888,10 @@ class _HistoryScreenState extends State<HistoryScreen>
       }
     } catch (error) {
       if (mounted && identical(api, connection.api)) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.historyDeleteFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: context.l10n.historyDeleteFailed('$error'),
         );
       }
     }
@@ -897,10 +904,9 @@ class _HistoryScreenState extends State<HistoryScreen>
         !identical(ownerApi, context.read<ConnectionStore>().api)) {
       return;
     }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) =>
+    showMobileSheet<void>(
+      context,
+      (ctx) =>
           _SessionManageSheet(row: row, ownerApi: ownerApi, onChanged: _load),
     );
   }
@@ -918,6 +924,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
     return '${local.month}/${local.day}';
   }
+
 }
 
 class _HistoryGroup {
@@ -1012,8 +1019,10 @@ class _SessionManageSheetState extends State<_SessionManageSheet> {
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted && identical(api, connection.api)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.historyRenameFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.historyRenameFailed('$e'),
         );
       }
     } finally {
@@ -1032,20 +1041,20 @@ class _SessionManageSheetState extends State<_SessionManageSheet> {
       final result = await session.compress();
       if (!mounted || session.durableId != sessionId) return;
       requireActiveApi(context, connection, widget.ownerApi);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.l10n.historyCompressed(result['removed'] ?? '?'),
-          ),
-        ),
+      showHermesToast(
+        context,
+        message: context.l10n.historyCompressed(result['removed'] ?? '?'),
+        kind: HermesToastKind.success,
       );
       await session.refreshTranscript();
     } catch (e) {
       if (mounted &&
           identical(widget.ownerApi, connection.api) &&
           session.durableId == sessionId) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.historyCompressFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.historyCompressFailed('$e'),
         );
       }
     } finally {
@@ -1067,14 +1076,12 @@ class _SessionManageSheetState extends State<_SessionManageSheet> {
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted && identical(api, connection.api)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              next
-                  ? context.l10n.historyArchiveFailed('$e')
-                  : context.l10n.historyUnarchiveFailed('$e'),
-            ),
-          ),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: next
+              ? context.l10n.historyArchiveFailed('$e')
+              : context.l10n.historyUnarchiveFailed('$e'),
         );
       }
     } finally {

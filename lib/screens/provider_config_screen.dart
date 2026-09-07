@@ -12,7 +12,11 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/profile_scope_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
@@ -60,9 +64,7 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
   ApiClient? _apiOrNotify() {
     final api = _api;
     if (api != null) return api;
-    ScaffoldMessenger.maybeOf(
-      context,
-    )?.showSnackBar(SnackBar(content: Text(context.l10n.backendDisconnected)));
+    showHermesToast(context, message: context.l10n.backendDisconnected);
     return null;
   }
 
@@ -292,8 +294,10 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
 
   void _showActionError(Object e) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.l10n.providerActionFailed('$e'))),
+    showHermesErrorSnackBar(
+      context,
+      e,
+      fallback: context.l10n.providerActionFailed('$e'),
     );
   }
 
@@ -409,8 +413,10 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.configSaveFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.configSaveFailed('$e'),
         );
       }
     }
@@ -431,7 +437,7 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
           title: Text(l10n.providerRevealedValueTitle),
           content: SelectableText(
             value ?? '',
-            style: const TextStyle(fontFamily: 'monospace'),
+            style: HermesType.code,
           ),
           actions: [
             FilledButton(
@@ -443,9 +449,11 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      showHermesErrorSnackBar(
         context,
-      ).showSnackBar(SnackBar(content: Text(l10n.providerRevealFailed('$e'))));
+        e,
+        fallback: l10n.providerRevealFailed('$e'),
+      );
     }
   }
 
@@ -641,26 +649,14 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
       );
       final postSetup = '${selected['post_setup'] ?? ''}';
       if (postSetup.isNotEmpty && mounted) {
-        final run = await showDialog<bool>(
+        final run = await showHermesConfirmDialog(
           context: context,
-          builder: (context) => AlertDialog(
-            title: Text(context.l10n.providerRunSetupQuestion),
-            content: Text(
-              context.l10n.providerRunSetupDescription(provider, postSetup),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(context.l10n.commonLater),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(context.l10n.commonRun),
-              ),
-            ],
-          ),
+          title: context.l10n.providerRunSetupQuestion,
+          message: context.l10n.providerRunSetupDescription(provider, postSetup),
+          confirmLabel: context.l10n.commonRun,
+          cancelLabel: context.l10n.commonLater,
         );
-        if (run == true) {
+        if (run) {
           _requireTarget(api, connectionId, profile);
           await api.runToolsetPostSetup(
             toolset.name,
@@ -759,6 +755,8 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
         SizedBox(
           width: 280,
           child: DropdownButtonFormField<ConnectionId>(
+            dropdownColor: hermesDropdownColor(context),
+            borderRadius: hermesDropdownBorderRadius,
             initialValue: _connectionId,
             isExpanded: true,
             decoration: InputDecoration(
@@ -788,6 +786,8 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
         SizedBox(
           width: 240,
           child: DropdownButtonFormField<String?>(
+            dropdownColor: hermesDropdownColor(context),
+            borderRadius: hermesDropdownBorderRadius,
             initialValue: _profile,
             isExpanded: true,
             decoration: InputDecoration(
@@ -1048,11 +1048,15 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
       key: const ValueKey('provider-mobile-list'),
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 28),
       children: [
-        HermesMobileSectionLabel(title: l10n.configAppliesToProfile, top: 8),
+        HermesSectionHeader(
+          title: l10n.configAppliesToProfile,
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+        ),
         HermesMobileGroup(children: scopeRows),
-        HermesMobileSectionLabel(
+        HermesSectionHeader(
           title: l10n.providerEnvironmentSection,
           trailing: addButton(const ValueKey('provider-add-env'), _addEnv),
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
         ),
         HermesMobileGroup(
           children: _env.entries.isEmpty
@@ -1092,7 +1096,7 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : HermesMobileStatusChip(
+                              : HermesStatusChip(
                                   label: isSet
                                       ? l10n.configConfigured
                                       : l10n.providerNotSet,
@@ -1108,12 +1112,13 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
                     ),
                 ],
         ),
-        HermesMobileSectionLabel(
+        HermesSectionHeader(
           title: l10n.providerCustomEndpointsSection,
           trailing: addButton(
             const ValueKey('provider-add-endpoint'),
             _editEndpoint,
           ),
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
         ),
         HermesMobileGroup(
           children: _endpoints.isEmpty
@@ -1141,7 +1146,10 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
                     ),
                 ],
         ),
-        HermesMobileSectionLabel(title: l10n.providerOauthSection),
+        HermesSectionHeader(
+          title: l10n.providerOauthSection,
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+        ),
         HermesMobileGroup(
           children: _oauth.isEmpty
               ? [
@@ -1177,7 +1185,7 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : HermesMobileStatusChip(
+                              : HermesStatusChip(
                                   label: connected
                                       ? l10n.commonConnected
                                       : l10n.commonAuthorize,
@@ -1200,7 +1208,10 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
                     ),
                 ],
         ),
-        HermesMobileSectionLabel(title: l10n.providerToolsetProvidersSection),
+        HermesSectionHeader(
+          title: l10n.providerToolsetProvidersSection,
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+        ),
         HermesMobileGroup(
           children: _toolsets.isEmpty
               ? [
@@ -1240,9 +1251,7 @@ class _ProviderConfigScreenState extends State<ProviderConfigScreen>
           _ownsTarget(api, renderedConnectionId, renderedProfile)) {
         return true;
       }
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(SnackBar(content: Text(l10n.backendDisconnected)));
+      showHermesToast(context, message: l10n.backendDisconnected);
       return false;
     }
 
@@ -1607,15 +1616,19 @@ class _CustomEndpointDialogState extends State<_CustomEndpointDialog> {
   void _submit() {
     final l10n = context.l10n;
     if (_nameCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.providerEndpointNameRequired)),
+      showHermesToast(
+        context,
+        message: l10n.providerEndpointNameRequired,
+        kind: HermesToastKind.error,
       );
       return;
     }
     if (_baseUrlCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
+      showHermesToast(
         context,
-      ).showSnackBar(SnackBar(content: Text(l10n.providerEndpointUrlRequired)));
+        message: l10n.providerEndpointUrlRequired,
+        kind: HermesToastKind.error,
+      );
       return;
     }
     final models = _modelsCtrl.text

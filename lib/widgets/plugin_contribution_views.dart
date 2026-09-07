@@ -8,6 +8,8 @@ import '../core/plugin_contributions.dart';
 import '../core/stores/plugin_contribution_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import 'mobile/mobile_page_scaffold.dart';
+import 'h/hermes_confirm_dialog.dart';
 import 'plugin_contribution_surface.dart';
 
 Future<void> showPluginContributionView(
@@ -21,22 +23,14 @@ Future<void> showPluginContributionView(
       if (!context.mounted) return;
       await showPluginActionResult(context, contribution, raw);
     case MobileContributionViewType.form:
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
-        builder: (_) =>
-            _PluginFormSheet(store: store, contribution: contribution),
+      await showMobileSheet<void>(
+        context,
+        (_) => _PluginFormSheet(store: store, contribution: contribution),
       );
     case MobileContributionViewType.list:
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
-        builder: (_) =>
-            _PluginListSheet(store: store, contribution: contribution),
+      await showMobileSheet<void>(
+        context,
+        (_) => _PluginListSheet(store: store, contribution: contribution),
       );
   }
 }
@@ -299,24 +293,11 @@ class _PluginFormSheetState extends State<_PluginFormSheet> {
       action.confirmTitleKey,
       action.confirmTitle ?? action.title,
     );
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(title),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(context.l10n.commonCancel),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text(context.l10n.commonConfirm),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    return showHermesConfirmDialog(
+      context: context,
+      title: title,
+      message: message,
+    );
   }
 
   Future<void> _run(
@@ -449,6 +430,8 @@ class _PluginFormSheetState extends State<_PluginFormSheet> {
             ? _values[field.id]
             : null;
         return DropdownButtonFormField<Object?>(
+          dropdownColor: hermesDropdownColor(context),
+          borderRadius: hermesDropdownBorderRadius,
           initialValue: current,
           isExpanded: true,
           decoration: InputDecoration(
@@ -663,12 +646,9 @@ class _PluginListSheetState extends State<_PluginListSheet> {
   }
 
   Future<void> _showItem(Map<String, dynamic> item, String title) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (_) => _PluginItemSheet(
+    await showMobileSheet<void>(
+      context,
+      (_) => _PluginItemSheet(
         store: widget.store,
         contribution: widget.contribution,
         item: item,
@@ -710,31 +690,17 @@ class _PluginItemSheetState extends State<_PluginItemSheet> {
       descriptor.confirmMessage ?? '',
     );
     if (message.isNotEmpty) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showHermesConfirmDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text(
-            _localized(
-              context,
-              widget.contribution,
-              descriptor.confirmTitleKey,
-              descriptor.confirmTitle ?? descriptor.title,
-            ),
-          ),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(context.l10n.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(context.l10n.commonConfirm),
-            ),
-          ],
+        title: _localized(
+          context,
+          widget.contribution,
+          descriptor.confirmTitleKey,
+          descriptor.confirmTitle ?? descriptor.title,
         ),
+        message: message,
       );
-      if (confirmed != true) return;
+      if (!confirmed) return;
     }
     if (!mounted) return;
     setState(() {

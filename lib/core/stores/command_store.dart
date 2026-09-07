@@ -23,12 +23,20 @@ class CommandStore extends ChangeNotifier {
     : _connectionId = connection.activeConnectionId,
       _gateway = connection.gateway {
     connection.addListener(_onConnectionChanged);
+    // Filesystem completions (`@file:`) go stale the moment the workspace
+    // changes underneath the session — unlike the mostly-static slash
+    // command catalog, which is why path completions get their own
+    // invalidation trigger instead of riding the slash-completion TTL.
+    _workspaceSub = connection.routedEvents.listen((routed) {
+      if (routed.event.type == 'workspace.changed') invalidatePathCompletions();
+    });
   }
 
   ConnectionId _connectionId;
   Object? _gateway;
   String? _profile;
   int _generation = 0;
+  StreamSubscription<RoutedGatewayEvent>? _workspaceSub;
 
   List<SlashCommand> _catalog = [];
   List<SlashCommand> get catalog => _catalog;
@@ -37,6 +45,8 @@ class CommandStore extends ChangeNotifier {
       List.unmodifiable(_catalogSuggestions);
   final Map<String, ({DateTime at, SlashCompletionResult result})>
   _completionCache = {};
+  final Map<String, ({DateTime at, List<PathSuggestion> result})>
+  _pathCompletionCache = {};
   final Map<String, num> _skillUsage = {};
   static const _completionTtl = Duration(minutes: 60);
   static const _completionCacheLimit = 100;
@@ -67,6 +77,7 @@ class CommandStore extends ChangeNotifier {
   void _invalidateScope() {
     _generation++;
     _completionCache.clear();
+    _pathCompletionCache.clear();
     _catalogSuggestions = [];
     _catalog = [];
     _skillUsage.clear();
@@ -241,8 +252,20 @@ class CommandStore extends ChangeNotifier {
 
   void invalidateSlashCompletions() {
     _completionCache.clear();
+    _pathCompletionCache.clear();
     _catalogSuggestions = [];
     _catalog = [];
+    notifyListeners();
+  }
+
+  /// Drop cached `@file:` path-completion results. Unlike the slash-command
+  /// catalog (static per connection, safe to cache for the full TTL),
+  /// filesystem completions can go stale the instant a file is created,
+  /// renamed, or deleted — so this is invoked on every `workspace.changed`
+  /// gateway event rather than relying on `_completionTtl` alone.
+  void invalidatePathCompletions() {
+    if (_pathCompletionCache.isEmpty) return;
+    _pathCompletionCache.clear();
     notifyListeners();
   }
 
@@ -257,13 +280,28 @@ class CommandStore extends ChangeNotifier {
   }
 
   /// Path completion for `@mentions` (file / dir paths on the server cwd).
-  Future<List<PathSuggestion>> completePath(String word) async {
+  Future<List<PathSuggestion>> completePath(
+    String word, {
+    String? sessionId,
+    String? cwd,
+  }) async {
+    final cacheKey =
+        '$_connectionId|${_profile ?? ''}|${sessionId ?? ''}|${cwd ?? ''}|$word';
+    final cached = _pathCompletionCache[cacheKey];
+    if (cached != null &&
+        DateTime.now().difference(cached.at) < _completionTtl) {
+      return cached.result;
+    }
     final generation = _generation;
     try {
       await connection.ensureConnected();
       final gateway = connection.gateway;
       if (gateway == null) return const [];
-      final result = await gateway.request('complete.path', {'word': word});
+      final result = await gateway.request('complete.path', {
+        'word': word,
+        if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
+        if (cwd != null && cwd.isNotEmpty) 'cwd': cwd,
+      });
       if (generation != _generation ||
           !identical(gateway, connection.gateway)) {
         return const [];
@@ -273,11 +311,19 @@ class CommandStore extends ChangeNotifier {
         _lastCompletionFailed = false;
         notifyListeners();
       }
-      return items
+      final suggestions = items
           .map(
             (e) => PathSuggestion.fromJson((e as Map).cast<String, dynamic>()),
           )
-          .toList();
+          .toList(growable: false);
+      if (_pathCompletionCache.length >= _completionCacheLimit) {
+        _pathCompletionCache.remove(_pathCompletionCache.keys.first);
+      }
+      _pathCompletionCache[cacheKey] = (
+        at: DateTime.now(),
+        result: suggestions,
+      );
+      return suggestions;
     } catch (_) {
       if (generation != _generation) return const [];
       if (!_lastCompletionFailed) {
@@ -350,6 +396,7 @@ class CommandStore extends ChangeNotifier {
   @override
   void dispose() {
     connection.removeListener(_onConnectionChanged);
+    _workspaceSub?.cancel();
     super.dispose();
   }
 }

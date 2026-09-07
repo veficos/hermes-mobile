@@ -9,6 +9,7 @@ import 'package:hermes_mobile/core/stores/pull_request_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_appearance_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/core/stores/session_tab_store.dart';
 import 'package:hermes_mobile/core/stores/subagent_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
@@ -83,6 +84,14 @@ void main() {
         MultiProvider(
           providers: [
             ChangeNotifierProvider<ConnectionStore>.value(value: connection),
+            ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
+              create: (_) => SessionTabStore(),
+              update: (_, connection, tabs) =>
+                  (tabs ?? SessionTabStore())..attachRoutedEvents(
+                    connection.routedEvents,
+                    owners: connection.sessionOwners,
+                  ),
+            ),
             ChangeNotifierProvider<ChatStore>.value(value: chat),
             ChangeNotifierProvider<RequestStore>.value(value: requests),
             ChangeNotifierProvider<SessionStore>.value(value: sessions),

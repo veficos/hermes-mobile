@@ -245,6 +245,9 @@ class ChatMessage {
   final ChatErrorSurface? errorSurface;
   final double? durationS;
   final List<String> attachmentRefs;
+  final String? attachmentUploadState;
+  final int? attachmentUploadSent;
+  final int? attachmentUploadTotal;
   final int? rowId;
   final int? historyOrdinal;
   final DateTime? timestamp;
@@ -270,6 +273,9 @@ class ChatMessage {
     this.errorSurface,
     this.durationS,
     this.attachmentRefs = const [],
+    this.attachmentUploadState,
+    this.attachmentUploadSent,
+    this.attachmentUploadTotal,
     this.rowId,
     this.historyOrdinal,
     this.timestamp,
@@ -354,6 +360,9 @@ class ChatMessage {
     ChatErrorSurface? errorSurface,
     double? durationS,
     List<String>? attachmentRefs,
+    String? attachmentUploadState,
+    int? attachmentUploadSent,
+    int? attachmentUploadTotal,
     String? source,
     List<MessageReaction>? reactions,
   }) {
@@ -367,6 +376,11 @@ class ChatMessage {
       errorSurface: errorSurface ?? this.errorSurface,
       durationS: durationS ?? this.durationS,
       attachmentRefs: attachmentRefs ?? this.attachmentRefs,
+      attachmentUploadState:
+          attachmentUploadState ?? this.attachmentUploadState,
+      attachmentUploadSent: attachmentUploadSent ?? this.attachmentUploadSent,
+      attachmentUploadTotal:
+          attachmentUploadTotal ?? this.attachmentUploadTotal,
       rowId: rowId,
       historyOrdinal: historyOrdinal,
       timestamp: timestamp,

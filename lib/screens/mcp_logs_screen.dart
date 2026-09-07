@@ -8,8 +8,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/api_client.dart';
 import '../core/stores/connection_store.dart';
 import '../core/connection_reload_mixin.dart';
+import '../core/connections/connection_registry.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
@@ -40,12 +42,18 @@ class McpLogsScreen extends StatefulWidget {
   final String initialSource;
   final String? title;
 
+  /// When set, tails that connection's logs instead of the active one —
+  /// mirrors [McpScreen.targetConnectionId] for the "MCP servers" entry
+  /// point on a non-active bot.
+  final ConnectionId? targetConnectionId;
+
   const McpLogsScreen({
     super.key,
     this.serverName,
     this.embedded = false,
     this.initialSource = 'stdio',
     this.title,
+    this.targetConnectionId,
   });
 
   @override
@@ -82,7 +90,11 @@ class _McpLogsScreenState extends State<McpLogsScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    observeConnection(context.read<ConnectionStore>(), _reloadForConnection);
+    observeConnection(
+      context.read<ConnectionStore>(),
+      _reloadForConnection,
+      targetConnectionId: widget.targetConnectionId,
+    );
   }
 
   void _reloadForConnection() {
@@ -98,11 +110,17 @@ class _McpLogsScreenState extends State<McpLogsScreen>
     unawaited(_poll());
   }
 
+  ApiClient? _resolveApi(ConnectionStore connection) {
+    final targetId = widget.targetConnectionId;
+    if (targetId == null) return connection.api;
+    return connection.registry.runtime(targetId)?.api;
+  }
+
   Future<void> _poll() async {
     if (_disposed || _polling) return;
     _polling = true;
     final generation = _generation;
-    final api = context.read<ConnectionStore>().api;
+    final api = _resolveApi(context.read<ConnectionStore>());
     final source = _source;
     if (api != null) {
       try {
@@ -123,7 +141,7 @@ class _McpLogsScreenState extends State<McpLogsScreen>
             mounted &&
             generation == _generation &&
             source == _source &&
-            identical(api, context.read<ConnectionStore>().api)) {
+            identical(api, _resolveApi(context.read<ConnectionStore>()))) {
           setState(() {
             _lines = lines;
             _error = null;
@@ -134,7 +152,7 @@ class _McpLogsScreenState extends State<McpLogsScreen>
             mounted &&
             generation == _generation &&
             source == _source &&
-            identical(api, context.read<ConnectionStore>().api)) {
+            identical(api, _resolveApi(context.read<ConnectionStore>()))) {
           setState(() => _error = '$e');
         }
       }

@@ -16,6 +16,7 @@ import '../../screens/artifacts_screen.dart' show resolveArtifactFile;
 import '../../theme/hermes_tokens.dart';
 import '../h/hermes_glass.dart';
 import '../h/hermes_states.dart';
+import '../h/hermes_toast.dart';
 import '../web_preview.dart';
 
 /// Whether an artifact's raw text is HTML/SVG worth rendering live rather
@@ -269,10 +270,10 @@ class _ArtifactListViewState extends State<ArtifactListView>
                   description: context.l10n.artifactSessionPendingDescription,
                 )
               : filtered.isEmpty
-              ? _EmptyState(
+              ? HermesEmptyState(
                   icon: Icons.inventory_2_outlined,
                   title: context.l10n.artifactEmptyTitle,
-                  subtitle: context.l10n.artifactEmptyDescription,
+                  description: context.l10n.artifactEmptyDescription,
                 )
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -440,17 +441,21 @@ class _ArtifactDetailDialogState extends State<ArtifactDetailDialog> {
         ),
       );
       if (mounted && result.status == ShareResultStatus.success) {
-        ScaffoldMessenger.of(
+        showHermesToast(
           context,
-        ).showSnackBar(SnackBar(content: Text(context.l10n.commonCompleted)));
+          message: context.l10n.commonCompleted,
+          kind: HermesToastKind.success,
+        );
       }
     } catch (e) {
       if (mounted) {
         final detail = e is HttpStatusException
             ? context.l10n.httpStatusError(e.statusCode)
             : '$e';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.artifactExportFailed(detail))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.artifactExportFailed(detail),
         );
       }
     } finally {
@@ -619,50 +624,4 @@ class _ArtifactDetailDialogState extends State<ArtifactDetailDialog> {
     if (a.rowId != null)
       MapEntry(context.l10n.artifactMessageRow, '#${a.rowId}'),
   ];
-}
-
-class _EmptyState extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _EmptyState({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 48,
-              color: theme.brightness == Brightness.dark
-                  ? HermesText.darkQuaternary
-                  : HermesText.lightQuaternary,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: HermesType.onSurface(HermesType.headline, theme),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              style: theme.textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -2,13 +2,13 @@
 
 Usage::
 
-    hermes-mobile-server [--host 0.0.0.0] [--port 8877]
+    hermes-mobile-server [--host 0.0.0.0] [--port 9001]
 
 Environment variables (all optional):
 
 * ``HERMES_MOBILE_API_KEY``          — API key; generated & persisted if unset
-* ``HERMES_MOBILE_HOST``             — bind host (default 127.0.0.1)
-* ``HERMES_MOBILE_PORT``             — bind port (default 8877)
+* ``HERMES_MOBILE_HOST``             — bind host (default 0.0.0.0 for LAN/mobile access)
+* ``HERMES_MOBILE_PORT``             — bind port (default 9001)
 * ``HERMES_MOBILE_SERVE_HOST``       — backend bind host (default 127.0.0.1)
 * ``HERMES_MOBILE_SERVE_PORT``       — backend port, 0 = OS-assigned
 * ``HERMES_DESKTOP_HERMES_ROOT``     — force a specific hermes-agent checkout
@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="hermes-mobile-server",
         description="API server that drives a local Hermes Agent for mobile apps.",
     )
-    parser.add_argument("--host", default=None, help="bind host (default from HERMES_MOBILE_HOST)")
+    parser.add_argument("--host", default=None, help="bind host (default 0.0.0.0; override with HERMES_MOBILE_HOST)")
     parser.add_argument("--port", type=int, default=None, help="bind port (default from HERMES_MOBILE_PORT)")
     parser.add_argument("--api-key", default=None, help="API key (default from HERMES_MOBILE_API_KEY)")
     parser.add_argument("--print-api-key", action="store_true", help="print the API key and exit")

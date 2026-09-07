@@ -13,4 +13,11 @@ void registerAppLicenses() {
     final text = await rootBundle.loadString('LICENSE');
     yield LicenseEntryWithLineBreaks(const [appLicensePackageName], text);
   });
+
+  LicenseRegistry.addLicense(() async* {
+    final text = await rootBundle.loadString(
+      'assets/fonts/LICENSE-JetBrainsMono.txt',
+    );
+    yield LicenseEntryWithLineBreaks(const ['JetBrains Mono'], text);
+  });
 }

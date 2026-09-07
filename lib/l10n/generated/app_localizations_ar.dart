@@ -82,11 +82,11 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get botGroupRoundCapReached =>
-      'This round of discussion reached its limit. Send a new message to continue.';
+      'بلغت جولة النقاش هذه حدها الأقصى. أرسل رسالة جديدة لمواصلة المحادثة.';
 
   @override
   String get botGroupMessageCapReached =>
-      'This conversation reached its message limit. Send a new message to continue.';
+      'بلغت هذه المحادثة الحد الأقصى للرسائل. أرسل رسالة جديدة للمتابعة.';
 
   @override
   String get botRoutineFieldsRequired => 'اسم المهمة والتعليمات والجدول مطلوبة';
@@ -408,6 +408,50 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get appearanceKeepAwakeDesc =>
       'منع قفل الشاشة تلقائيًا أثناء فتح محادثة';
+
+  @override
+  String get embedPrivacySettingsTitle => 'خصوصية المحتوى الخارجي';
+
+  @override
+  String get embedPrivacySettingsDescription =>
+      'تحكم في اتصال معاينات الرسائل بخدمات خارجية مثل YouTube وSpotify.';
+
+  @override
+  String get embedModeAsk => 'السؤال أولاً';
+
+  @override
+  String get embedModeAlways => 'دائمًا';
+
+  @override
+  String get embedModeOff => 'إيقاف';
+
+  @override
+  String embedClearAllowed(int count) {
+    return 'مسح الخدمات المسموح بها ($count)';
+  }
+
+  @override
+  String richLinkPrivacyTitle(String provider) {
+    return 'تحميل محتوى من $provider؟';
+  }
+
+  @override
+  String get richLinkPrivacyDescription =>
+      'يؤدي تحميل هذه المعاينة إلى الاتصال بطرف ثالث وقد يكشف عنوان IP أو المُحيل أو ملفات تعريف الارتباط.';
+
+  @override
+  String get richLinkLoadOnce => 'تحميل هذه المرة';
+
+  @override
+  String richLinkAlwaysAllow(String provider) {
+    return 'السماح دائمًا بـ $provider';
+  }
+
+  @override
+  String get richLinkOpenOnly => 'فتح الرابط فقط';
+
+  @override
+  String get richLinkCloseAnotherPreview => 'أغلق معاينة مباشرة أخرى أولاً.';
 
   @override
   String get appearanceModeDark => 'داكن';
@@ -1521,6 +1565,34 @@ class AppLocalizationsAr extends AppLocalizations {
   String get chatSavedPrompts => 'المُوجّهات المحفوظة';
 
   @override
+  String get chatRecentInputs => 'الإدخالات الأخيرة';
+
+  @override
+  String chatPluginPrepareFailed(String error) {
+    return 'تعذر على المكوّن الإضافي تجهيز الرسالة: $error';
+  }
+
+  @override
+  String get chatPasteImage => 'لصق صورة';
+
+  @override
+  String get workspaceLayoutBalanced => 'لوحتان · 1:1';
+
+  @override
+  String get workspaceLayoutMainWide => 'الرئيسية أوسع · 2:1';
+
+  @override
+  String get workspaceLayoutToolsWide => 'الأدوات أوسع · 1:2';
+
+  @override
+  String get chatClipboardHasNoImage => 'لا توجد صورة في الحافظة';
+
+  @override
+  String chatClipboardImageFailed(String error) {
+    return 'تعذر لصق صورة الحافظة: $error';
+  }
+
+  @override
   String chatSavedPromptsLoadFailed(String error) {
     return 'تعذر تحميل المُوجّهات المحفوظة: $error';
   }
@@ -1530,6 +1602,21 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get chatSearchLoadedHistory => 'البحث في السجل المحمّل';
+
+  @override
+  String get chatHistoryLocatorPartial =>
+      'لم تُحمَّل الرسائل الأقدم بعد — قد تكون نتائج البحث غير مكتملة';
+
+  @override
+  String get chatLoadAllHistory => 'تحميل كامل السجل';
+
+  @override
+  String get chatLoadingAllHistory => 'جارٍ تحميل كامل السجل…';
+
+  @override
+  String chatLoadAllHistoryFailed(Object error) {
+    return 'فشل تحميل السجل: $error';
+  }
 
   @override
   String chatSelectFilesFailed(String error) {
@@ -3483,6 +3570,23 @@ class AppLocalizationsAr extends AppLocalizations {
   String get previewRefresh => 'تحديث المعاينة';
 
   @override
+  String get previewReloadWithoutCache =>
+      'إعادة التحميل دون ذاكرة التخزين المؤقت';
+
+  @override
+  String get previewRetry => 'إعادة المحاولة';
+
+  @override
+  String get previewServerNotFound => 'تعذر الوصول إلى هذا الخادم';
+
+  @override
+  String get previewAppFailedToBoot => 'فشل تحميل التطبيق';
+
+  @override
+  String get previewRemoteLoopbackHint =>
+      'يشير هذا العنوان إلى جهاز غير موجود على هذا الجهاز — من المرجح أن خادم تطوير الوكيل يعمل على الحاسوب المتصل، وليس هنا. حاول فتحه هناك بدلاً من ذلك.';
+
+  @override
   String get previewRunJavascript => 'تشغيل JavaScript';
 
   @override
@@ -5182,6 +5286,9 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get historyEndOfList => '— نهاية السجل —';
+
+  @override
   String get historyPinned => 'مثبتة';
 
   @override
@@ -5667,6 +5774,29 @@ class AppLocalizationsAr extends AppLocalizations {
   String get profilesModel => 'النموذج';
 
   @override
+  String get profilesModelChangeWarningTitle =>
+      'مهام مجدولة تثبت النموذج القديم';
+
+  @override
+  String profilesModelChangeWarningBody(int count, String profile) {
+    return 'لدى $count من المهام المجدولة على $profile تجاوز نموذج خاص بها ولن تنتقل تلقائيًا. هل تريد الحفظ على أي حال؟';
+  }
+
+  @override
+  String get profilesModelChangeViewRoutines => 'عرض المهام المجدولة';
+
+  @override
+  String get profilesModelChangeSaveAnyway => 'الحفظ على أي حال';
+
+  @override
+  String get profilesModelChangeCheckFailedTitle => 'تعذر فحص المهام المجدولة';
+
+  @override
+  String profilesModelChangeCheckFailedBody(String profile) {
+    return 'تعذر علينا التحقق مما إذا كانت أي مهام مجدولة على $profile تثبت تجاوز نموذج خاصًا بها، لذا لا يمكننا معرفة ما إذا كان هذا التغيير يؤثر فيها. هل تريد الحفظ على أي حال؟';
+  }
+
+  @override
   String get profilesSystemPrompt => 'موجّه النظام';
 
   @override
@@ -5824,7 +5954,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String memoryInvalidNumber(Object field) {
-    return '$field is not a valid number';
+    return '$field ليس رقمًا صالحًا';
   }
 
   @override
@@ -5877,34 +6007,33 @@ class AppLocalizationsAr extends AppLocalizations {
   String get memoryKeepSecretHint => 'اتركه فارغًا للاحتفاظ بالقيمة الحالية';
 
   @override
-  String get memoryProviderSetup => 'Provider runtime';
+  String get memoryProviderSetup => 'بيئة تشغيل المزود';
 
   @override
   String get memoryProviderSetupDescription =>
-      'This provider needs dependencies installed in Hermes Server before it can run.';
+      'يحتاج هذا المزود إلى تثبيت تبعيات في Hermes Server قبل أن يعمل.';
 
   @override
-  String get memoryPythonDependencies => 'Python dependencies';
+  String get memoryPythonDependencies => 'تبعيات Python';
 
   @override
-  String get memoryRequiredEnvironment => 'Required environment values';
+  String get memoryRequiredEnvironment => 'قيم البيئة المطلوبة';
 
   @override
-  String get memoryInstallDependencies => 'Install provider dependencies';
+  String get memoryInstallDependencies => 'تثبيت تبعيات المزود';
 
   @override
-  String get memoryInstallingDependencies => 'Installing...';
+  String get memoryInstallingDependencies => 'جارٍ التثبيت...';
 
   @override
-  String get memorySetupFinished => 'Provider dependencies installed';
+  String get memorySetupFinished => 'تم تثبيت تبعيات المزود';
 
   @override
-  String get memorySetupFailed =>
-      'Some provider dependencies failed to install. Review the results.';
+  String get memorySetupFailed => 'فشل تثبيت بعض تبعيات المزود. راجع النتائج.';
 
   @override
   String memorySetupError(Object error) {
-    return 'Could not install provider dependencies: $error';
+    return 'تعذر تثبيت تبعيات المزود: $error';
   }
 
   @override
@@ -5922,18 +6051,21 @@ class AppLocalizationsAr extends AppLocalizations {
   String get agentGroupName => 'اسم المحادثة الجماعية';
 
   @override
-  String get agentSelectMembers => 'Select members';
+  String get agentSelectMembers => 'اختيار الأعضاء';
 
   @override
   String agentGroupMemberCount(Object count, Object max) {
-    return '$count/$max selected';
+    return 'تم اختيار $count/$max';
   }
 
   @override
-  String get agentSearchBots => 'Search bots';
+  String get agentSearchBots => 'البحث في Bots';
 
   @override
-  String get agentSearchNoMatches => 'No matching bots';
+  String get agentSearchNoMatches => 'لا توجد Bots مطابقة';
+
+  @override
+  String get agentBotUnreachable => 'غير متاح';
 
   @override
   String agentGroupSaveFailed(Object error) {
@@ -6027,18 +6159,18 @@ class AppLocalizationsAr extends AppLocalizations {
   String get agentNoData => 'لا توجد بيانات';
 
   @override
-  String get agentBotDirectoryTitle => 'Bot Center';
+  String get agentBotDirectoryTitle => 'مركز Bots';
 
   @override
   String agentBotDirectorySummary(int bots, int groups) {
-    return '$bots bots · $groups groups';
+    return '$bots من Bots · $groups مجموعات';
   }
 
   @override
-  String get agentStopped => 'Stopped';
+  String get agentStopped => 'متوقف';
 
   @override
-  String get agentGroupChatsSection => 'Group chats';
+  String get agentGroupChatsSection => 'المحادثات الجماعية';
 
   @override
   String get agentIndividualBotsSection => 'Bots';
@@ -6047,17 +6179,17 @@ class AppLocalizationsAr extends AppLocalizations {
   String get agentManageBots => 'إدارة أو إنشاء Bots';
 
   @override
-  String get agentBotRoutinesMenuItem => 'Bot routines';
+  String get agentBotRoutinesMenuItem => 'المهام المجدولة لـ Bot';
 
   @override
-  String get agentBotsEmptyTitle => 'No bots yet';
+  String get agentBotsEmptyTitle => 'لا توجد بوتات بعد';
 
   @override
   String get agentBotsEmptyDescription =>
-      'A bot is a standalone chat identity tied to a profile. Create a profile from the top-right icon to get started.';
+      'البوت هوية محادثة مستقلة مرتبطة بملف تعريف. أنشئ ملف تعريف من الأيقونة في الأعلى للبدء.';
 
   @override
-  String get agentMentionAll => 'Everyone';
+  String get agentMentionAll => 'الجميع';
 
   @override
   String get agentRefreshRoster => 'تحديث قائمة Bots';
@@ -6102,6 +6234,77 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get agentDeleteBot => 'حذف Bot';
+
+  @override
+  String get agentEditAvatarMenuItem => 'تعديل الصورة الرمزية';
+
+  @override
+  String get avatarEditorShapeLabel => 'الشكل';
+
+  @override
+  String get avatarEditorColorLabel => 'اللون';
+
+  @override
+  String get avatarEditorRandomize => 'عشوائي';
+
+  @override
+  String get avatarEditorUploadPhoto => 'رفع صورة';
+
+  @override
+  String get avatarEditorRemovePhoto => 'إزالة الصورة';
+
+  @override
+  String get avatarEditorImageTooLarge =>
+      'الصورة كبيرة جدًا (الحد الأقصى 15MB)';
+
+  @override
+  String get avatarEditorGenerate => 'إنشاء بالذكاء الاصطناعي';
+
+  @override
+  String get avatarEditorGenerateHint => 'صف المظهر الذي تريده (اختياري)';
+
+  @override
+  String avatarEditorGenerateFailed(String error) {
+    return 'فشل الإنشاء: $error';
+  }
+
+  @override
+  String get avatarEditorChoosePet => 'اختيار حيوان أليف';
+
+  @override
+  String get avatarEditorPetSearchHint => 'البحث في الحيوانات الأليفة';
+
+  @override
+  String get avatarEditorPetLoadFailed => 'تعذر تحميل معرض الحيوانات الأليفة';
+
+  @override
+  String get avatarEditorSaved => 'تم تحديث الصورة الرمزية';
+
+  @override
+  String avatarEditorSaveFailed(String error) {
+    return 'فشل تحديث الصورة الرمزية: $error';
+  }
+
+  @override
+  String get agentBotMcpMenuItem => 'خوادم MCP';
+
+  @override
+  String get agentBotModelMenuItem => 'النموذج والأدوات';
+
+  @override
+  String get agentHiddenBotsSection => 'المخفية';
+
+  @override
+  String get agentHideBot => 'إخفاء';
+
+  @override
+  String get agentUnhideBot => 'إظهار';
+
+  @override
+  String get agentPinBot => 'تثبيت';
+
+  @override
+  String get agentUnpinBot => 'إلغاء التثبيت';
 
   @override
   String get agentGateway => 'البوابة';
@@ -6241,6 +6444,25 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get botRoutineDelete => 'حذف Cronjob';
+
+  @override
+  String get botRoutineEdit => 'تعديل';
+
+  @override
+  String botRoutineEditTitle(Object name) {
+    return 'تعديل المهمة المجدولة · $name';
+  }
+
+  @override
+  String get botRoutineSaving => 'جارٍ الحفظ...';
+
+  @override
+  String get botRoutineSave => 'حفظ التغييرات';
+
+  @override
+  String botRoutineLoadFailed(Object error) {
+    return 'تعذر تحميل تفاصيل المهمة المجدولة: $error';
+  }
 
   @override
   String botRoutineScheduleOnce(Object duration) {
@@ -6387,6 +6609,24 @@ class AppLocalizationsAr extends AppLocalizations {
   String mcpOperationFailed(Object error) {
     return 'فشلت العملية: $error';
   }
+
+  @override
+  String mcpHealthNeedsAuthTitle(String name) {
+    return '$name يحتاج إلى إعادة التخويل';
+  }
+
+  @override
+  String get mcpHealthNeedsAuthBody =>
+      'وجد الفحص في الخلفية أن اتصال هذا الخادم قد انتهت صلاحيته. أعد الاتصال لمواصلة استخدامه.';
+
+  @override
+  String mcpHealthErrorTitle(String name) {
+    return 'تعذر الوصول إلى $name';
+  }
+
+  @override
+  String get mcpHealthErrorBody =>
+      'تعذر على الفحص في الخلفية الوصول إلى هذا الخادم. افتح إعدادات MCP للتحقق.';
 
   @override
   String get mcpPersistenceFailed =>
@@ -7867,11 +8107,11 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String kanbanCreatedAt(Object time) {
-    return 'Created $time';
+    return 'أُنشئت في $time';
   }
 
   @override
-  String get kanbanTaskIdCopied => 'Task ID copied';
+  String get kanbanTaskIdCopied => 'تم نسخ معرف المهمة';
 
   @override
   String get kanbanEstimate => 'تقدير';
@@ -8609,6 +8849,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get fileTreeAttachToChat => 'إرفاق بالدردشة';
 
   @override
+  String get sessionActionMarkUnread => 'وضع علامة كغير مقروءة';
+
+  @override
+  String get sessionMarkedUnread => 'تم وضع علامة كغير مقروءة';
+
+  @override
   String get projectAddFolder => 'إضافة مجلد';
 
   @override
@@ -9207,36 +9453,59 @@ class AppLocalizationsAr extends AppLocalizations {
       'يبدو أنه ملف ثنائي (صورة أو أرشيف أو ملف تنفيذي). فتحه في محرر النصوص قد يتلفه عند الحفظ، لذا تم تعطيل التحرير — نزّله إلى جهازك بدلاً من ذلك.';
 
   @override
+  String get fileEditorFindReplaceTitle => 'بحث واستبدال';
+
+  @override
+  String get fileEditorFindLabel => 'بحث';
+
+  @override
+  String get fileEditorReplaceWithLabel => 'استبدال بـ';
+
+  @override
+  String get fileEditorReplaceAll => 'استبدال الكل';
+
+  @override
+  String get fileEditorNoMatches => 'لم يتم العثور على تطابقات';
+
+  @override
+  String fileEditorReplacedCount(int count) {
+    return 'تم استبدال $count مواضع';
+  }
+
+  @override
+  String get fileEditorNoChanges => 'لا توجد تغييرات';
+
+  @override
   String kanbanTaskCreatedLinkFailed(String error) {
     return 'تم إنشاء المهمة، لكن تعذرت إضافة رابط المهمة الأصل: $error';
   }
 
   @override
-  String get kanbanTaskContentSection => 'Task details';
+  String get kanbanTaskContentSection => 'تفاصيل المهمة';
 
   @override
-  String get kanbanTaskArrangementSection => 'Assignment';
+  String get kanbanTaskArrangementSection => 'الإسناد';
 
   @override
-  String get kanbanTaskRuntimeSection => 'Runtime options';
+  String get kanbanTaskRuntimeSection => 'خيارات التشغيل';
 
   @override
   String get kanbanTaskRuntimeDescription =>
-      'Optional workspace, model, and task relationship settings';
+      'إعدادات اختيارية لمساحة العمل والنموذج وعلاقات المهام';
 
   @override
   String get kanbanCreateTaskDescription =>
-      'Describe the work to complete, then choose its status and owner.';
+      'صف العمل المطلوب إنجازه، ثم اختر حالته والمسؤول عنه.';
 
   @override
-  String get kanbanTaskTitleHint => 'Enter a clear, concise task name';
+  String get kanbanTaskTitleHint => 'أدخل اسم مهمة واضحًا وموجزًا';
 
   @override
-  String get kanbanTaskTitleRequired => 'Enter a task title';
+  String get kanbanTaskTitleRequired => 'أدخل عنوان المهمة';
 
   @override
   String get kanbanTaskDescriptionHint =>
-      'Add goals, acceptance criteria, or implementation notes';
+      'أضف الأهداف أو معايير القبول أو ملاحظات التنفيذ';
 
   @override
   String get kanbanTaskStatus => 'الحالة';
@@ -11086,6 +11355,39 @@ class AppLocalizationsAr extends AppLocalizations {
   String get botProfileNameUnavailable => 'لا يتوفر اسم ملف شخصي شاغر';
 
   @override
+  String get botProfileNameInvalid =>
+      'يجب أن يبدأ الاسم بحرف أو رقم، وألا يحتوي إلا على أحرف صغيرة وأرقام و- أو _';
+
+  @override
+  String get botCreateTitle => 'إنشاء بوت';
+
+  @override
+  String get botCreateNameHelper => 'أحرف صغيرة وأرقام و- أو _';
+
+  @override
+  String botCreateNameTaken(String name) {
+    return 'يوجد Bot بالاسم \"$name\" بالفعل';
+  }
+
+  @override
+  String get botCreateRoleLabel => 'الدور (اختياري)';
+
+  @override
+  String get botCreateMissionLabel => 'المهمة (اختياري)';
+
+  @override
+  String get botCreateCloneFromLabel => 'استنساخ من';
+
+  @override
+  String get botCreateCustomSoulLabel => 'كتابة SOUL مخصص';
+
+  @override
+  String get botCreateCustomSoulHint => 'صِف هوية هذا البوت بكلماتك الخاصة';
+
+  @override
+  String get botCreateSuccess => 'تم إنشاء البوت';
+
+  @override
   String get botDefaultProfileDeleteForbidden =>
       'لا يمكن حذف الملف الشخصي الافتراضي';
 
@@ -11108,5 +11410,156 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String httpStatusError(int statusCode) {
     return 'أعاد الخادم HTTP $statusCode';
+  }
+
+  @override
+  String get voiceMuteMicrophone => 'كتم الميكروفون';
+
+  @override
+  String get voiceMicrophoneMuted => 'تم كتم الميكروفون';
+
+  @override
+  String get voiceRecordingDroppedMuted =>
+      'توقف التسجيل وأُهمل لأن الميكروفون كان مكتومًا';
+
+  @override
+  String get keybindsTitle => 'اختصارات لوحة المفاتيح';
+
+  @override
+  String get settingsKeybindsDesc => 'تخصيص اختصارات للوحة مفاتيح فعلية';
+
+  @override
+  String get keybindActionChatUndo => 'تراجع';
+
+  @override
+  String get keybindActionChatFind => 'بحث';
+
+  @override
+  String get keybindChange => 'تغيير';
+
+  @override
+  String get keybindReset => 'إعادة تعيين';
+
+  @override
+  String get keybindResetAll => 'إعادة تعيين الكل';
+
+  @override
+  String get keybindCustomizedBadge => 'مخصص';
+
+  @override
+  String get keybindCapturePrompt => 'اضغط مجموعة مفاتيح…';
+
+  @override
+  String get keybindCaptureModifierRequired =>
+      'يجب تضمين مفتاح تعديل (Ctrl أو ⌘ أو Alt أو Shift)';
+
+  @override
+  String keybindConflictWith(String action) {
+    return 'مستخدم بالفعل بواسطة \"$action\"';
+  }
+
+  @override
+  String get keybindNoHardwareKeyboardHint =>
+      'تعمل الاختصارات فقط عند توصيل لوحة مفاتيح فعلية بهذا الجهاز';
+
+  @override
+  String get previewSource => 'المصدر';
+
+  @override
+  String get previewRendered => 'المعاينة';
+
+  @override
+  String get previewDiff => 'التغييرات';
+
+  @override
+  String get previewLargeFileTitle => 'تم إيقاف معاينة الملف الكبير مؤقتًا';
+
+  @override
+  String get previewLargeFileDescription =>
+      'قد يستهلك تحميل هذا الملف قدرًا كبيرًا من الذاكرة. تابع فقط عند الحاجة إلى المعاينة الكاملة.';
+
+  @override
+  String get pluginComposerBlocked => 'حظرت إحدى الإضافات هذه الرسالة.';
+
+  @override
+  String get pluginComposerInvalidResponse =>
+      'أعادت إضافة معالجة الإدخال استجابة غير صالحة';
+
+  @override
+  String get pluginComposerTextTooLarge =>
+      'الرسالة التي أنشأتها إضافة معالجة الإدخال كبيرة جدًا';
+
+  @override
+  String get workspaceRenameTab => 'إعادة تسمية علامة التبويب';
+
+  @override
+  String get workspaceCloseOtherTabs => 'إغلاق علامات التبويب الأخرى';
+
+  @override
+  String get workspaceCloseTabsToRight => 'إغلاق علامات التبويب إلى اليمين';
+
+  @override
+  String get chatReadingAttachments => 'جارٍ قراءة المرفق…';
+
+  @override
+  String get chatSendingEllipsis => 'جارٍ الإرسال…';
+
+  @override
+  String chatUploadingPercent(int percent) {
+    return 'جارٍ الرفع $percent%';
+  }
+
+  @override
+  String get chatUploadingEllipsis => 'جارٍ الرفع…';
+
+  @override
+  String get chatPreparingAttachments => 'جارٍ تجهيز المرفق…';
+
+  @override
+  String chatUploadingProgress(int current, int total) {
+    return 'جارٍ الرفع $current/$total';
+  }
+
+  @override
+  String chatUploadingProgressPercent(int percent) {
+    return 'جارٍ الرفع · $percent%';
+  }
+
+  @override
+  String get chatSendCancelledRetry => 'أُلغي الإرسال، يمكنك إعادة المحاولة';
+
+  @override
+  String chatSuggestionUseSkill(String id) {
+    return 'استخدام المهارة: $id';
+  }
+
+  @override
+  String get chatSuggestionConfigureGithub => 'إعداد قدرة GitHub';
+
+  @override
+  String chatSuggestionConnectMcp(String id) {
+    return 'الاتصال بـ MCP الخاص بـ $id';
+  }
+
+  @override
+  String chatSuggestionRepairMcp(String id) {
+    return 'إصلاح اتصال MCP الخاص بـ $id';
+  }
+
+  @override
+  String chatSuggestionTriggerReason(String trigger) {
+    return 'لأن المسودة أو الجلسة الحالية ذكرت $trigger';
+  }
+
+  @override
+  String get chatInvalidPublicUrl => 'أدخل عنوان http/https عامًا صالحًا';
+
+  @override
+  String get messageBubbleAttachmentSendFailed =>
+      'فشل إرسال المرفق، اضغط لإعادة المحاولة';
+
+  @override
+  String messageBubbleAttachmentUploading(String percent) {
+    return 'جارٍ رفع المرفق $percent';
   }
 }

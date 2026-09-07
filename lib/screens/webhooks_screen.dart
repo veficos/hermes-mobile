@@ -14,10 +14,12 @@ import '../core/connection_reload_mixin.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 class WebhooksScreen extends StatefulWidget {
   final bool embedded;
@@ -113,15 +115,11 @@ class _WebhooksScreenState extends State<WebhooksScreen>
       showHermesToast(context, message: context.l10n.webhookEnableFirst);
       return;
     }
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(HermesRadius.sheet),
-        ),
-      ),
-      builder: (_) => _WebhookEditorSheet(api: api),
+    final saved = await showMobileSheet<bool>(
+      context,
+      // _WebhookEditorSheet 已自行处理键盘避让（viewInsets 内边距）。
+      avoidViewInsets: false,
+      (_) => _WebhookEditorSheet(api: api),
     );
     if (saved == true && mounted && identical(api, connection.api)) {
       _load();
@@ -392,28 +390,14 @@ class _WebhookDetailScreenState extends State<WebhookDetailScreen> {
     final connection = context.read<ConnectionStore>();
     final api = widget.ownerApi ?? connectedApiOrNotify(context, connection);
     if (api == null) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ctx.l10n.webhookDeleteTitle),
-        content: Text(ctx.l10n.webhookDeletePrompt(widget.webhook.name)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(ctx.l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(ctx.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.webhookDeleteTitle,
+      message: context.l10n.webhookDeletePrompt(widget.webhook.name),
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     setState(() => _busy = true);
     try {
       requireActiveApi(context, connection, api);
@@ -773,6 +757,8 @@ class _WebhookEditorScreenState extends State<_WebhookEditorScreen> {
             ),
             const SizedBox(height: HermesSpacing.sm),
             DropdownButtonFormField<String>(
+              dropdownColor: hermesDropdownColor(context),
+              borderRadius: hermesDropdownBorderRadius,
               initialValue: _deliver,
               decoration: InputDecoration(
                 labelText: context.l10n.webhookDeliveryTarget,

@@ -5,6 +5,10 @@ import '../core/notifications_service.dart';
 import '../core/remote_push.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_button.dart';
+import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_status.dart';
+import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 
@@ -39,27 +43,28 @@ class _PushSettingsScreenState extends State<PushSettingsScreen> {
   }
 
   Future<void> _sendTest(RemotePushService service) async {
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     setState(() => _testing = true);
     try {
       final result = await service.sendTest();
       final delivered = (result['delivered'] as num?)?.toInt() ?? 0;
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              delivered > 0
-                  ? l10n.pushTestDelivered
-                  : l10n.pushTestNotDelivered,
-            ),
-          ),
+        showHermesToast(
+          context,
+          message: delivered > 0
+              ? l10n.pushTestDelivered
+              : l10n.pushTestNotDelivered,
+          kind: delivered > 0
+              ? HermesToastKind.success
+              : HermesToastKind.info,
         );
       }
     } catch (error) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l10n.pushTestFailed('$error'))),
+        showHermesErrorSnackBar(
+          context,
+          error,
+          fallback: l10n.pushTestFailed('$error'),
         );
       }
     } finally {
@@ -102,7 +107,7 @@ class _PushSettingsScreenState extends State<PushSettingsScreen> {
               subtitle: service.registered
                   ? context.l10n.pushRegistered
                   : context.l10n.pushNotRegistered,
-              trailing: HermesMobileStatusChip(
+              trailing: HermesStatusChip(
                 label: service.registered
                     ? context.l10n.commonConnected
                     : context.l10n.commonDisconnected,
@@ -150,18 +155,14 @@ class _PushSettingsScreenState extends State<PushSettingsScreen> {
           ),
         ],
         const SizedBox(height: HermesSpacing.md),
-        FilledButton.icon(
+        HermesButton(
           key: const ValueKey('push-send-test'),
-          onPressed: service.enabled && service.registered && !_testing
+          icon: Icons.send_outlined,
+          label: context.l10n.pushSendTest,
+          loading: _testing,
+          onPressed: service.enabled && service.registered
               ? () => _sendTest(service)
               : null,
-          icon: _testing
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.send_outlined),
-          label: Text(context.l10n.pushSendTest),
         ),
       ],
     );

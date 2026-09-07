@@ -20,10 +20,12 @@ import '../core/starmap_loadout.dart' show LoadoutError;
 import '../core/starmap_share_code.dart';
 import '../core/stores/connection_store.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../l10n/l10n.dart';
 
 // How long a full play-through sweep takes, reveal 0 → 1.
@@ -200,16 +202,10 @@ class _StarmapScreenState extends State<StarmapScreen>
       }
       _detailOpen = true;
       try {
-        await showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
+        await showMobileSheet<void>(
+          context,
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(HermesRadius.sheet),
-            ),
-          ),
-          builder: (_) => _StarmapNodeSheet(
+          (_) => _StarmapNodeSheet(
             node: node,
             detail: detail,
             ownerApi: api,
@@ -281,33 +277,31 @@ class _StarmapScreenState extends State<StarmapScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.featureStarmap),
-        actions: [
-          if (_imported != null)
-            IconButton(
-              tooltip: l10n.starmapRestoreMine,
-              onPressed: _resetToMine,
-              icon: const Icon(Icons.undo),
-            ),
+    return MobilePageScaffold(
+      title: l10n.featureStarmap,
+      actions: [
+        if (_imported != null)
           IconButton(
-            tooltip: l10n.starmapShareImport,
-            onPressed: _shown == null ? null : _openShareDialog,
-            icon: const Icon(Icons.ios_share_outlined),
+            tooltip: l10n.starmapRestoreMine,
+            onPressed: _resetToMine,
+            icon: const Icon(Icons.undo),
           ),
-          IconButton(
-            tooltip: l10n.starmapResetView,
-            onPressed: _resetTransform,
-            icon: const Icon(Icons.center_focus_strong_outlined),
-          ),
-          IconButton(
-            tooltip: l10n.commonRefresh,
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+        IconButton(
+          tooltip: l10n.starmapShareImport,
+          onPressed: _shown == null ? null : _openShareDialog,
+          icon: const Icon(Icons.ios_share_outlined),
+        ),
+        IconButton(
+          tooltip: l10n.starmapResetView,
+          onPressed: _resetTransform,
+          icon: const Icon(Icons.center_focus_strong_outlined),
+        ),
+        IconButton(
+          tooltip: l10n.commonRefresh,
+          onPressed: _busy ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: _buildBody(context),
     );
   }
@@ -1085,28 +1079,14 @@ class _StarmapNodeSheetState extends State<_StarmapNodeSheet> {
     final connection = context.read<ConnectionStore>();
     final api = widget.ownerApi;
     final l10n = context.l10n;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.starmapDeleteQuestion),
-        content: Text(l10n.starmapDeleteDescription(widget.node.label)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: HermesSemantic.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: l10n.starmapDeleteQuestion,
+      message: l10n.starmapDeleteDescription(widget.node.label),
+      confirmLabel: l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     setState(() => _deleting = true);
     try {
       requireActiveApi(context, connection, api);

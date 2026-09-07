@@ -2,14 +2,20 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show Color;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../l10n/runtime_l10n.dart';
 
+import '../bot_avatar.dart' show isBackfilledFacePng, normalizeAvatarImage;
+import '../bot_soul.dart' show composeSoul;
+import '../connection_reload_mixin.dart' show connectionOfflineErrorCode;
 import '../connections/connection_registry.dart';
 import '../gateway.dart';
+import '../pet_gallery.dart' show PetGalleryEntry;
+import '../models.dart' show SessionRow;
 import 'request_store.dart';
 import 'connection_store.dart';
 
@@ -357,6 +363,8 @@ class BotRoutineDraft {
   final int? repeat;
   final bool continuity;
   final bool deliverToBotChat;
+  final String? model;
+  final String? provider;
 
   const BotRoutineDraft({
     required this.title,
@@ -365,6 +373,8 @@ class BotRoutineDraft {
     this.repeat,
     this.continuity = false,
     this.deliverToBotChat = false,
+    this.model,
+    this.provider,
   });
 }
 
@@ -378,6 +388,13 @@ class BotStore extends ChangeNotifier {
   static const maxGroupMembers = 6;
   final ConnectionStore connection;
   final Map<String, Future<String?>> _canonicalFlights = {};
+
+  /// Avatar image data URLs, keyed by [BotIdentity.key]. Mirrors desktop's
+  /// local-only `$botMeta` image field: kept out of `ui_meta['hermes-bots']`
+  /// (which has a 64KB cap and rides every `profiles.list`) and persisted
+  /// separately via `profiles.set_asset`/`get_asset` instead.
+  final Map<String, String> _localAvatarImages = {};
+  final Set<String> _avatarFetchInflight = {};
   final Map<
     String,
     ({
@@ -407,11 +424,36 @@ class BotStore extends ChangeNotifier {
   bool _disposed = false;
   int _refreshGeneration = 0;
 
+  /// Bot-to-bot relay bridge (desktop `hermes-bots/plugin.js`
+  /// `syncRelayRosters`/`drainRelayOutboxes` parity). Each connected gateway
+  /// gets pushed the roster of agents living on every *other* connection, and
+  /// each gateway's outbox is drained so a `message_agent` tool call on one
+  /// connection can be delivered into a bot's canonical chat on another.
+  Timer? _relayDrainTimer;
+  Timer? _relayPushDebounceTimer;
+  bool _relayRosterBusy = false;
+  bool _relayDrainBusy = false;
+  bool _relayDrainRerun = false;
+  final Map<String, String> _relayFailures = {};
+
   List<BotIdentity> bots = const [];
   List<BotGroup> groups = const [];
   List<BotRoomMessage> roomMessages = const [];
   bool loading = false;
   String? error;
+  final Map<ConnectionId, bool> _serverInjectsProtocolByConnection = {};
+
+  bool serverInjectsProtocolFor(ConnectionId connectionId) =>
+      _serverInjectsProtocolByConnection[connectionId] ?? false;
+
+  /// Last-known-good roster per connection, so a connection blip in
+  /// [refresh] can keep showing those bots (as unreachable) instead of
+  /// dropping them from the roster entirely.
+  final Map<ConnectionId, List<BotIdentity>> _lastGoodByConnection = {};
+  Set<ConnectionId> unreachableConnections = {};
+
+  bool isBotUnreachable(BotIdentity bot) =>
+      unreachableConnections.contains(bot.route.connectionId);
 
   bool isGroupBusy(String groupId) => _pendingGroups.contains(groupId);
   String? groupSpeaker(String groupId) => _roomStates[groupId]?.speaker;
@@ -438,6 +480,10 @@ class BotStore extends ChangeNotifier {
       const Duration(seconds: 30),
       (_) => unawaited(refresh()),
     );
+    _relayDrainTimer ??= Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => unawaited(_drainRelayOutboxes()),
+    );
   }
 
   void setForeground(bool value) {
@@ -445,6 +491,8 @@ class BotStore extends ChangeNotifier {
     if (!value) {
       _rosterTimer?.cancel();
       _rosterTimer = null;
+      _relayDrainTimer?.cancel();
+      _relayDrainTimer = null;
       return;
     }
     startRosterRefresh();
@@ -479,21 +527,36 @@ class BotStore extends ChangeNotifier {
         <({Map<String, dynamic> value, ConnectionId source})>[];
     await Future.wait(
       connection.registry.runtimes.map((runtime) async {
+        final perRuntime = <BotIdentity>[];
         try {
           final result = await connection.requestForOwner(
             OwnerRoute(connectionId: runtime.id),
             'profiles.list',
             {'include_sessions': false},
           );
+          _serverInjectsProtocolByConnection[runtime.id] =
+              result['bot_mode_protocol'] == true;
           for (final raw in result['profiles'] as List? ?? const []) {
             if (raw is! Map) continue;
             final row = raw.cast<String, dynamic>();
             final profile = row['name']?.toString() ?? '';
             if (profile.isEmpty) continue;
-            final botMeta =
+            var botMeta =
                 ((row['ui_meta'] as Map?)?['hermes-bots'] as Map?)
                     ?.cast<String, dynamic>() ??
                 const <String, dynamic>{};
+            final botKey = '${runtime.id.value}\u0000$profile';
+            final localImage = _localAvatarImages[botKey];
+            if (localImage != null) {
+              botMeta = {...botMeta, 'image': localImage};
+            } else if (row['has_avatar'] == true) {
+              unawaited(
+                _backfillAvatarImage(
+                  OwnerRoute(connectionId: runtime.id, profile: profile),
+                  botKey,
+                ),
+              );
+            }
             if (profile == 'default') {
               final snapshot = (row['ui_meta'] as Map?)?[_syncMetaKey];
               if (snapshot is Map) {
@@ -503,7 +566,7 @@ class BotStore extends ChangeNotifier {
                 ));
               }
             }
-            found.add(
+            perRuntime.add(
               BotIdentity(
                 route: OwnerRoute(connectionId: runtime.id, profile: profile),
                 profile: profile,
@@ -515,8 +578,17 @@ class BotStore extends ChangeNotifier {
               ),
             );
           }
+          _lastGoodByConnection[runtime.id] = perRuntime;
+          unreachableConnections.remove(runtime.id);
+          found.addAll(perRuntime);
         } catch (e) {
           failures.add('${runtime.id}: $e');
+          unreachableConnections.add(runtime.id);
+          // Roster staleness fallback: a connection blip must not make its
+          // bots vanish from the roster — keep showing the last-known-good
+          // snapshot (rendered as unreachable) instead of an empty gap.
+          final stale = _lastGoodByConnection[runtime.id];
+          if (stale != null) found.addAll(stale);
         }
       }),
     );
@@ -532,6 +604,519 @@ class BotStore extends ChangeNotifier {
     error = failures.isEmpty ? null : failures.join('\n');
     loading = false;
     notifyListeners();
+    unawaited(_syncRelayRosters());
+  }
+
+  bool isBotHidden(BotIdentity bot) => bot.metadata['hidden'] == true;
+  bool isBotPinned(BotIdentity bot) => bot.metadata['pinned'] == true;
+
+  /// A relay-delivery failure noted for this bot (desktop's "attention" note
+  /// on a target that rejected/failed a relayed message), or null.
+  String? relayFailureFor(BotIdentity bot) => _relayFailures[bot.key];
+
+  String _relayHandleFor(BotIdentity bot) {
+    final override = bot.metadata['handle']?.toString();
+    if (override != null && override.isNotEmpty && override != bot.profile) {
+      return override;
+    }
+    return bot.profile.trim().toLowerCase() == 'default'
+        ? 'hermes'
+        : bot.profile;
+  }
+
+  /// Pushes every connected gateway the roster of agents living on every
+  /// *other* connection, so each gateway's `message_agent` tool can resolve
+  /// cross-connection targets. Desktop parity: `syncRelayRosters` in
+  /// `hermes-bots/plugin.js`, piggybacked onto this roster-refresh cycle
+  /// instead of a separate 60s timer since the agent rows are already fetched
+  /// above.
+  Future<void> _syncRelayRosters() async {
+    if (_disposed || _relayRosterBusy) return;
+    final runtimes = connection.registry.runtimes;
+    if (runtimes.length < 2) return;
+    _relayRosterBusy = true;
+    try {
+      final byConnection = <ConnectionId, List<Map<String, dynamic>>>{};
+      for (final bot in bots) {
+        final label =
+            connection.registry
+                .runtime(bot.route.connectionId)
+                ?.settings
+                .label ??
+            bot.route.connectionId.value;
+        (byConnection[bot.route.connectionId] ??= <Map<String, dynamic>>[])
+            .add({
+              'profile': bot.profile,
+              'handle': _relayHandleFor(bot),
+              'connection_id': bot.route.connectionId.value,
+              'connection_label': label,
+              'title': bot.displayName,
+              'description': bot.description,
+            });
+      }
+      await Future.wait(
+        runtimes.map((runtime) async {
+          final others = <Map<String, dynamic>>[
+            for (final entry in byConnection.entries)
+              if (entry.key != runtime.id) ...entry.value,
+          ];
+          try {
+            await connection.requestForOwner(
+              OwnerRoute(connectionId: runtime.id),
+              'bot_relay.roster.sync',
+              {'agents': others},
+            );
+          } catch (e) {
+            // Likely an older backend without bot_relay support, but log in
+            // case it's a persistent failure on a backend that should support it.
+            developer.log(
+              'bot_relay.roster.sync failed for ${runtime.id}: $e',
+              name: 'hermes.bots.relay',
+            );
+          }
+        }),
+      );
+    } finally {
+      _relayRosterBusy = false;
+    }
+  }
+
+  void _scheduleRelayPushDrain() {
+    if (_disposed || _relayPushDebounceTimer != null) return;
+    _relayPushDebounceTimer = Timer(const Duration(milliseconds: 250), () {
+      _relayPushDebounceTimer = null;
+      unawaited(_drainRelayOutboxes());
+    });
+  }
+
+  /// Drains every connected gateway's relay outbox and delivers each
+  /// envelope into the target bot's canonical chat on its own connection,
+  /// then posts the reply back to the sender gateway. Desktop parity:
+  /// `drainRelayOutboxes` in `hermes-bots/plugin.js`.
+  Future<void> _drainRelayOutboxes() async {
+    if (_disposed) return;
+    if (_relayDrainBusy) {
+      _relayDrainRerun = true;
+      return;
+    }
+    _relayDrainBusy = true;
+    try {
+      final runtimes = connection.registry.runtimes;
+      if (runtimes.length < 2) return;
+      final byId = {for (final runtime in runtimes) runtime.id: runtime};
+      for (final sender in runtimes) {
+        if (_disposed) return;
+        List<dynamic> envelopes;
+        try {
+          final res = await connection.requestForOwner(
+            OwnerRoute(connectionId: sender.id),
+            'bot_relay.outbox.drain',
+            const {},
+          );
+          envelopes = res['envelopes'] as List? ?? const [];
+        } catch (e) {
+          developer.log(
+            'bot_relay.outbox.drain failed for ${sender.id}: $e',
+            name: 'hermes.bots.relay',
+          );
+          continue;
+        }
+        for (final raw in envelopes) {
+          if (_disposed) return;
+          if (raw is! Map) continue;
+          final envelope = raw.cast<String, dynamic>();
+          final envelopeId = envelope['id']?.toString() ?? '';
+          if (envelopeId.isEmpty) continue;
+          final targetConnectionValue =
+              envelope['target_connection']?.toString() ?? '';
+          final target = byId[ConnectionId(targetConnectionValue)];
+
+          Future<void> postReply(Map<String, dynamic> payload) async {
+            try {
+              await connection.requestForOwner(
+                OwnerRoute(connectionId: sender.id),
+                'bot_relay.reply',
+                {'id': envelopeId, ...payload},
+              );
+            } catch (e) {
+              // Sender gateway unreachable — its waiter times out with its
+              // own guidance; nothing more we can do from here.
+              developer.log(
+                'bot_relay.reply failed for ${sender.id}: $e',
+                name: 'hermes.bots.relay',
+              );
+            }
+          }
+
+          if (target == null) {
+            await postReply({
+              'error':
+                  "connection '$targetConnectionValue' is not connected right now",
+            });
+            continue;
+          }
+          final targetProfile = envelope['target_profile']?.toString() ?? '';
+          final attentionKey = '${target.id.value}\u0000$targetProfile';
+          try {
+            final res = await connection.requestForOwner(
+              OwnerRoute(connectionId: target.id),
+              'bot_relay.deliver',
+              {
+                'profile': targetProfile,
+                'message': envelope['message']?.toString() ?? '',
+              },
+            );
+            if (_relayFailures.remove(attentionKey) != null) {
+              notifyListeners();
+            }
+            await postReply({'reply': res['reply']?.toString() ?? ''});
+          } catch (e) {
+            final reason = e is GatewayException ? (e.reason ?? '') : '';
+            _relayFailures[attentionKey] = reason.isNotEmpty ? reason : '$e';
+            notifyListeners();
+            await postReply({
+              'error': '$e',
+              if (reason.isNotEmpty) 'reason': reason,
+            });
+          }
+        }
+      }
+    } finally {
+      _relayDrainBusy = false;
+      if (_relayDrainRerun) {
+        _relayDrainRerun = false;
+        _scheduleRelayPushDrain();
+      }
+    }
+  }
+
+  final Map<String, SessionRow> _canonicalStatus = {};
+
+  /// Desktop parity: same `needsAttention`/`isActivelyWorking` buckets the
+  /// session sidebar uses (`session_store.dart`'s `statusBucket`), applied to
+  /// a bot's canonical 1:1 chat instead of a picked session row.
+  bool botNeedsAttention(BotIdentity bot) =>
+      (_canonicalStatus[bot.key]?.needsAttention ?? false) ||
+      _relayFailures.containsKey(bot.key);
+  bool botIsWorking(BotIdentity bot) =>
+      _canonicalStatus[bot.key]?.isActivelyWorking ?? false;
+
+  /// Populates [_canonicalStatus] for the given bots. Callers should scope
+  /// this to what's currently visible (e.g. the roster screen) rather than
+  /// running it on the background roster-refresh timer — it costs one
+  /// `session.list` round trip per bot.
+  Future<void> refreshBotAttention(List<BotIdentity> targets) async {
+    await Future.wait(
+      targets.map((bot) async {
+        try {
+          final listed = await connection
+              .requestForOwner(bot.route, 'session.list', {
+                'profile': bot.profile,
+                'title': canonicalBotChatTitle,
+                'limit': 200,
+                'include_hidden': true,
+              });
+          for (final raw in listed['sessions'] as List? ?? const []) {
+            if (raw is! Map) continue;
+            final row = raw.cast<String, dynamic>();
+            final rootTitle = row['root_title']?.toString().trim() ?? '';
+            final title = row['title']?.toString().trim() ?? '';
+            if (rootTitle == canonicalBotChatTitle ||
+                (rootTitle.isEmpty && title == canonicalBotChatTitle)) {
+              _canonicalStatus[bot.key] = SessionRow.fromJson(row);
+              return;
+            }
+          }
+        } catch (_) {
+          // Best-effort: a lookup failure just leaves the previous status.
+        }
+      }),
+    );
+    notifyListeners();
+  }
+
+  Future<void> setBotHidden(BotIdentity bot, bool hidden) =>
+      _updateBotAppearance(bot, {'hidden': hidden});
+
+  Future<void> setBotPinned(BotIdentity bot, bool pinned) =>
+      _updateBotAppearance(bot, {'pinned': pinned});
+
+  /// Explicit shape/color pick from the avatar editor. Sets `custom: true`
+  /// (mirrors `meta.custom` in desktop's `botAppearance`) so this choice
+  /// keeps winning even for the primary "default" profile, which otherwise
+  /// always renders the fixed violet squircle.
+  Future<void> updateBotAppearance(
+    BotIdentity bot, {
+    String? shape,
+    Color? color,
+  }) {
+    final patch = <String, dynamic>{'custom': true};
+    if (shape != null) patch['shape'] = shape;
+    if (color != null) {
+      patch['color'] =
+          '#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+    }
+    return _updateBotAppearance(bot, patch);
+  }
+
+  /// Fetches a server-stored avatar image for a bot that has one
+  /// (`has_avatar` on its `profiles.list` row) but whose image isn't cached
+  /// locally yet. Mirrors desktop's `pullServerAvatars`.
+  Future<void> _backfillAvatarImage(OwnerRoute route, String botKey) async {
+    if (!_avatarFetchInflight.add(botKey)) return;
+    try {
+      final result = await connection.requestForOwner(
+        route,
+        'profiles.get_asset',
+        {'name': route.profile, 'asset': 'avatar'},
+      );
+      final data = result['data']?.toString();
+      if (result['found'] == true &&
+          data != null &&
+          data.isNotEmpty &&
+          !isBackfilledFacePng(data)) {
+        _localAvatarImages[botKey] = data;
+        final index = bots.indexWhere((item) => item.key == botKey);
+        if (index != -1) {
+          final updated = List<BotIdentity>.of(bots);
+          final current = updated[index];
+          updated[index] = BotIdentity(
+            route: current.route,
+            profile: current.profile,
+            displayName: current.displayName,
+            description: current.description,
+            metadata: {...current.metadata, 'image': data},
+          );
+          bots = List.unmodifiable(updated);
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      // Older/unavailable gateway — the bot simply renders its procedural face.
+      developer.log(
+        'avatar backfill failed for $botKey: $e',
+        name: 'hermes.bots.avatar',
+      );
+    } finally {
+      _avatarFetchInflight.remove(botKey);
+    }
+  }
+
+  /// Uploads [bytes] (already center-cropped/downscaled to 256x256 PNG by
+  /// [normalizeAvatarBytes]) as the bot's avatar photo via `profiles.set_asset`.
+  /// The image itself stays out of `ui_meta['hermes-bots']` (64KB cap, rides
+  /// every `profiles.list`) — only a local cache + the asset store carry it,
+  /// same split as desktop's `$botMeta`/`profiles.set_asset`.
+  Future<void> uploadBotAvatarImage(BotIdentity bot, Uint8List bytes) async {
+    final dataUrl = 'data:image/png;base64,${base64Encode(bytes)}';
+    await connection.requestForOwner(bot.route, 'profiles.set_asset', {
+      'name': bot.profile,
+      'asset': 'avatar',
+      'data': dataUrl,
+    });
+    _localAvatarImages[bot.key] = dataUrl;
+    _patchLocalMetadata(bot, {'image': dataUrl, 'custom': true});
+  }
+
+  Future<void> clearBotAvatarImage(BotIdentity bot) async {
+    await connection.requestForOwner(bot.route, 'profiles.set_asset', {
+      'name': bot.profile,
+      'asset': 'avatar',
+      'clear': true,
+    });
+    _localAvatarImages.remove(bot.key);
+    final patched = {...bot.metadata}..remove('image');
+    _replaceLocalMetadata(bot, patched);
+  }
+
+  /// Cached per-connection: does that gateway have an image backend? Mirrors
+  /// desktop's `$imagenAvailable` atom — only `true` is sticky, a `false`
+  /// answer is re-probed on the next call since the gateway may have been
+  /// upgraded since.
+  final Map<String, bool> _imagenAvailable = {};
+  final Map<String, Future<bool>> _imagenProbeInflight = {};
+
+  Future<bool> probeImageGeneration(BotIdentity bot) {
+    final key = bot.route.connectionId.value;
+    if (_imagenAvailable[key] == true) return Future.value(true);
+    final inflight = _imagenProbeInflight[key];
+    if (inflight != null) return inflight;
+    final probe = connection
+        .requestForOwner(
+          OwnerRoute(connectionId: bot.route.connectionId),
+          'image.generate',
+          {'probe': true},
+        )
+        .then((result) => result['available'] == true)
+        .catchError((_) => false)
+        .whenComplete(() => _imagenProbeInflight.remove(key));
+    _imagenProbeInflight[key] = probe;
+    return probe.then((available) {
+      _imagenAvailable[key] = available;
+      return available;
+    });
+  }
+
+  /// Requests an avatar image from the gateway's `image.generate` and
+  /// normalizes it like an upload. Mirrors desktop's `generateAvatarImage` +
+  /// `AvatarPicker`'s `generate()` — the result is staged in the editor and
+  /// only persisted when the user hits Save, same as an uploaded photo.
+  Future<Uint8List> generateBotAvatarImage(
+    BotIdentity bot,
+    String description,
+  ) async {
+    final custom = description.trim();
+    final prompt = custom.isNotEmpty
+        ? '$custom. Avatar for an AI agent: centered, bold flat vector '
+              'style, solid color background, no text.'
+        : 'Cute minimal robot avatar for an AI agent named '
+              '"${bot.displayName}". Friendly simple mascot face, bold flat '
+              'vector style, solid color background, centered, no text.';
+    final result = await connection.requestForOwner(
+      bot.route,
+      'image.generate',
+      {'prompt': prompt, 'aspect_ratio': 'square'},
+    );
+    if (result['success'] != true) {
+      throw Exception(result['error']?.toString() ?? 'generation failed');
+    }
+    final dataUrl = (result['image_data'] ?? result['image'])?.toString();
+    final bytes = _decodeDataUrl(dataUrl);
+    if (bytes == null) {
+      throw Exception('generation failed');
+    }
+    return normalizeAvatarImage(bytes);
+  }
+
+  /// Cached per-connection (5 min, matching desktop's `staleTime`): the
+  /// petdex gallery is 4500+ entries served by the gateway (`pet.gallery`),
+  /// never bundled into the app — mobile fetches it the same way desktop
+  /// does instead of shipping any pet art in the install.
+  final Map<String, ({DateTime fetchedAt, List<PetGalleryEntry> pets})>
+  _petGalleryCache = {};
+
+  Future<List<PetGalleryEntry>> fetchPetGallery(BotIdentity bot) async {
+    final key = bot.route.connectionId.value;
+    final cached = _petGalleryCache[key];
+    if (cached != null &&
+        DateTime.now().difference(cached.fetchedAt) <
+            const Duration(minutes: 5)) {
+      return cached.pets;
+    }
+    final result = await connection.requestForOwner(
+      OwnerRoute(connectionId: bot.route.connectionId),
+      'pet.gallery',
+      const {},
+    );
+    final pets = (result['pets'] as List? ?? const [])
+        .whereType<Map>()
+        .map((raw) => PetGalleryEntry.fromJson(raw.cast<String, dynamic>()))
+        .toList();
+    _petGalleryCache[key] = (fetchedAt: DateTime.now(), pets: pets);
+    return pets;
+  }
+
+  Uint8List? _decodeDataUrl(String? dataUrl) {
+    if (dataUrl == null || dataUrl.isEmpty) return null;
+    final comma = dataUrl.indexOf(',');
+    if (!dataUrl.startsWith('data:') || comma == -1) return null;
+    try {
+      return base64Decode(dataUrl.substring(comma + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _patchLocalMetadata(BotIdentity bot, Map<String, dynamic> patch) {
+    _replaceLocalMetadata(bot, {...bot.metadata, ...patch});
+  }
+
+  void _replaceLocalMetadata(BotIdentity bot, Map<String, dynamic> metadata) {
+    final index = bots.indexWhere((item) => item.key == bot.key);
+    if (index == -1) return;
+    final updated = List<BotIdentity>.of(bots);
+    updated[index] = BotIdentity(
+      route: bot.route,
+      profile: bot.profile,
+      displayName: bot.displayName,
+      description: bot.description,
+      metadata: metadata,
+    );
+    bots = List.unmodifiable(updated);
+    notifyListeners();
+  }
+
+  /// Merges [patch] into a bot's own `ui_meta['hermes-bots']` row with the
+  /// same CAS retry shape as `_syncServerState`'s group-registry writes.
+  Future<void> _updateBotAppearance(
+    BotIdentity bot,
+    Map<String, dynamic> patch,
+  ) async {
+    for (var attempt = 0; attempt < 4; attempt++) {
+      final listed = await connection.requestForOwner(
+        OwnerRoute(connectionId: bot.route.connectionId),
+        'profiles.list',
+        {'include_sessions': false},
+      );
+      final row = (listed['profiles'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => item.cast<String, dynamic>())
+          .where((item) => item['name'] == bot.profile)
+          .firstOrNull;
+      final existing =
+          ((row?['ui_meta'] as Map?)?['hermes-bots'] as Map?)
+              ?.cast<String, dynamic>() ??
+          const <String, dynamic>{};
+      final supportsCas = row?.containsKey('ui_meta_revisions') == true;
+      final revision =
+          ((row?['ui_meta_revisions'] as Map?)?['hermes-bots'] as num?)
+              ?.toInt() ??
+          0;
+      final merged = {...existing, ...patch};
+      try {
+        final configured = await connection.requestForOwner(
+          bot.route,
+          'profiles.configure',
+          {
+            'name': bot.profile,
+            'ui_meta': {'hermes-bots': merged},
+            if (supportsCas)
+              'ui_meta_expected_revisions': {'hermes-bots': revision},
+          },
+        );
+        final applied = configured['applied'];
+        if (applied is! Map || applied['ui_meta'] != true) {
+          throw StateError('gateway rejected bot metadata update');
+        }
+        if (supportsCas) {
+          final appliedRevision =
+              ((applied['ui_meta_revisions'] as Map?)?['hermes-bots'] as num?)
+                  ?.toInt();
+          if (appliedRevision != revision + 1) {
+            throw StateError('bot metadata CAS conflict');
+          }
+        }
+        final index = bots.indexWhere((item) => item.key == bot.key);
+        if (index != -1) {
+          final updated = List<BotIdentity>.of(bots);
+          updated[index] = BotIdentity(
+            route: bot.route,
+            profile: bot.profile,
+            displayName: bot.displayName,
+            description: bot.description,
+            metadata: merged,
+          );
+          bots = List.unmodifiable(updated);
+          notifyListeners();
+        }
+        return;
+      } catch (_) {
+        if (attempt == 3) rethrow;
+        await Future<void>.delayed(
+          Duration(milliseconds: 100 * (1 << attempt)),
+        );
+      }
+    }
   }
 
   /// Resolves exactly one hidden `Bot Chat`. Lookup errors fail closed.
@@ -823,6 +1408,16 @@ class BotStore extends ChangeNotifier {
     final uploaded = <String, List<String>>{};
     for (final entry in routes.entries) {
       final api = connection.runtimeFor(entry.value).api;
+      // Target path must live under the bot's working directory — a bare
+      // `/hm-attachments/...` is outside the managed-files root and is
+      // always rejected by the server.
+      final cwd = await api.fsDefaultCwd();
+      if (cwd.trim().isEmpty) {
+        throw StateError(runtimeL10n.errorImportDirectoryMissing);
+      }
+      final separator = cwd.endsWith('/') || cwd.endsWith('\\')
+          ? ''
+          : (cwd.contains('\\') ? '\\' : '/');
       final refs = <String>[];
       for (var index = 0; index < attachments.length; index++) {
         final attachment = attachments[index];
@@ -830,8 +1425,9 @@ class BotStore extends ChangeNotifier {
           RegExp(r'[\\/:*?"<>|]'),
           '_',
         );
+        final name = 'group_${turnId}_${index}_$safeName';
         final result = await api.uploadFile(
-          '/hm-attachments/group_${turnId}_${index}_$safeName',
+          '$cwd$separator$name',
           attachment.dataUrl,
         );
         final path = result['path']?.toString() ?? '';
@@ -860,7 +1456,8 @@ class BotStore extends ChangeNotifier {
       .whereType<BotIdentity>()
       .toList();
 
-  ({Set<String> members, bool everyone}) _parseMentions(
+  /// Detects `@handle` mentions of [members] inside free-form [text].
+  ({Set<String> members, bool everyone}) parseMentions(
     String text,
     List<BotIdentity> members,
   ) {
@@ -868,7 +1465,7 @@ class BotStore extends ChangeNotifier {
     var everyone = false;
     String collapsed(String value) =>
         value.toLowerCase().replaceAll(RegExp(r'[\s._-]+'), '');
-    final handles = <String, String>{};
+    final handles = <String, Set<String>>{};
     for (final bot in members) {
       for (final form in {
         bot.profile.toLowerCase(),
@@ -877,7 +1474,7 @@ class BotStore extends ChangeNotifier {
         collapsed(bot.displayName),
         bot.displayName.toLowerCase().split(RegExp(r'\s+')).first,
       }) {
-        if (form.isNotEmpty) handles[form] = bot.key;
+        if (form.isNotEmpty) (handles[form] ??= <String>{}).add(bot.key);
       }
     }
     final pattern = RegExp(r'@(?:"([^"]+)"|([A-Za-z0-9._-]+))');
@@ -888,10 +1485,47 @@ class BotStore extends ChangeNotifier {
         continue;
       }
       if (value == 'user') continue;
-      final key = handles[value] ?? handles[collapsed(value)];
-      if (key != null) mentioned.add(key);
+      // Ambiguous handles (e.g. the same profile name on two different
+      // connections) resolve to every match rather than silently picking one
+      // via last-write-wins, so composeMentionNote can surface all of them.
+      final keys = handles[value] ?? handles[collapsed(value)];
+      if (keys != null) mentioned.addAll(keys);
     }
     return (members: mentioned, everyone: everyone);
+  }
+
+  static final RegExp _mentionTriggerPattern = RegExp(
+    r'(^|\s)@[a-z0-9][a-z0-9_-]*',
+    caseSensitive: false,
+  );
+
+  /// Mirrors desktop's `mention-middleware` (`hermes-bots/plugin.js`):
+  /// appends an identification note naming who each `@handle` in [text]
+  /// resolves to against the live roster, so the responding agent can reach
+  /// out itself via its own tools. Never rewrites or forwards anything on
+  /// the user's behalf beyond this note. Returns `text` unchanged when no
+  /// mention resolves to a known bot.
+  String composeMentionNote(String text) {
+    if (!_mentionTriggerPattern.hasMatch(text)) return text;
+    final parsed = parseMentions(text, bots);
+    final mentioned = bots
+        .where((bot) => parsed.members.contains(bot.key))
+        .toList();
+    if (mentioned.isEmpty) return text;
+    final lines = mentioned.map((bot) {
+      final crossConnection =
+          bot.route.connectionId != connection.activeConnectionId;
+      final title = bot.displayName != bot.profile ? bot.displayName : '';
+      final where = crossConnection
+          ? ' — on ${connection.registry.runtime(bot.route.connectionId)?.settings.label ?? bot.route.connectionId.value}'
+          : '';
+      return '@${bot.profile} = agent profile "${bot.profile}"${title.isNotEmpty ? ' ("$title")' : ''}$where';
+    });
+    return '$text\n\n[@mentions resolved from the Bot roster — the user is referring to: '
+        '${lines.join('; ')}. If they want one of these agents contacted, '
+        'compose your own message and send it yourself via your own tools; '
+        "never forward the user's text verbatim. If you have no way to "
+        'message another agent from here, say so.]';
   }
 
   List<BotIdentity> _resolveResponders(
@@ -908,7 +1542,7 @@ class BotStore extends ChangeNotifier {
     final mentioned = <String>{};
     var everyone = false;
     for (final message in log.skip(start)) {
-      final parsed = _parseMentions(message.text, members);
+      final parsed = parseMentions(message.text, members);
       mentioned.addAll(parsed.members);
       everyone = everyone || parsed.everyone;
     }
@@ -928,7 +1562,7 @@ class BotStore extends ChangeNotifier {
     String text,
     BotRoomMessage message,
   ) {
-    final mentions = _parseMentions(text, members);
+    final mentions = parseMentions(text, members);
     final stop = RegExp(
       r'\b(stop|halt|pause)\b',
       caseSensitive: false,
@@ -1083,7 +1717,6 @@ class BotStore extends ChangeNotifier {
           }
           state.speaker = member.displayName;
           notifyListeners();
-          final anchorId = roomLog.isEmpty ? null : roomLog.last.id;
           String? reply;
           try {
             reply = await _runGroupMemberTurn(
@@ -1109,16 +1742,8 @@ class BotStore extends ChangeNotifier {
             );
             reply = null;
           }
+          if (state.epoch != epoch) return;
           final now = messagesFor(group.id);
-          final anchor = anchorId == null
-              ? -1
-              : now.indexWhere((message) => message.id == anchorId);
-          final tail = anchor < 0 ? now : now.skip(anchor + 1);
-          final newerUserInThread = tail.any(
-            (message) =>
-                message.author == 'You' && message.threadId == threadId,
-          );
-          if (state.epoch != epoch && newerUserInThread) return;
           state.watermarks[markKey] = now.length;
           if (!_isGroupPass(reply)) {
             _appendRoom(
@@ -1630,6 +2255,64 @@ class BotStore extends ChangeNotifier {
     await refresh();
   }
 
+  /// Mirrors desktop's `NAME_RE` — the only creation-time name validation
+  /// desktop actually enforces (reserved words only gate @mention forms,
+  /// not creation).
+  static final RegExp botNameRe = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
+
+  Future<void> createBot({
+    required String name,
+    String? title,
+    String? description,
+    String cloneFrom = 'default',
+    String? customSoul,
+    bool noSkills = false,
+    bool shareAuth = false,
+    String? model,
+    String? provider,
+    ConnectionId? connectionId,
+  }) async {
+    final trimmedName = name.trim().toLowerCase();
+    if (!botNameRe.hasMatch(trimmedName)) {
+      throw StateError(runtimeL10n.botProfileNameInvalid);
+    }
+    final targetConnectionId = connectionId ?? connection.activeConnectionId;
+    if (bots.any(
+      (item) =>
+          item.route.connectionId == targetConnectionId &&
+          item.profile == trimmedName,
+    )) {
+      throw StateError(runtimeL10n.botProfileNameUnavailable);
+    }
+    final route = OwnerRoute(connectionId: targetConnectionId);
+    final roster = bots
+        .where((item) => item.route.connectionId == targetConnectionId)
+        .toList();
+    final soul = composeSoul(
+      name: trimmedName,
+      title: title,
+      description: description,
+      roster: roster,
+      customSoul: customSoul,
+      serverInjectsProtocol: serverInjectsProtocolFor(targetConnectionId),
+    );
+    final combinedDescription = [title, description]
+        .where((s) => s != null && s.trim().isNotEmpty)
+        .map((s) => s!.trim())
+        .join(' — ');
+    await connection.requestForOwner(route, 'profiles.create', {
+      'name': trimmedName,
+      if (combinedDescription.isNotEmpty) 'description': combinedDescription,
+      'clone_from': cloneFrom,
+      'no_skills': noSkills,
+      'share_auth': shareAuth,
+      'soul': soul,
+      if (model != null && provider != null) 'model': model,
+      if (model != null && provider != null) 'provider': provider,
+    });
+    await refresh();
+  }
+
   Future<List<BotRoutine>> listBotRoutines(BotIdentity bot) async {
     final result = await connection.requestForOwner(bot.route, 'cron.manage', {
       'action': 'list',
@@ -1707,6 +2390,47 @@ class BotStore extends ChangeNotifier {
       if (draft.repeat != null && draft.repeat! > 0) 'repeat': draft.repeat,
       if (draft.continuity) 'continuity': true,
       if (draft.deliverToBotChat) 'deliver': 'bot-chat',
+      if (draft.model != null && draft.provider != null) 'model': draft.model,
+      if (draft.model != null && draft.provider != null)
+        'provider': draft.provider,
+    });
+  }
+
+  /// Edits an existing routine via the same REST job store `cron_screen.dart`
+  /// uses (`cron.manage` has no update action; `CronJob`/`BotRoutine` share
+  /// backend fields, so `cronUpdate` on the job id is safe here).
+  Future<void> updateBotRoutine(
+    BotIdentity bot,
+    String routineId,
+    BotRoutineDraft draft,
+  ) async {
+    final title = draft.title.trim();
+    final instruction = draft.instruction.trim();
+    final schedule = draft.schedule.trim();
+    if (title.isEmpty || instruction.isEmpty || schedule.isEmpty) {
+      throw ArgumentError(runtimeL10n.botRoutineFieldsRequired);
+    }
+    final nulChar = String.fromCharCode(0);
+    if (title.contains(nulChar) ||
+        instruction.contains(nulChar) ||
+        schedule.contains(nulChar)) {
+      throw ArgumentError(runtimeL10n.botRoutineNulForbidden);
+    }
+    final ownerApi = connection.registry.runtime(bot.route.connectionId)?.api;
+    if (ownerApi == null) {
+      throw StateError(connectionOfflineErrorCode);
+    }
+    await ownerApi.cronUpdate(routineId, {
+      'name': '[bot:${bot.profile}] $title',
+      'prompt': instruction,
+      'schedule': schedule,
+      'deliver': draft.deliverToBotChat ? 'bot-chat' : 'local',
+      'model': draft.model,
+      'provider': draft.provider,
+      'repeat': draft.repeat != null && draft.repeat! > 0
+          ? draft.repeat
+          : null,
+      'continuity': draft.continuity,
     });
   }
 
@@ -1733,6 +2457,10 @@ class BotStore extends ChangeNotifier {
         .where((item) => item.id == bot.route.connectionId)
         .firstOrNull;
     if (runtime == null) throw StateError(runtimeL10n.botConnectionUnavailable);
+    // `deleteProfile` is a REST call with no RPC equivalent to route through
+    // `requestForOwner`, so connect explicitly first — same guarantee every
+    // other Bot mutation gets via `requestForOwner`'s `runtime.connect()`.
+    await runtime.connect();
     await runtime.api.deleteProfile(bot.profile);
     groups = List.unmodifiable(
       groups
@@ -1760,6 +2488,10 @@ class BotStore extends ChangeNotifier {
       .toList(growable: false);
 
   void _onRoomEvent(RoutedGatewayEvent routed) {
+    if (routed.event.type == 'bot_relay.outbox.pending') {
+      _scheduleRelayPushDrain();
+      return;
+    }
     final sessionId = routed.event.sessionId;
     final binding = sessionId == null ? null : _roomSessions[sessionId];
     if (binding == null) return;
@@ -1837,6 +2569,8 @@ class BotStore extends ChangeNotifier {
     _disposed = true;
     connection.removeListener(_onConnectionChanged);
     _rosterTimer?.cancel();
+    _relayDrainTimer?.cancel();
+    _relayPushDebounceTimer?.cancel();
     _connectionRefreshTimer?.cancel();
     for (final state in _roomStates.values) {
       state.epoch += 1;
@@ -2028,8 +2762,15 @@ class BotStore extends ChangeNotifier {
               }
             }
             return;
-          } catch (_) {
-            if (attempt == 3) return;
+          } catch (e) {
+            if (attempt == 3) {
+              developer.log(
+                'group chat metadata sync gave up after 4 attempts for '
+                '${runtime.id}: $e',
+                name: 'hermes.bots.sync',
+              );
+              return;
+            }
             await Future<void>.delayed(
               Duration(milliseconds: 100 * (1 << attempt)),
             );

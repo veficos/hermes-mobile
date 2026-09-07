@@ -88,6 +88,171 @@ void main() {
     expect(item.badgeAction, {'kind': 'rest', 'path': 'badge'});
   });
 
+  test('composer slots are allowlisted and invalid slots fall back safely', () {
+    const owner = OwnerRoute(connectionId: ConnectionId('primary'));
+    MobilePluginContribution parse(String slot) =>
+        MobilePluginContribution.fromJson(
+          'demo',
+          {'id': slot, 'title': slot, 'area': 'composer', 'slot': slot},
+          owner,
+          const PluginLocaleBundle({}),
+        );
+
+    expect(parse('at_completion').slot, 'at_completion');
+    expect(parse('attachment_provider').slot, 'attachment_provider');
+    expect(parse('execute_arbitrary_flutter').slot, 'leading');
+  });
+
+  test('at completion is owner scoped and bounds plugin results', () async {
+    final connection = _RecordingConnection(
+      response: {
+        'items': [
+          {'id': 'good', 'title': 'Insert issue', 'insert_text': '@issue:42 '},
+          {'id': 'empty', 'title': 'Empty', 'insert_text': ''},
+          {
+            'id': 'huge',
+            'title': 'Huge',
+            'insert_text': List.filled(5000, 'x').join(),
+          },
+        ],
+      },
+    );
+    final store = PluginContributionStore(connection);
+    addTearDown(store.dispose);
+    addTearDown(connection.dispose);
+    const owner = OwnerRoute(
+      connectionId: ConnectionId('primary'),
+      profile: 'one',
+    );
+    store.adaptPluginInventory([
+      {
+        'id': 'issues',
+        'enabled': true,
+        'mobile_contributions': [
+          {
+            'id': 'complete',
+            'area': 'composer',
+            'slot': 'at_completion',
+            'title': 'Issues',
+            'action': {'kind': 'gateway', 'method': 'issues.complete'},
+          },
+        ],
+      },
+    ], owner: owner);
+
+    expect(
+      await store.completeComposer(
+        text: 'fix issue',
+        sessionId: 'sid',
+        owner: const OwnerRoute(
+          connectionId: ConnectionId('primary'),
+          profile: 'two',
+        ),
+      ),
+      isEmpty,
+    );
+    final results = await store.completeComposer(
+      text: 'fix issue',
+      sessionId: 'sid',
+      owner: owner,
+    );
+    expect(results.map((item) => item.insertText), ['@issue:42 ']);
+    expect(connection.calls.single.$1, 'issues.complete');
+    expect(connection.calls.single.$2['inputs'], containsPair('limit', 5));
+  });
+
+  test(
+    'composer prepare hooks transform text without attachment bytes',
+    () async {
+      final connection = _RecordingConnection(
+        response: const {'text': 'prepared'},
+      );
+      final store = PluginContributionStore(connection);
+      addTearDown(store.dispose);
+      addTearDown(connection.dispose);
+      store.adaptPluginInventory([
+        {
+          'id': 'guard',
+          'enabled': true,
+          'mobile_contributions': [
+            {
+              'id': 'prepare',
+              'area': 'composer',
+              'title': 'Prepare',
+              'action': {'kind': 'gateway', 'method': 'guard.open'},
+              'hooks': [
+                {
+                  'event': 'composer.prepare',
+                  'action': {'kind': 'gateway', 'method': 'guard.prepare'},
+                  'order': 3,
+                  'timeout_ms': 1000,
+                },
+              ],
+            },
+          ],
+        },
+      ]);
+      final result = await store.prepareComposer(
+        text: 'draft',
+        attachments: const [
+          {'kind': 'image', 'name': 'a.png', 'bytes': 'secret'},
+        ],
+        sessionId: 'sid',
+        owner: OwnerRoute(connectionId: connection.activeConnectionId),
+      );
+      expect(result.text, 'prepared');
+      final sent = connection.calls.single.$2['inputs'] as Map;
+      expect((sent['attachments'] as List).single, isNot(contains('bytes')));
+      expect(connection.calls.single.$1, 'guard.prepare');
+    },
+  );
+
+  test('composer prepare hooks require exact owner profile', () async {
+    final connection = _RecordingConnection(response: const {'text': 'wrong'});
+    final store = PluginContributionStore(connection);
+    addTearDown(store.dispose);
+    addTearDown(connection.dispose);
+    store.adaptPluginInventory(
+      [
+        {
+          'id': 'guard',
+          'enabled': true,
+          'mobile_contributions': [
+            {
+              'id': 'prepare',
+              'area': 'composer',
+              'title': 'Prepare',
+              'action': {'kind': 'gateway', 'method': 'guard.open'},
+              'hooks': [
+                {
+                  'event': 'composer.prepare',
+                  'action': {'kind': 'gateway', 'method': 'guard.prepare'},
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      owner: OwnerRoute(
+        connectionId: connection.activeConnectionId,
+        profile: 'one',
+      ),
+    );
+
+    final result = await store.prepareComposer(
+      text: 'draft',
+      attachments: const [],
+      sessionId: 'sid',
+      owner: OwnerRoute(
+        connectionId: connection.activeConnectionId,
+        profile: 'two',
+      ),
+    );
+
+    expect(result.text, 'draft');
+    expect(connection.calls, isEmpty);
+  });
+
   test(
     'declarative view bounds fields, actions, polling and locale bundles',
     () {

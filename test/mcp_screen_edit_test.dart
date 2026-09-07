@@ -6,6 +6,7 @@ import 'package:hermes_mobile/core/stores/connection_store.dart';
 import 'package:hermes_mobile/core/stores/profile_scope_store.dart';
 import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
+import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/mcp_screen.dart';
 import 'package:hermes_mobile/screens/mcp_config_editor_screen.dart';
 import 'package:provider/provider.dart';
@@ -96,7 +97,12 @@ Future<_RedactionApi> _pump(WidgetTester tester) async {
           create: (_) => ProfileScopeStore()..bindApi(connection.api),
         ),
       ],
-      child: const MaterialApp(home: McpScreen()),
+      child: MaterialApp(
+        locale: Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: McpScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();

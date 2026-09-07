@@ -13,17 +13,23 @@ import '../core/connection_reload_mixin.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/bot_store.dart';
 import '../core/stores/session_store.dart';
+import 'bot_avatar_editor_screen.dart';
 import 'bot_group_chat_screen.dart';
 import 'bot_routines_screen.dart';
+import 'mcp_screen.dart';
+import 'bot_create_screen.dart';
 import 'profiles_screen.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/adaptive_form_dialog.dart';
+import '../widgets/bot_avatar.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_logo.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../l10n/l10n.dart';
 
 class AgentScreen extends StatefulWidget {
@@ -41,6 +47,7 @@ class _AgentScreenState extends State<AgentScreen>
   int _loadGeneration = 0;
   Timer? _statusTimer;
   final TextEditingController _botSearch = TextEditingController();
+  List<BotIdentity>? _visibleBots;
 
   @override
   void initState() {
@@ -48,11 +55,18 @@ class _AgentScreenState extends State<AgentScreen>
     _load();
     _statusTimer = Timer.periodic(
       const Duration(seconds: 10),
-      (_) => unawaited(_load()),
+      (_) => unawaited(_load().then((_) => _refreshAttention())),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<BotStore>().refresh();
+      if (!mounted) return;
+      context.read<BotStore>().refresh().then((_) => _refreshAttention());
     });
+  }
+
+  Future<void> _refreshAttention() {
+    if (!mounted) return Future<void>.value();
+    final bots = context.read<BotStore>();
+    return bots.refreshBotAttention(_visibleBots ?? bots.bots);
   }
 
   @override
@@ -69,7 +83,9 @@ class _AgentScreenState extends State<AgentScreen>
       });
     }
     if (mounted) {
-      unawaited(context.read<BotStore>().refresh());
+      unawaited(
+        context.read<BotStore>().refresh().then((_) => _refreshAttention()),
+      );
     }
     return _load();
   }
@@ -99,6 +115,44 @@ class _AgentScreenState extends State<AgentScreen>
         );
       }
     }
+  }
+
+  Widget? _botStatusBadge(BotStore bots, BotIdentity bot) {
+    final pinned = bots.isBotPinned(bot);
+    final needsAttention = bots.botNeedsAttention(bot);
+    final working = bots.botIsWorking(bot);
+    final unreachable = bots.isBotUnreachable(bot);
+    if (!pinned && !needsAttention && !working && !unreachable) return null;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (unreachable)
+          const Padding(
+            padding: EdgeInsets.only(right: 4),
+            child: Icon(Icons.cloud_off, size: 14),
+          )
+        else if (needsAttention)
+          Container(
+            width: 7,
+            height: 7,
+            margin: const EdgeInsets.only(right: 4),
+            decoration: const BoxDecoration(
+              color: HermesSemantic.red,
+              shape: BoxShape.circle,
+            ),
+          )
+        else if (working)
+          const Padding(
+            padding: EdgeInsets.only(right: 4),
+            child: SizedBox(
+              width: 10,
+              height: 10,
+              child: CircularProgressIndicator(strokeWidth: 1.6),
+            ),
+          ),
+        if (pinned) const Icon(Icons.push_pin, size: 14),
+      ],
+    );
   }
 
   Future<void> _editGroup(BotStore store, [BotGroup? existing]) async {
@@ -349,24 +403,13 @@ class _AgentScreenState extends State<AgentScreen>
     final connection = context.read<ConnectionStore>();
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.settingsRestartBackendQuestion),
-        content: Text(context.l10n.settingsRestartBackendWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(ctx.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(ctx.l10n.commonRestart),
-          ),
-        ],
-      ),
+      title: context.l10n.settingsRestartBackendQuestion,
+      message: context.l10n.settingsRestartBackendWarning,
+      confirmLabel: context.l10n.commonRestart,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     setState(() => _busy = true);
     try {
       requireActiveApi(context, connection, api);
@@ -395,11 +438,10 @@ class _AgentScreenState extends State<AgentScreen>
   }
 
   Future<void> _showGroupActions(BotStore store, BotGroup group) async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) => Padding(
+    final action = await showMobileSheet<String>(
+      context,
+      isScrollControlled: false,
+      (sheetContext) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -441,24 +483,14 @@ class _AgentScreenState extends State<AgentScreen>
       await _editGroup(store, group);
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.agentDeleteGroupQuestion(group.name)),
-        content: Text(context.l10n.agentDeleteGroupWarning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(ctx.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(ctx.l10n.commonDelete),
-          ),
-        ],
-      ),
+      title: context.l10n.agentDeleteGroupQuestion(group.name),
+      message: context.l10n.agentDeleteGroupWarning,
+      confirmLabel: context.l10n.commonDelete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     try {
       await store.removeGroup(group.id);
     } catch (error) {
@@ -473,21 +505,20 @@ class _AgentScreenState extends State<AgentScreen>
   }
 
   Future<void> _showBotActions(BotStore store, BotIdentity bot) async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) => Padding(
+    final action = await showMobileSheet<String>(
+      context,
+      isScrollControlled: false,
+      (sheetContext) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _ActionSheetHeader(
-              avatar: HermesAvatar(
-                label: bot.displayName,
+              avatar: BotAvatar(
+                name: bot.profile,
+                metadata: bot.metadata,
                 size: 48,
-                color: botAvatarColor(bot.metadata),
               ),
               icon: Icons.smart_toy_outlined,
               title: bot.displayName,
@@ -503,6 +534,35 @@ class _AgentScreenState extends State<AgentScreen>
                   icon: Icons.schedule_outlined,
                   title: context.l10n.agentBotRoutinesMenuItem,
                   onTap: () => Navigator.pop(sheetContext, 'routines'),
+                ),
+                HermesMobileRow(
+                  icon: Icons.push_pin_outlined,
+                  title: store.isBotPinned(bot)
+                      ? context.l10n.agentUnpinBot
+                      : context.l10n.agentPinBot,
+                  onTap: () => Navigator.pop(sheetContext, 'pin'),
+                ),
+                HermesMobileRow(
+                  icon: Icons.visibility_off_outlined,
+                  title: store.isBotHidden(bot)
+                      ? context.l10n.agentUnhideBot
+                      : context.l10n.agentHideBot,
+                  onTap: () => Navigator.pop(sheetContext, 'hide'),
+                ),
+                HermesMobileRow(
+                  icon: Icons.extension_outlined,
+                  title: context.l10n.agentBotMcpMenuItem,
+                  onTap: () => Navigator.pop(sheetContext, 'mcp'),
+                ),
+                HermesMobileRow(
+                  icon: Icons.psychology_alt_outlined,
+                  title: context.l10n.agentBotModelMenuItem,
+                  onTap: () => Navigator.pop(sheetContext, 'model'),
+                ),
+                HermesMobileRow(
+                  icon: Icons.face_retouching_natural_outlined,
+                  title: context.l10n.agentEditAvatarMenuItem,
+                  onTap: () => Navigator.pop(sheetContext, 'avatar'),
                 ),
                 HermesMobileRow(
                   icon: Icons.copy_outlined,
@@ -528,27 +588,43 @@ class _AgentScreenState extends State<AgentScreen>
         await Navigator.of(context).push<void>(
           MaterialPageRoute(builder: (_) => BotRoutinesScreen(bot: bot)),
         );
+      } else if (action == 'mcp') {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => McpScreen(
+              targetConnectionId: bot.route.connectionId,
+              fixedProfile: bot.profile,
+            ),
+          ),
+        );
+      } else if (action == 'model') {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => ProfilesScreen(
+              targetConnectionId: bot.route.connectionId,
+              fixedProfile: bot.profile,
+            ),
+          ),
+        );
+      } else if (action == 'avatar') {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(builder: (_) => BotAvatarEditorScreen(bot: bot)),
+        );
+      } else if (action == 'pin') {
+        await store.setBotPinned(bot, !store.isBotPinned(bot));
+      } else if (action == 'hide') {
+        await store.setBotHidden(bot, !store.isBotHidden(bot));
       } else if (action == 'duplicate') {
         await store.duplicateBot(bot);
       } else if (action == 'delete') {
-        final confirmed = await showDialog<bool>(
+        final confirmed = await showHermesConfirmDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(context.l10n.agentDeleteBotQuestion(bot.displayName)),
-            content: Text(context.l10n.profilesDeleteWarning),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(ctx.l10n.commonCancel),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(ctx.l10n.commonDelete),
-              ),
-            ],
-          ),
+          title: context.l10n.agentDeleteBotQuestion(bot.displayName),
+          message: context.l10n.profilesDeleteWarning,
+          confirmLabel: context.l10n.commonDelete,
+          destructive: true,
         );
-        if (confirmed == true && mounted) await store.deleteBot(bot);
+        if (confirmed && mounted) await store.deleteBot(bot);
       }
     } catch (error) {
       if (mounted) {
@@ -635,7 +711,7 @@ class _AgentScreenState extends State<AgentScreen>
                           (group) => group.name.toLowerCase().contains(query),
                         )
                         .toList(growable: false);
-              final visibleBots = query.isEmpty
+              final matchingBots = query.isEmpty
                   ? bots.bots
                   : bots.bots
                         .where(
@@ -645,6 +721,21 @@ class _AgentScreenState extends State<AgentScreen>
                               bot.description.toLowerCase().contains(query),
                         )
                         .toList(growable: false);
+              final visibleBots =
+                  matchingBots.where((bot) => !bots.isBotHidden(bot)).toList()
+                    ..sort((a, b) {
+                      final pinDiff =
+                          (bots.isBotPinned(b) ? 1 : 0) -
+                          (bots.isBotPinned(a) ? 1 : 0);
+                      if (pinDiff != 0) return pinDiff;
+                      return a.displayName.toLowerCase().compareTo(
+                        b.displayName.toLowerCase(),
+                      );
+                    });
+              final hiddenBots = matchingBots
+                  .where((bot) => bots.isBotHidden(bot))
+                  .toList(growable: false);
+              _visibleBots = visibleBots;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -680,7 +771,7 @@ class _AgentScreenState extends State<AgentScreen>
                             ),
                           ],
                         );
-                        final statusChip = HermesMobileStatusChip(
+                        final statusChip = HermesStatusChip(
                           label: running
                               ? context.l10n.commonRunning
                               : context.l10n.agentStopped,
@@ -792,15 +883,37 @@ class _AgentScreenState extends State<AgentScreen>
                         icon: const Icon(Icons.group_add_outlined, size: 18),
                         label: Text(context.l10n.agentNewGroup),
                       );
+                      final create = OutlinedButton.icon(
+                        onPressed: () async {
+                          final created = await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const BotCreateScreen(),
+                            ),
+                          );
+                          if (created == true && context.mounted) {
+                            await bots.refresh();
+                          }
+                        },
+                        icon: const Icon(Icons.add_circle_outline, size: 18),
+                        label: Text(context.l10n.botCreateTitle),
+                      );
                       if (compact) {
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [manage, const SizedBox(height: 8), group],
+                          children: [
+                            manage,
+                            const SizedBox(height: 8),
+                            create,
+                            const SizedBox(height: 8),
+                            group,
+                          ],
                         );
                       }
                       return Row(
                         children: [
                           Expanded(child: manage),
+                          const SizedBox(width: 8),
+                          Expanded(child: create),
                           const SizedBox(width: 8),
                           Expanded(child: group),
                         ],
@@ -878,10 +991,10 @@ class _AgentScreenState extends State<AgentScreen>
                       ),
                     ),
                   if (visibleGroups.isNotEmpty) ...[
-                    HermesMobileSectionLabel(
+                    HermesSectionHeader(
                       title: context.l10n.agentGroupChatsSection,
                       trailing: Text('${visibleGroups.length}'),
-                      top: 8,
+                      padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
                     ),
                     HermesMobileGroup(
                       children: [
@@ -915,37 +1028,56 @@ class _AgentScreenState extends State<AgentScreen>
                     ),
                   ],
                   if (visibleBots.isNotEmpty) ...[
-                    HermesMobileSectionLabel(
+                    HermesSectionHeader(
                       title: context.l10n.agentIndividualBotsSection,
                       trailing: Text('${visibleBots.length}'),
-                      top: visibleGroups.isEmpty ? 8 : 18,
+                      padding: EdgeInsets.fromLTRB(
+                        4,
+                        visibleGroups.isEmpty ? 8 : 18,
+                        4,
+                        8,
+                      ),
                     ),
                     HermesMobileGroup(
                       children: [
                         for (final bot in visibleBots)
-                          HermesMobileRow(
-                            key: ValueKey('bot-${bot.key}'),
-                            icon: Icons.smart_toy_outlined,
-                            iconWidget: HermesAvatar(
-                              label: bot.displayName,
-                              size: 31,
-                              color: botAvatarColor(bot.metadata),
-                            ),
-                            title: bot.displayName,
-                            subtitle: [
-                              bot.profile,
-                              bot.description,
-                            ].where((text) => text.isNotEmpty).join(' · '),
-                            onTap: () => _openBot(bot),
-                            trailing: IconButton(
-                              tooltip: context.l10n.commonMore,
-                              onPressed: () => _showBotActions(bots, bot),
-                              icon: const Icon(Icons.more_horiz),
+                          Opacity(
+                            opacity: bots.isBotUnreachable(bot) ? 0.5 : 1,
+                            child: HermesMobileRow(
+                              key: ValueKey('bot-${bot.key}'),
+                              icon: Icons.smart_toy_outlined,
+                              iconWidget: BotAvatar(
+                                name: bot.profile,
+                                metadata: bot.metadata,
+                                size: 31,
+                                working: bots.botIsWorking(bot),
+                              ),
+                              title: bot.displayName,
+                              titleTrailing: _botStatusBadge(bots, bot),
+                              subtitle: [
+                                bot.profile,
+                                bot.description,
+                                if (bots.isBotUnreachable(bot))
+                                  context.l10n.agentBotUnreachable,
+                              ].where((text) => text.isNotEmpty).join(' · '),
+                              onTap: () => _openBot(bot),
+                              trailing: IconButton(
+                                tooltip: context.l10n.commonMore,
+                                onPressed: () => _showBotActions(bots, bot),
+                                icon: const Icon(Icons.more_horiz),
+                              ),
                             ),
                           ),
                       ],
                     ),
                   ],
+                  if (hiddenBots.isNotEmpty)
+                    _HiddenBotsSection(
+                      bots: bots,
+                      hiddenBots: hiddenBots,
+                      onOpen: _openBot,
+                      onActions: (bot) => _showBotActions(bots, bot),
+                    ),
                   const SizedBox(height: HermesSpacing.lg),
                 ],
               );
@@ -1189,10 +1321,10 @@ class _BotMemberChoice extends StatelessWidget {
               padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 6, 8),
               child: Row(
                 children: [
-                  HermesAvatar(
-                    label: bot.displayName,
+                  BotAvatar(
+                    name: bot.profile,
+                    metadata: bot.metadata,
                     size: 40,
-                    color: botAvatarColor(bot.metadata),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1300,6 +1432,74 @@ class _ActionSheetHeader extends StatelessWidget {
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _HiddenBotsSection extends StatefulWidget {
+  const _HiddenBotsSection({
+    required this.bots,
+    required this.hiddenBots,
+    required this.onOpen,
+    required this.onActions,
+  });
+
+  final BotStore bots;
+  final List<BotIdentity> hiddenBots;
+  final void Function(BotIdentity bot) onOpen;
+  final void Function(BotIdentity bot) onActions;
+
+  @override
+  State<_HiddenBotsSection> createState() => _HiddenBotsSectionState();
+}
+
+class _HiddenBotsSectionState extends State<_HiddenBotsSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HermesSectionHeader(
+          title: context.l10n.agentHiddenBotsSection,
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          trailing: IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              _expanded ? Icons.expand_less : Icons.expand_more,
+              size: 20,
+            ),
+            onPressed: () => setState(() => _expanded = !_expanded),
+          ),
+        ),
+        if (_expanded)
+          HermesMobileGroup(
+            children: [
+              for (final bot in widget.hiddenBots)
+                HermesMobileRow(
+                  key: ValueKey('bot-hidden-${bot.key}'),
+                  icon: Icons.smart_toy_outlined,
+                  iconWidget: BotAvatar(
+                    name: bot.profile,
+                    metadata: bot.metadata,
+                    size: 31,
+                  ),
+                  title: bot.displayName,
+                  subtitle: [
+                    bot.profile,
+                    bot.description,
+                  ].where((text) => text.isNotEmpty).join(' · '),
+                  onTap: () => widget.onOpen(bot),
+                  trailing: IconButton(
+                    tooltip: context.l10n.commonMore,
+                    onPressed: () => widget.onActions(bot),
+                    icon: const Icon(Icons.more_horiz),
+                  ),
+                ),
+            ],
+          ),
       ],
     );
   }

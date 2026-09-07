@@ -14,12 +14,15 @@ import '../l10n/l10n.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/clarify_choice.dart';
+import '../core/mcp_oauth_flow.dart';
 import '../core/connections/connection_registry.dart';
 import '../core/stores/connection_store.dart';
 import '../core/stores/request_store.dart';
 import '../core/stores/session_store.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_toast.dart';
 
 Future<void> showRequestSheet(
   BuildContext context, {
@@ -138,28 +141,15 @@ class _RequestSheetState extends State<RequestSheet> {
 
   Future<void> _confirmAlwaysAllow(PendingRequest req, String choice) async {
     final detail = req.command ?? req.question ?? '';
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.requestAlwaysAllowQuestion),
-        content: Text(
-          detail.isEmpty
-              ? context.l10n.requestAlwaysAllowDescription
-              : context.l10n.requestAlwaysAllowDetail(detail),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(context.l10n.agentAlwaysAllow),
-          ),
-        ],
-      ),
+      title: context.l10n.requestAlwaysAllowQuestion,
+      message: detail.isEmpty
+          ? context.l10n.requestAlwaysAllowDescription
+          : context.l10n.requestAlwaysAllowDetail(detail),
+      confirmLabel: context.l10n.agentAlwaysAllow,
     );
-    if (confirmed == true && mounted) await _respond(choice: choice);
+    if (confirmed && mounted) await _respond(choice: choice);
   }
 
   Future<void> _respond({String? choice, String? text}) async {
@@ -169,9 +159,7 @@ class _RequestSheetState extends State<RequestSheet> {
     final connection = context.read<ConnectionStore>();
     final runtimeId = session.runtimeId;
     if (runtimeId == null && _selected(requests)?.sessionId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.requestNoActiveSession)),
-      );
+      showHermesToast(context, message: context.l10n.requestNoActiveSession);
       return;
     }
     setState(() => _busy = true);
@@ -252,8 +240,10 @@ class _RequestSheetState extends State<RequestSheet> {
       _textCtrl.clear();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.requestRespondFailed('$e'))),
+        showHermesErrorSnackBar(
+          context,
+          e,
+          fallback: context.l10n.requestRespondFailed('$e'),
         );
       }
     } finally {
@@ -340,8 +330,10 @@ class _RequestSheetState extends State<RequestSheet> {
         ? connection.api
         : connection.runtimeFor(route).api;
     if (api == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.requestConnectionUnavailable)),
+      showHermesToast(
+        context,
+        message: l10n.requestConnectionUnavailable,
+        kind: HermesToastKind.error,
       );
       return;
     }
@@ -387,56 +379,32 @@ class _RequestSheetState extends State<RequestSheet> {
 
       Map<String, dynamic> test = await api.mcpTest(name, profile: profile);
       if (test['auth_required'] == true || test['needs_auth'] == true) {
-        var flowId = (request.payload['oauth_flow_id'] ?? '').toString();
-        var url = (request.payload['authorization_url'] ?? '').toString();
-        if (flowId.isEmpty) {
-          final started = await api.mcpStartAuth(name, profile: profile);
-          flowId = (started['flow_id'] ?? '').toString();
-          url = (started['authorization_url'] ?? '').toString();
-          requests.updatePayload(
+        await const McpOAuthFlow().authorize(
+          api: api,
+          server: name,
+          profile: profile,
+          flowId: (request.payload['oauth_flow_id'] ?? '').toString(),
+          authorizationUrl: (request.payload['authorization_url'] ?? '')
+              .toString(),
+          openAuthorization: (url) =>
+              launchUrl(url, mode: LaunchMode.externalApplication),
+          cancelled: () => !mounted,
+          onStarted: (flowId, url) => requests.updatePayload(
             request.requestId,
             {'oauth_flow_id': flowId, 'authorization_url': url},
             ownerRoute: request.ownerRoute,
             sessionId: request.sessionId,
             kind: request.kind,
-          );
-        }
-        if (flowId.isEmpty || url.isEmpty) {
-          throw StateError(l10n.mcpOAuthMissingUrl);
-        }
-        if (!await launchUrl(
-          Uri.parse(url),
-          mode: LaunchMode.externalApplication,
-        )) {
-          throw StateError(l10n.mcpBrowserOpenFailed);
-        }
-        requireOwnerApi();
-        Map<String, dynamic>? approved;
-        for (var attempt = 0; attempt < 180 && mounted; attempt++) {
-          final flow = await api.mcpAuthFlow(flowId, profile: profile);
-          requireOwnerApi();
-          final status = flow['status']?.toString();
-          if (status == 'approved') {
-            approved = flow;
-            break;
-          }
-          if (status == 'error' || status == 'denied') {
-            throw StateError(
-              (flow['error'] ?? l10n.mcpOAuthAuthorizationFailed).toString(),
-            );
-          }
-          await Future<void>.delayed(const Duration(seconds: 1));
-        }
-        if (approved == null) {
-          throw TimeoutException(l10n.requestOAuthTimeout);
-        }
-        requests.updatePayload(
-          request.requestId,
-          {'oauth_flow_id': null, 'authorization_url': null},
-          ownerRoute: request.ownerRoute,
-          sessionId: request.sessionId,
-          kind: request.kind,
+          ),
+          onFinished: (_) => requests.updatePayload(
+            request.requestId,
+            {'oauth_flow_id': null, 'authorization_url': null},
+            ownerRoute: request.ownerRoute,
+            sessionId: request.sessionId,
+            kind: request.kind,
+          ),
         );
+        requireOwnerApi();
         test = await api.mcpTest(name, profile: profile);
       }
       if (test['ok'] != true && test['reachable'] != true) {
@@ -552,24 +520,13 @@ class _RequestSheetState extends State<RequestSheet> {
       await _respond(choice: 'deny');
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showHermesConfirmDialog(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: Text(context.l10n.requestCloseQuestion),
-        content: Text(context.l10n.requestCloseDescription),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: Text(context.l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: Text(context.l10n.commonClose),
-          ),
-        ],
-      ),
+      title: context.l10n.requestCloseQuestion,
+      message: context.l10n.requestCloseDescription,
+      confirmLabel: context.l10n.commonClose,
     );
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       requests.dismissById(
         widget.requestId,
         ownerRoute: _effectiveOwnerRoute,
@@ -687,7 +644,7 @@ class _RequestSheetState extends State<RequestSheet> {
               ),
               child: Text(
                 req.command!,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                style: HermesType.code,
               ),
             ),
             const SizedBox(height: 10),

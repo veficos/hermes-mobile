@@ -14,6 +14,7 @@ import '../terminal_gateway.dart';
 import '../terminal_interactions.dart';
 import 'connection_store.dart';
 import 'session_store.dart';
+import 'request_store.dart';
 
 enum TerminalColorPreset {
   system,
@@ -58,14 +59,53 @@ bool isSensitiveTerminalCommand(String command) {
       ).hasMatch(normalized);
 }
 
+/// Serialize an xterm buffer using the same paging contract as Desktop's
+/// `readActiveTerminal`: absolute line indices, visible viewport by default,
+/// right-trimmed display text, and an absolute cursor row.
+Map<String, dynamic> serializeTerminalBuffer(
+  Terminal terminal, {
+  int? start,
+  int? count,
+}) {
+  final lines = terminal.buffer.lines;
+  final total = lines.length;
+  final rows = terminal.viewHeight;
+  final defaultStart = (total - rows).clamp(0, total);
+  final from = (start ?? defaultStart).clamp(0, total);
+  final requested = count == null ? rows : count.clamp(1, 1000);
+  final to = (from + requested).clamp(from, total);
+  final output = <String>[
+    for (var index = from; index < to; index++)
+      lines[index].toString().trimRight(),
+  ];
+  while (output.isNotEmpty && output.last.trim().isEmpty) {
+    output.removeLast();
+  }
+  // Trimming trailing blank lines above can shrink `output` below the
+  // originally computed `to` — recompute `end` so it stays consistent with
+  // the actual number of lines returned in `text` (paging metadata must
+  // reflect what was really sent, not what was originally requested).
+  final end = from + output.length;
+  return {
+    'total_lines': total,
+    'start': from,
+    'end': end,
+    'viewport_rows': rows,
+    'cursor_row': terminal.buffer.absoluteCursorY,
+    'text': output.join('\n'),
+  };
+}
+
 class TerminalStore extends ChangeNotifier {
   ConnectionStore connection;
   SessionStore? sessionStore;
+  RequestStore? requestStore;
   final String storageScope;
 
   TerminalStore({
     required this.connection,
     this.sessionStore,
+    this.requestStore,
     this.storageScope = '',
   }) : _boundConnectionId = connection.activeConnectionId,
        _boundApi = connection.api;
@@ -110,6 +150,7 @@ class TerminalStore extends ChangeNotifier {
   int _backendGeneration = 0;
   StreamSubscription? _eventSub;
   StreamSubscription? _disconnectSub;
+  StreamSubscription<RoutedGatewayEvent>? _bridgeEventSub;
   String? _activeId;
   String? _defaultCwd;
   bool _initialized = false;
@@ -172,17 +213,95 @@ class TerminalStore extends ChangeNotifier {
   void bindStores({
     required ConnectionStore connection,
     SessionStore? sessionStore,
+    RequestStore? requestStore,
   }) {
     final identityChanged =
         connection.activeConnectionId != _boundConnectionId ||
         !identical(connection.api, _boundApi);
     this.connection = connection;
     this.sessionStore = sessionStore;
+    this.requestStore = requestStore;
+    _attachClientBridge();
     if (!identityChanged) return;
     _boundConnectionId = connection.activeConnectionId;
     _boundApi = connection.api;
     final generation = ++_backendGeneration;
     if (_initialized) unawaited(_switchBackend(generation));
+  }
+
+  /// Attach independently from [init]: read_terminal is a blocking client
+  /// bridge request and must receive an immediate empty/unavailable response
+  /// even when the user has never opened the terminal screen.
+  void _attachClientBridge() {
+    if (_bridgeEventSub != null) return;
+    _bridgeEventSub = connection.routedEvents.listen((routed) {
+      if (routed.event.type == 'terminal.read.request') {
+        unawaited(_handleTerminalRead(routed));
+      }
+    });
+  }
+
+  Map<String, dynamic>? readActiveBuffer({int? start, int? count}) {
+    final terminal = activeTerminal;
+    if (terminal == null) return null;
+    return serializeTerminalBuffer(terminal, start: start, count: count);
+  }
+
+  Future<void> _handleTerminalRead(RoutedGatewayEvent routed) async {
+    final event = routed.event;
+    final requestId = event.payload['request_id']?.toString() ?? '';
+    if (requestId.isEmpty) return;
+    final route = OwnerRoute(
+      connectionId: routed.route.connectionId,
+      profile: event.profile ?? routed.route.profile,
+    );
+    final owner = sessionStore?.owner;
+    final belongsToVisibleSession =
+        owner != null &&
+        owner.route.connectionId == route.connectionId &&
+        (route.profile == null || route.profile == owner.route.profile) &&
+        (event.sessionId == null ||
+            event.sessionId == owner.runtimeId ||
+            event.sessionId == owner.durableId);
+    final start = (event.payload['start'] as num?)?.toInt();
+    final count = (event.payload['count'] as num?)?.toInt();
+    final result = belongsToVisibleSession
+        ? readActiveBuffer(start: start, count: count)
+        : null;
+    try {
+      await connection.requestForOwner(route, 'terminal.read.respond', {
+        'request_id': requestId,
+        if (event.sessionId?.isNotEmpty == true) 'session_id': event.sessionId,
+        'text': result == null ? '' : jsonEncode(result),
+      });
+      requestStore?.resolveLocallyById(
+        requestId,
+        ownerRoute: route,
+        sessionId: event.sessionId,
+        kind: RequestKind.terminalRead,
+        result: {
+          'status': result == null ? 'unavailable' : 'completed',
+          ...?result,
+        },
+      );
+    } catch (error) {
+      developer.log(
+        'terminal.read.respond failed',
+        name: 'hermes.terminal',
+        error: error,
+      );
+      // Even though the round-trip to the server failed, the request must
+      // still be resolved locally — otherwise it stays at the head of
+      // RequestStore's FIFO queue forever, blocking every real
+      // approval/clarify/sudo/secret request behind it from ever surfacing.
+      requestStore?.resolveLocallyById(
+        requestId,
+        ownerRoute: route,
+        sessionId: event.sessionId,
+        kind: RequestKind.terminalRead,
+        result: const {'status': 'failed'},
+      );
+    }
   }
 
   Future<void> _switchBackend(int generation) async {
@@ -760,7 +879,9 @@ class TerminalStore extends ChangeNotifier {
     final deadline = DateTime.now().add(_recoveryBudget);
     for (var attempt = 0; DateTime.now().isBefore(deadline); attempt++) {
       final step = Duration(milliseconds: 300 * (attempt + 1));
-      await _interruptibleDelay(step > _recoveryStepCap ? _recoveryStepCap : step);
+      await _interruptibleDelay(
+        step > _recoveryStepCap ? _recoveryStepCap : step,
+      );
       // The now-much-longer recovery budget (up to 80s, vs. the old ~11s)
       // makes it meaningfully more likely the screen/store is torn down
       // while this loop is still waiting — bail out rather than touch a
@@ -917,6 +1038,7 @@ class TerminalStore extends ChangeNotifier {
     }
     _eventSub?.cancel();
     _disconnectSub?.cancel();
+    _bridgeEventSub?.cancel();
     unawaited(_client?.close());
     super.dispose();
   }

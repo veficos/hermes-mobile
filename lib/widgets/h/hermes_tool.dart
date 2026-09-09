@@ -20,6 +20,7 @@ import '../../core/clipboard.dart';
 import '../../core/tool_presentation.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import 'hermes_status.dart';
 
 enum _ToolSection { arguments, result }
@@ -1507,6 +1508,7 @@ class _ToolCardShellState extends State<ToolCardShell> {
         : palette.border;
     final tint = widget.accentColor ?? palette.accent;
     final stripeColor = widget.failed ? failedBorder : tint;
+    final liquid = HermesGlassTheme.of(context).enabled;
     // Flutter can't combine a non-uniform-color Border with a borderRadius,
     // so the accent stripe is a separate clipped child, not a BorderSide.
     return Container(
@@ -1514,14 +1516,16 @@ class _ToolCardShellState extends State<ToolCardShell> {
       margin: const EdgeInsets.symmetric(vertical: 4),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: palette.codeBg,
+        color: liquid ? palette.codeBg.withValues(alpha: .94) : palette.codeBg,
         // Prototype parity (`.toolcard{border-radius:0 11px 11px 0}`).
         borderRadius: const BorderRadius.only(
           topRight: Radius.circular(kToolCardRadius),
           bottomRight: Radius.circular(kToolCardRadius),
         ),
-        border: Border.all(color: edgeColor),
-        boxShadow: hermesShadow(context),
+        border: Border.all(
+          color: liquid ? edgeColor.withValues(alpha: .72) : edgeColor,
+        ),
+        boxShadow: liquid ? const [] : hermesShadow(context),
       ),
       child: IntrinsicHeight(
         child: Row(

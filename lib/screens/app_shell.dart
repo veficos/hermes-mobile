@@ -41,6 +41,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/glass/scroll_edge_scrim.dart';
+import '../widgets/glass/glass_environment.dart';
 import '../theme/hermes_glass_theme.dart';
 import '../widgets/command_palette.dart';
 import '../widgets/h/hermes_badge.dart';
@@ -792,37 +793,39 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     if (isXl) {
       // XL 档：类 IDE 三栏工作台（design-system §7.2）。
-      return MobileTourOverlay(
-        child: PetOverlay(
-          child: Stack(
-            children: [
-              Scaffold(
-                body: Column(
-                  children: [
-                    _XlTopBar(title: _tabLabels(context)[_index]),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          GlassSurface(
-                            radius: 0,
-                            thick: true,
-                            child: _buildXlSideNav(
-                              context,
-                              connection,
-                              requests,
+      return GlassEnvironment(
+        child: MobileTourOverlay(
+          child: PetOverlay(
+            child: Stack(
+              children: [
+                Scaffold(
+                  body: Column(
+                    children: [
+                      _XlTopBar(title: _tabLabels(context)[_index]),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            GlassSurface(
+                              radius: 0,
+                              thick: true,
+                              child: _buildXlSideNav(
+                                context,
+                                connection,
+                                requests,
+                              ),
                             ),
-                          ),
-                          const VerticalDivider(width: 1),
-                          Expanded(child: body),
-                        ],
+                            const VerticalDivider(width: 1),
+                            Expanded(child: body),
+                          ],
+                        ),
                       ),
-                    ),
-                    const _XlStatusBar(),
-                  ],
+                      const _XlStatusBar(),
+                    ],
+                  ),
                 ),
-              ),
-              const CommandPalette(),
-            ],
+                const CommandPalette(),
+              ],
+            ),
           ),
         ),
       );
@@ -834,95 +837,98 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       // 选中态与手机档 NavigationBar 对齐：accentBg 胶囊 + accent 图标/label
       // （hermes_theme.dart 暂无 navigationRailTheme，本地补齐）。
       final palette = HermesPalette.of(context);
-      return MobileTourOverlay(
-        child: PetOverlay(
-          child: Stack(
-            children: [
-              Scaffold(
-                body: Row(
-                  children: [
-                    GlassSurface(
-                      radius: 0,
-                      thick: true,
-                      child: NavigationRailTheme(
-                        data: NavigationRailThemeData(
-                          indicatorColor: palette.accentBg,
-                          selectedIconTheme: IconThemeData(
-                            color: palette.accent,
-                          ),
-                          unselectedIconTheme: IconThemeData(
-                            color: palette.text3,
-                          ),
-                          selectedLabelTextStyle: TextStyle(
-                            color: palette.accent,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          unselectedLabelTextStyle: TextStyle(
-                            color: palette.text3,
-                          ),
-                        ),
-                        child: NavigationRail(
-                          key: const ValueKey('app-shell-tablet-navigation'),
-                          selectedIndex: _index,
-                          onDestinationSelected: _selectTab,
-                          labelType: NavigationRailLabelType.all,
-                          backgroundColor: HermesGlassTheme.of(context).enabled
-                              ? Colors.transparent
-                              : Theme.of(context).colorScheme.surface,
-                          leading: FloatingActionButton.small(
-                            heroTag: 'palette_rail',
-                            tooltip: context.l10n.commonSearch,
-                            onPressed: () =>
-                                context.read<CommandPaletteStore>().open(),
-                            child: const Icon(Icons.search),
-                          ),
-                          trailing: requests.pendingCount > 0
-                              ? IconButton(
-                                  tooltip: context.l10n.approvalRequests,
-                                  onPressed: () => showRequestSheet(context),
-                                  icon: Badge.count(
-                                    count: requests.pendingCount,
-                                    child: const Icon(Icons.rule),
-                                  ),
-                                )
-                              : null,
-                          destinations: [
-                            NavigationRailDestination(
-                              icon: const Icon(Icons.home_outlined),
-                              selectedIcon: const Icon(Icons.home),
-                              label: Text(context.l10n.navHome),
+      return GlassEnvironment(
+        child: MobileTourOverlay(
+          child: PetOverlay(
+            child: Stack(
+              children: [
+                Scaffold(
+                  body: Row(
+                    children: [
+                      GlassSurface(
+                        radius: 0,
+                        thick: true,
+                        child: NavigationRailTheme(
+                          data: NavigationRailThemeData(
+                            indicatorColor: palette.accentBg,
+                            selectedIconTheme: IconThemeData(
+                              color: palette.accent,
                             ),
-                            NavigationRailDestination(
-                              icon: const Icon(Icons.chat_bubble_outline),
-                              selectedIcon: const Icon(Icons.chat_bubble),
-                              label: Text(context.l10n.navSessions),
+                            unselectedIconTheme: IconThemeData(
+                              color: palette.text3,
                             ),
-                            NavigationRailDestination(
-                              icon: const Icon(Icons.task_alt_outlined),
-                              selectedIcon: const Icon(Icons.task_alt),
-                              label: Text(context.l10n.navTasks),
+                            selectedLabelTextStyle: TextStyle(
+                              color: palette.accent,
+                              fontWeight: FontWeight.w700,
                             ),
-                            NavigationRailDestination(
-                              icon: const Icon(Icons.smart_toy_outlined),
-                              selectedIcon: const Icon(Icons.smart_toy),
-                              label: Text(context.l10n.featureAgent),
+                            unselectedLabelTextStyle: TextStyle(
+                              color: palette.text3,
                             ),
-                            NavigationRailDestination(
-                              icon: const Icon(Icons.more_horiz),
-                              selectedIcon: const Icon(Icons.more_horiz),
-                              label: Text(context.l10n.navMore),
+                          ),
+                          child: NavigationRail(
+                            key: const ValueKey('app-shell-tablet-navigation'),
+                            selectedIndex: _index,
+                            onDestinationSelected: _selectTab,
+                            labelType: NavigationRailLabelType.all,
+                            backgroundColor:
+                                HermesGlassTheme.of(context).enabled
+                                ? Colors.transparent
+                                : Theme.of(context).colorScheme.surface,
+                            leading: FloatingActionButton.small(
+                              heroTag: 'palette_rail',
+                              tooltip: context.l10n.commonSearch,
+                              onPressed: () =>
+                                  context.read<CommandPaletteStore>().open(),
+                              child: const Icon(Icons.search),
                             ),
-                          ],
+                            trailing: requests.pendingCount > 0
+                                ? IconButton(
+                                    tooltip: context.l10n.approvalRequests,
+                                    onPressed: () => showRequestSheet(context),
+                                    icon: Badge.count(
+                                      count: requests.pendingCount,
+                                      child: const Icon(Icons.rule),
+                                    ),
+                                  )
+                                : null,
+                            destinations: [
+                              NavigationRailDestination(
+                                icon: const Icon(Icons.home_outlined),
+                                selectedIcon: const Icon(Icons.home),
+                                label: Text(context.l10n.navHome),
+                              ),
+                              NavigationRailDestination(
+                                icon: const Icon(Icons.chat_bubble_outline),
+                                selectedIcon: const Icon(Icons.chat_bubble),
+                                label: Text(context.l10n.navSessions),
+                              ),
+                              NavigationRailDestination(
+                                icon: const Icon(Icons.task_alt_outlined),
+                                selectedIcon: const Icon(Icons.task_alt),
+                                label: Text(context.l10n.navTasks),
+                              ),
+                              NavigationRailDestination(
+                                icon: const Icon(Icons.smart_toy_outlined),
+                                selectedIcon: const Icon(Icons.smart_toy),
+                                label: Text(context.l10n.featureAgent),
+                              ),
+                              NavigationRailDestination(
+                                icon: const Icon(Icons.more_horiz),
+                                selectedIcon: const Icon(Icons.more_horiz),
+                                label: Text(context.l10n.navMore),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const VerticalDivider(width: 1),
-                    Expanded(child: body),
-                  ],
+                      const VerticalDivider(width: 1),
+                      Expanded(child: body),
+                    ],
+                  ),
                 ),
-              ),
-              const CommandPalette(),
-            ],
+                const CommandPalette(),
+              ],
+            ),
           ),
         ),
       );
@@ -930,40 +936,44 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     // Phone: Material NavigationBar（样式见 NavigationBarTheme）。
     // Search is exposed by page headers so it no longer obscures content.
-    return MobileTourOverlay(
-      child: PetOverlay(
-        child: Stack(
-          children: [
-            Scaffold(
-              extendBody: HermesGlassTheme.of(context).enabled,
-              body: body,
-              bottomNavigationBar: _PhoneNavigationBar(
-                selectedIndex: _index,
-                pendingRequests: requests.pendingCount,
-                onSelected: _selectTab,
+    return GlassEnvironment(
+      child: MobileTourOverlay(
+        child: PetOverlay(
+          child: Stack(
+            children: [
+              Scaffold(
+                extendBody: HermesGlassTheme.of(context).enabled,
+                body: body,
+                bottomNavigationBar: _PhoneNavigationBar(
+                  selectedIndex: _index,
+                  pendingRequests: requests.pendingCount,
+                  onSelected: _selectTab,
+                ),
+                floatingActionButton: requests.pendingCount > 0
+                    ? FloatingActionButton.small(
+                        heroTag: 'requests',
+                        onPressed: () => showRequestSheet(context),
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Theme.of(
+                          context,
+                        ).colorScheme.onPrimary,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const Icon(Icons.rule),
+                            Positioned(
+                              right: -6,
+                              top: -4,
+                              child: HermesBadge(count: requests.pendingCount),
+                            ),
+                          ],
+                        ),
+                      )
+                    : null,
               ),
-              floatingActionButton: requests.pendingCount > 0
-                  ? FloatingActionButton.small(
-                      heroTag: 'requests',
-                      onPressed: () => showRequestSheet(context),
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          const Icon(Icons.rule),
-                          Positioned(
-                            right: -6,
-                            top: -4,
-                            child: HermesBadge(count: requests.pendingCount),
-                          ),
-                        ],
-                      ),
-                    )
-                  : null,
-            ),
-            const CommandPalette(),
-          ],
+              const CommandPalette(),
+            ],
+          ),
         ),
       ),
     );

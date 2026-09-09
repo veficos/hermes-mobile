@@ -863,6 +863,7 @@ class _RequestSheetState extends State<RequestSheet> {
   Widget _buildApprovalActions(PendingRequest request, List<String> choices) {
     final palette = HermesPalette.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final liquid = HermesGlassTheme.of(context).enabled;
     final ordered = [
       if (choices.contains('once')) 'once',
       if (choices.contains('deny')) 'deny',
@@ -894,7 +895,7 @@ class _RequestSheetState extends State<RequestSheet> {
                           }
                         },
                   style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 46),
+                    minimumSize: const Size(0, 48),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,
@@ -902,7 +903,9 @@ class _RequestSheetState extends State<RequestSheet> {
                     backgroundColor: choice == 'once'
                         ? scheme.primary
                         : choice == 'deny'
-                        ? scheme.error.withValues(alpha: .08)
+                        ? scheme.error.withValues(alpha: liquid ? .12 : .08)
+                        : liquid
+                        ? palette.surface.withValues(alpha: .72)
                         : palette.codeBg,
                     foregroundColor: choice == 'once'
                         ? scheme.onPrimary
@@ -910,7 +913,9 @@ class _RequestSheetState extends State<RequestSheet> {
                         ? scheme.error
                         : palette.text2,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(
+                        liquid ? HermesGlassTokens.controlRadius : 12,
+                      ),
                     ),
                     side: choice == 'once'
                         ? BorderSide.none

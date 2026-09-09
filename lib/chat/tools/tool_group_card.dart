@@ -4,6 +4,7 @@ import '../../core/chat_message.dart';
 import '../../core/tool_presentation.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../../widgets/h/hermes_status.dart';
 import '../../widgets/h/hermes_tool.dart';
 import 'tool_dismiss_store.dart';
@@ -117,9 +118,12 @@ class ToolGroupCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final interaction in interactions)
-          if (interaction.interaction?['request_id']?.toString().isNotEmpty == true)
+          if (interaction.interaction?['request_id']?.toString().isNotEmpty ==
+              true)
             RequestSheet(
-              key: ValueKey('inline-request-${interaction.interaction!['request_id']}'),
+              key: ValueKey(
+                'inline-request-${interaction.interaction!['request_id']}',
+              ),
               embedded: true,
               requestId: interaction.interaction!['request_id'].toString(),
             ),
@@ -304,16 +308,25 @@ class _ExpandableToolGroupState extends State<_ExpandableToolGroup> {
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
     return Container(
       key: widget.groupKey,
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 4),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(kToolGroupRadius),
-        border: Border.all(color: palette.border),
-        boxShadow: hermesShadow(context),
+        color: liquid
+            ? palette.surface.withValues(alpha: .94)
+            : palette.surface,
+        borderRadius: BorderRadius.circular(
+          liquid ? HermesGlassTokens.controlRadius : kToolGroupRadius,
+        ),
+        border: Border.all(
+          color: liquid
+              ? palette.border.withValues(alpha: .72)
+              : palette.border,
+        ),
+        boxShadow: liquid ? const [] : hermesShadow(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,7 +334,9 @@ class _ExpandableToolGroupState extends State<_ExpandableToolGroup> {
           InkWell(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Container(
-              color: palette.codeBg,
+              color: liquid
+                  ? palette.codeBg.withValues(alpha: .78)
+                  : palette.codeBg,
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 11),
               child: Row(
                 children: [

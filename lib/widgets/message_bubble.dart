@@ -21,6 +21,7 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
 import 'h/hermes_logo.dart';
 import 'h/hermes_plan.dart';
 import 'h/hermes_states.dart';
@@ -440,7 +441,12 @@ class _MessageBubbleBody extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
               constraints: BoxConstraints(maxWidth: maxWidth),
               decoration: BoxDecoration(
-                color: palette.bubbleUser,
+                color: HermesGlassTheme.of(context).enabled
+                    ? palette.bubbleUser.withValues(alpha: .94)
+                    : palette.bubbleUser,
+                border: HermesGlassTheme.of(context).enabled
+                    ? Border.all(color: Colors.white.withValues(alpha: .14))
+                    : null,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(HermesRadius.bubble),
                   topRight: Radius.circular(HermesRadius.bubble),

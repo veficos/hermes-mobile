@@ -15,6 +15,7 @@ import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
+import '../widgets/glass/glass_search_field.dart';
 import '../widgets/session/session_list_meta.dart';
 import '../widgets/session/session_rich_card.dart';
 import '../widgets/session/session_detail_panel.dart';
@@ -336,18 +337,14 @@ class _HistoryScreenState extends State<HistoryScreen>
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: SearchBar(
+          child: GlassSearchField(
             controller: _searchCtrl,
             hintText: context.l10n.historySearchHint,
-            leading: const Icon(Icons.search, size: 20),
-            trailing: [
-              if (_searchCtrl.text.isNotEmpty)
-                IconButton(
-                  tooltip: context.l10n.historyClearSearch,
-                  onPressed: _searchCtrl.clear,
-                  icon: const Icon(Icons.close, size: 18),
-                ),
-            ],
+            onChanged: (_) => setState(() {}),
+            onClear: () {
+              _searchCtrl.clear();
+              setState(() {});
+            },
           ),
         ),
         if (_loading) const LinearProgressIndicator(minHeight: 2),

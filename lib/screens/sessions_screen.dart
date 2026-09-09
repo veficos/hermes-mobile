@@ -16,6 +16,7 @@ import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
+import '../widgets/glass/glass_search_field.dart';
 import '../widgets/session/project_dialog.dart';
 import '../widgets/session/session_list_meta.dart';
 import '../widgets/session/session_detail_panel.dart';
@@ -415,23 +416,14 @@ class _SessionsScreenState extends State<SessionsScreen> {
         HermesSpacing.md,
         0,
       ),
-      child: TextField(
+      child: GlassSearchField(
         controller: _searchCtrl,
         onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(
-          hintText: context.l10n.sessionsSearchHint,
-          prefixIcon: const Icon(Icons.search, size: 20),
-          suffixIcon: _searchCtrl.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    _searchCtrl.clear();
-                    setState(() {});
-                  },
-                )
-              : null,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
-        ),
+        onClear: () {
+          _searchCtrl.clear();
+          setState(() {});
+        },
+        hintText: context.l10n.sessionsSearchHint,
       ),
     );
   }

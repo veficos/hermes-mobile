@@ -1028,6 +1028,15 @@ class _ThemePreviewCard extends StatelessWidget {
                     : palette.border,
                 width: selected ? 2 : 1,
               ),
+              boxShadow: liquid || dark
+                  ? const []
+                  : [
+                      BoxShadow(
+                        color: palette.accent.withValues(alpha: .10),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
             ),
             child: Stack(
               children: [
@@ -1037,7 +1046,15 @@ class _ThemePreviewCard extends StatelessWidget {
                     Container(
                       height: 22,
                       decoration: BoxDecoration(
-                        color: palette.surface,
+                        gradient: liquid
+                            ? LinearGradient(
+                                colors: [
+                                  palette.surface,
+                                  palette.surface.withValues(alpha: .62),
+                                ],
+                              )
+                            : null,
+                        color: liquid ? null : palette.surface,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: palette.border),
                       ),

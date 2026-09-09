@@ -13,6 +13,7 @@ import '../core/stores/session_tab_store.dart';
 import '../core/stores/session_appearance_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
@@ -432,6 +433,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
     final isDark = theme.brightness == Brightness.dark;
+    final liquid = HermesGlassTheme.of(context).enabled;
     final chips = [
       (
         _SessionFilter.all,
@@ -464,7 +466,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
           final selected = _filter == f;
           final bg = selected
               ? accent
-              : (isDark
+              : (liquid
+                    ? HermesPalette.of(context).surface.withValues(alpha: .74)
+                    : isDark
                     ? HermesBackground.darkSecondary
                     : HermesBackground.lightSecondary);
           final fg = selected
@@ -484,7 +488,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: HermesSpacing.md,
-                  vertical: 6,
+                  vertical: 8,
                 ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(HermesRadius.capsule),

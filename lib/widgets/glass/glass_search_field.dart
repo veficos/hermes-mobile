@@ -8,10 +8,12 @@ class GlassSearchField extends StatelessWidget {
     super.key,
     required this.controller,
     required this.hintText,
+    this.focusNode,
     this.onChanged,
     this.onClear,
   });
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String hintText;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onClear;
@@ -19,6 +21,7 @@ class GlassSearchField extends StatelessWidget {
   Widget build(BuildContext context) {
     final liquid = HermesGlassTheme.of(context).enabled;
     final field = TextField(
+      focusNode: focusNode,
       controller: controller,
       onChanged: onChanged,
       decoration: InputDecoration(

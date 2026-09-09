@@ -20,6 +20,8 @@ import '../h/hermes_states.dart';
 import '../h/hermes_toast.dart';
 import '../mobile/hermes_adaptive_menu.dart';
 import '../mobile/mobile_page_scaffold.dart';
+import '../glass/glass_search_field.dart';
+import '../../theme/hermes_glass_theme.dart';
 
 class FileTreePanel extends StatefulWidget {
   /// 附加文件到 composer 的回调（Shift+Click 或菜单选择）
@@ -158,19 +160,16 @@ class _FileTreePanelState extends State<FileTreePanel>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: SizedBox(
-        height: 32,
-        child: TextField(
+        height: HermesGlassTheme.of(context).enabled ? 42 : 32,
+        child: GlassSearchField(
           controller: _searchCtrl,
           focusNode: _searchFocus,
-          decoration: InputDecoration(
-            hintText: context.l10n.filesSearchDirectory,
-            prefixIcon: const Icon(Icons.search, size: 16),
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: 6),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-          style: const TextStyle(fontSize: 13),
+          hintText: context.l10n.filesSearchDirectory,
           onChanged: store.setQuery,
+          onClear: () {
+            _searchCtrl.clear();
+            store.setQuery('');
+          },
         ),
       ),
     );

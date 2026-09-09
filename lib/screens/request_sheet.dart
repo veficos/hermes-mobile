@@ -604,13 +604,25 @@ class _RequestSheetState extends State<RequestSheet> {
             resolved?.result['answer'] ??
             resolved?.status ??
             context.l10n.requestProcessed;
-        return Card(
+        final liquid = HermesGlassTheme.of(context).enabled;
+        final palette = HermesPalette.of(context);
+        return Container(
+          decoration: BoxDecoration(
+            color: liquid
+                ? palette.surface.withValues(alpha: .92)
+                : palette.surface,
+            borderRadius: BorderRadius.circular(
+              liquid ? HermesGlassTokens.controlRadius : HermesRadius.card,
+            ),
+            border: Border.all(color: palette.border),
+          ),
           child: ListTile(
             dense: true,
             leading: Icon(
               resolved == null
                   ? Icons.hourglass_empty
                   : Icons.check_circle_outline,
+              color: resolved == null ? palette.text3 : palette.accent,
             ),
             title: Text(
               resolved == null

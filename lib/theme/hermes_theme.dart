@@ -118,10 +118,12 @@ ThemeData buildHermesTheme({
       elevation: 0,
     ),
     navigationBarTheme: NavigationBarThemeData(
-      height: 68,
+      height: liquid ? 72 : 68,
       elevation: 0,
       backgroundColor: palette.surface,
-      indicatorColor: palette.accentBg,
+      indicatorColor: liquid
+          ? palette.accent.withValues(alpha: highContrast ? .24 : .16)
+          : palette.accentBg,
       indicatorShape: const StadiumBorder(),
       iconTheme: WidgetStateProperty.resolveWith(
         (states) => IconThemeData(

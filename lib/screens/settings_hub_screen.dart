@@ -19,6 +19,7 @@ import '../widgets/glass/appearance_preview.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
+import '../widgets/glass/glass_surface.dart';
 import 'about_screen.dart';
 import 'billing_screen.dart';
 import 'config_screen.dart';
@@ -648,25 +649,32 @@ class _AppearanceContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: HermesSpacing.lg),
-        SegmentedButton<ThemeMode>(
-          segments: [
-            ButtonSegment(
-              value: ThemeMode.system,
-              label: Text(l10n.appearanceModeSystem),
+        GlassSurface(
+          radius: HermesGlassTokens.controlRadius,
+          thick: true,
+          child: Padding(
+            padding: const EdgeInsets.all(HermesSpacing.sm),
+            child: SegmentedButton<ThemeMode>(
+              segments: [
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  label: Text(l10n.appearanceModeSystem),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  label: Text(l10n.appearanceModeLight),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  label: Text(l10n.appearanceModeDark),
+                ),
+              ],
+              selected: {appearance.themeMode},
+              onSelectionChanged: (selection) =>
+                  appearance.setThemeMode(selection.first),
+              showSelectedIcon: false,
             ),
-            ButtonSegment(
-              value: ThemeMode.light,
-              label: Text(l10n.appearanceModeLight),
-            ),
-            ButtonSegment(
-              value: ThemeMode.dark,
-              label: Text(l10n.appearanceModeDark),
-            ),
-          ],
-          selected: {appearance.themeMode},
-          onSelectionChanged: (selection) =>
-              appearance.setThemeMode(selection.first),
-          showSelectedIcon: false,
+          ),
         ),
         const SizedBox(height: HermesSpacing.lg),
         Text(
@@ -674,21 +682,28 @@ class _AppearanceContent extends StatelessWidget {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: HermesSpacing.sm),
-        SegmentedButton<HermesVisualStyle>(
-          segments: [
-            ButtonSegment(
-              value: HermesVisualStyle.classic,
-              label: Text(l10n.appearanceClassic),
+        GlassSurface(
+          radius: HermesGlassTokens.controlRadius,
+          thick: true,
+          child: Padding(
+            padding: const EdgeInsets.all(HermesSpacing.sm),
+            child: SegmentedButton<HermesVisualStyle>(
+              segments: [
+                ButtonSegment(
+                  value: HermesVisualStyle.classic,
+                  label: Text(l10n.appearanceClassic),
+                ),
+                ButtonSegment(
+                  value: HermesVisualStyle.liquid,
+                  label: Text(l10n.appearanceLiquid),
+                ),
+              ],
+              selected: {appearance.visualStyle},
+              onSelectionChanged: (selection) =>
+                  appearance.setVisualStyle(selection.first),
+              showSelectedIcon: false,
             ),
-            ButtonSegment(
-              value: HermesVisualStyle.liquid,
-              label: Text(l10n.appearanceLiquid),
-            ),
-          ],
-          selected: {appearance.visualStyle},
-          onSelectionChanged: (selection) =>
-              appearance.setVisualStyle(selection.first),
-          showSelectedIcon: false,
+          ),
         ),
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,

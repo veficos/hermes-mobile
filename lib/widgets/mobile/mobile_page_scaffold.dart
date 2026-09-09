@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
+import '../glass/glass_surface.dart';
+import '../glass/scroll_edge_scrim.dart';
 
 enum HermesPageTitleMode { compact, large }
 
@@ -25,6 +28,7 @@ class HermesPageScaffold extends StatelessWidget {
     this.bottomAction,
     this.header,
     this.showAppBar = true,
+    this.extendBehindNavigation = false,
   });
 
   final String title;
@@ -43,6 +47,10 @@ class HermesPageScaffold extends StatelessWidget {
   final Widget? header;
   final bool showAppBar;
 
+  /// Opt-in for scrollables which include MediaQuery's bottom padding in
+  /// their scroll extent. Other pages keep the safe, non-overlapping layout.
+  final bool extendBehindNavigation;
+
   Widget _constrain(Widget child) => Center(
     child: ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxContentWidth ?? double.infinity),
@@ -53,6 +61,16 @@ class HermesPageScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final glassHeader = liquid
+        ? const ScrollEdgeScrim(
+            child: GlassSurface(
+              radius: 0,
+              thick: true,
+              child: SizedBox.expand(),
+            ),
+          )
+        : null;
     final useLargeTitle =
         showAppBar &&
         titleMode == HermesPageTitleMode.large &&
@@ -68,7 +86,10 @@ class HermesPageScaffold extends StatelessWidget {
             actions: actions,
             pinned: true,
             forceElevated: innerBoxIsScrolled,
-            backgroundColor: backgroundColor ?? palette.bg,
+            backgroundColor: liquid
+                ? Colors.transparent
+                : backgroundColor ?? palette.bg,
+            flexibleSpace: glassHeader,
             surfaceTintColor: Colors.transparent,
           ),
           if (subtitle?.isNotEmpty == true)
@@ -97,7 +118,10 @@ class HermesPageScaffold extends StatelessWidget {
             title: Text(title),
             actions: actions,
             pinned: true,
-            backgroundColor: backgroundColor ?? palette.bg,
+            backgroundColor: liquid
+                ? Colors.transparent
+                : backgroundColor ?? palette.bg,
+            flexibleSpace: glassHeader,
             surfaceTintColor: Colors.transparent,
           ),
           if (subtitle?.isNotEmpty == true)
@@ -145,6 +169,16 @@ class HermesPageScaffold extends StatelessWidget {
       appBar: !showAppBar || useLargeTitle
           ? null
           : AppBar(
+              backgroundColor: HermesGlassTheme.of(context).enabled
+                  ? Colors.transparent
+                  : null,
+              flexibleSpace: HermesGlassTheme.of(context).enabled
+                  ? const GlassSurface(
+                      radius: 0,
+                      thick: true,
+                      child: SizedBox.expand(),
+                    )
+                  : null,
               leading: leading,
               titleSpacing: 16,
               title: Column(
@@ -165,7 +199,11 @@ class HermesPageScaffold extends StatelessWidget {
               ),
               actions: actions,
             ),
-      body: SafeArea(top: !useLargeTitle, child: content),
+      body: SafeArea(
+        top: !useLargeTitle,
+        bottom: !(liquid && extendBehindNavigation),
+        child: content,
+      ),
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: bottom,
     );
@@ -276,17 +314,42 @@ Future<T?> showMobileSheet<T>(
   bool isScrollControlled = true,
   Color? backgroundColor,
 }) {
+  final liquid =
+      HermesGlassTheme.of(context).enabled && backgroundColor == null;
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: isScrollControlled,
     useSafeArea: useSafeArea,
-    showDragHandle: showDragHandle,
-    backgroundColor: backgroundColor,
+    showDragHandle: liquid ? false : showDragHandle,
+    backgroundColor: liquid ? Colors.transparent : backgroundColor,
     builder: (ctx) => Padding(
       padding: avoidViewInsets
           ? EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom)
           : EdgeInsets.zero,
-      child: builder(ctx),
+      child: liquid
+          ? GlassSurface(
+              radius: 30,
+              thick: true,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showDragHandle)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: HermesPalette.of(ctx).borderStrong,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  Flexible(child: builder(ctx)),
+                ],
+              ),
+            )
+          : builder(ctx),
     ),
   );
 }

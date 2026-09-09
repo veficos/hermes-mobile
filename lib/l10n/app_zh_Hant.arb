@@ -1,5 +1,9 @@
 {
   "@@locale": "zh_Hant",
+  "appearanceVisualStyle": "介面風格",
+  "appearanceClassic": "經典",
+  "appearanceLiquid": "Liquid Glass",
+  "appearanceReduceTransparency": "降低透明度",
   "commonCopyFailed": "無法複製到剪貼簿",
   "commonClipboardReadFailed": "無法讀取剪貼簿",
   "petGenerateReferenceFailed": "新增參考圖片失敗：{error}",

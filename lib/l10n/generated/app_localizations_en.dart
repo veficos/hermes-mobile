@@ -9,6 +9,18 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get appearanceVisualStyle => 'Interface style';
+
+  @override
+  String get appearanceClassic => 'Classic';
+
+  @override
+  String get appearanceLiquid => 'Liquid Glass';
+
+  @override
+  String get appearanceReduceTransparency => 'Reduce transparency';
+
+  @override
   String get chatTurnLabel => 'Turn';
 
   @override

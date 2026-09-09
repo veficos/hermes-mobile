@@ -13,7 +13,9 @@ import '../core/stores/locale_store.dart';
 import '../core/stores/plugin_contribution_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
 import '../widgets/h/hermes_glass.dart';
+import '../widgets/glass/appearance_preview.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
@@ -666,6 +668,36 @@ class _AppearanceContent extends StatelessWidget {
               appearance.setThemeMode(selection.first),
           showSelectedIcon: false,
         ),
+        const SizedBox(height: HermesSpacing.lg),
+        Text(
+          l10n.appearanceVisualStyle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: HermesSpacing.sm),
+        SegmentedButton<HermesVisualStyle>(
+          segments: [
+            ButtonSegment(
+              value: HermesVisualStyle.classic,
+              label: Text(l10n.appearanceClassic),
+            ),
+            ButtonSegment(
+              value: HermesVisualStyle.liquid,
+              label: Text(l10n.appearanceLiquid),
+            ),
+          ],
+          selected: {appearance.visualStyle},
+          onSelectionChanged: (selection) =>
+              appearance.setVisualStyle(selection.first),
+          showSelectedIcon: false,
+        ),
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: Text(l10n.appearanceReduceTransparency),
+          value: appearance.reduceTransparency,
+          onChanged: appearance.setReduceTransparency,
+        ),
+        const SizedBox(height: HermesSpacing.sm),
+        const AppearancePreview(),
         const SizedBox(height: HermesSpacing.lg),
         Text(
           l10n.appearanceThemeColor,

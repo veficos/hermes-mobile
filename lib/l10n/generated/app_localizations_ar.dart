@@ -9,6 +9,18 @@ class AppLocalizationsAr extends AppLocalizations {
   AppLocalizationsAr([String locale = 'ar']) : super(locale);
 
   @override
+  String get appearanceVisualStyle => 'نمط الواجهة';
+
+  @override
+  String get appearanceClassic => 'كلاسيكي';
+
+  @override
+  String get appearanceLiquid => 'Liquid Glass';
+
+  @override
+  String get appearanceReduceTransparency => 'تقليل الشفافية';
+
+  @override
   String get chatTurnLabel => 'Turn';
 
   @override

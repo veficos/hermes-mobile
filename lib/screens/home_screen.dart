@@ -12,6 +12,7 @@ import '../core/stores/session_appearance_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
 import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_logo.dart';
@@ -342,6 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return HermesPageScaffold(
       title: 'Hermes',
+      extendBehindNavigation: true,
       // Wide layouts already expose the app-shell rail/top chrome. Keeping
       // Home's own compact bar there duplicates navigation and consumes the
       // first content row; retain it only for phone-sized surfaces.
@@ -420,11 +422,14 @@ class _HomeScreenState extends State<HomeScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             HermesMobileMetrics.pagePadding,
             HermesMobileMetrics.pagePadding,
             HermesMobileMetrics.pagePadding,
-            32,
+            32 +
+                (HermesGlassTheme.of(context).enabled
+                    ? MediaQuery.paddingOf(context).bottom
+                    : 0),
           ),
           children: [
             _continueHero(

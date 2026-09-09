@@ -23,6 +23,10 @@ import '../../theme/hermes_tokens.dart';
 import '../../widgets/chat_enter_to_send.dart';
 import '../mobile/hermes_adaptive_menu.dart';
 import '../chat_content_column.dart';
+import '../glass/glass_surface.dart';
+import '../glass/glass_action_group.dart';
+import '../glass/glass_button.dart';
+import '../../theme/hermes_glass_theme.dart';
 
 // =====================================================================
 // Data models
@@ -478,7 +482,9 @@ class _HermesComposerState extends State<HermesComposer> {
       top: false,
       child: Padding(
         padding: EdgeInsets.fromLTRB(
-          ChatContentColumn.gutter, 4, ChatContentColumn.gutter,
+          ChatContentColumn.gutter,
+          4,
+          ChatContentColumn.gutter,
           keyboardInset > 0 ? 6 : 10,
         ),
         child: Column(
@@ -491,7 +497,9 @@ class _HermesComposerState extends State<HermesComposer> {
             // toggle, undo/redo, leading/footer actions) lives above the
             // edit box at every width — prototype parity: `.pillrow` /
             // `.attachrow` sit above `.composerbox`, never inside it. ──
-            _buildToolsRow(context, mobilePlatform: mobilePlatform),
+            GlassActionGroup(
+              child: _buildToolsRow(context, mobilePlatform: mobilePlatform),
+            ),
             if (_emojiOpen) _buildEmojiPanel(context),
             if (showAttachments)
               Padding(
@@ -545,176 +553,194 @@ class _HermesComposerState extends State<HermesComposer> {
               ),
             // ── Main composer input surface (edit box): mention chips,
             // the text field and its voice / send actions only. ──
-            AnimatedContainer(
-              duration: MediaQuery.disableAnimationsOf(context)
-                  ? Duration.zero
-                  : const Duration(milliseconds: 120),
-              decoration: BoxDecoration(
-                color: palette.codeBg,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: _focused ? accent : borderColor),
-                boxShadow: _focused
-                    ? hermesShadow(context, HermesShadowTier.md)
-                    : null,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: widget.controller,
-                    builder: (context, value, _) {
-                      final tokens = parseComposerTokens(
-                        value.text,
-                      ).where((token) => token.atomic).toList();
-                      if (tokens.isEmpty) return const SizedBox.shrink();
-                      return SizedBox(
-                        height: 38,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: tokens.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 6),
-                          itemBuilder: (context, index) {
-                            final token = tokens[index];
-                            return InputChip(
-                              visualDensity: VisualDensity.compact,
-                              avatar: Icon(switch (token.kind) {
-                                ComposerTokenKind.file =>
-                                  Icons.description_outlined,
-                                ComposerTokenKind.folder =>
-                                  Icons.folder_outlined,
-                                ComposerTokenKind.image => Icons.image_outlined,
-                                ComposerTokenKind.session =>
-                                  Icons.forum_outlined,
-                                ComposerTokenKind.slash => Icons.terminal,
-                                _ => Icons.link,
-                              }, size: 15),
-                              label: Text(
-                                token.value,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              onDeleted: widget.readOnly
-                                  ? null
-                                  : () {
-                                      final source = widget.controller.text;
-                                      widget.controller.value =
-                                          TextEditingValue(
-                                            text: source.replaceRange(
-                                              token.start,
-                                              token.end,
-                                              '',
-                                            ),
-                                            selection: TextSelection.collapsed(
-                                              offset: token.start,
-                                            ),
-                                          );
-                                    },
-                            );
-                          },
-                        ),
-                      );
-                    },
+            GlassSurface(
+              radius: 26,
+              thick: true,
+              child: AnimatedContainer(
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 120),
+                decoration: BoxDecoration(
+                  color: HermesGlassTheme.of(context).enabled
+                      ? Colors.transparent
+                      : palette.codeBg,
+                  borderRadius: BorderRadius.circular(
+                    HermesGlassTheme.of(context).enabled ? 26 : 18,
                   ),
-                  // ── Text field + send button (prototype `.composerbox`) ──
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: _wrapWithEnterToSend(
-                          TextField(
-                            key: const ValueKey('composer-input'),
-                            controller: widget.controller,
-                            focusNode: _focusNode,
-                            readOnly: widget.readOnly,
-                            enabled: !widget.readOnly,
-                            minLines: 1,
-                            maxLines: keyboardInset > 0 ? 5 : 8,
-                            textInputAction: mobilePlatform && _mobileEnterSends
-                                ? TextInputAction.send
-                                : TextInputAction.newline,
-                            onSubmitted: mobilePlatform && _mobileEnterSends
-                                ? (_) => _onSendTap()
-                                : null,
-                            style: TextStyle(
-                              color: palette.text,
-                              fontSize: 16,
-                              height: 1.5,
-                            ),
-                            strutStyle: const StrutStyle(
-                              fontSize: 16,
-                              height: 1.5,
-                              forceStrutHeight: true,
-                            ),
-                            textAlignVertical: TextAlignVertical.center,
-                            contextMenuBuilder: (context, editableTextState) {
-                              final items = <ContextMenuButtonItem>[
-                                ...editableTextState.contextMenuButtonItems,
-                                if (widget.onUndo != null && widget.canUndo)
-                                  ContextMenuButtonItem(
-                                    label: context.l10n.composerUndoInput,
-                                    onPressed: () {
-                                      widget.onUndo!.call();
-                                      editableTextState.hideToolbar();
-                                    },
-                                  ),
-                                if (widget.onRedo != null && widget.canRedo)
-                                  ContextMenuButtonItem(
-                                    label: context.l10n.composerRedoInput,
-                                    onPressed: () {
-                                      widget.onRedo!.call();
-                                      editableTextState.hideToolbar();
-                                    },
-                                  ),
-                              ];
-                              return AdaptiveTextSelectionToolbar.buttonItems(
-                                anchors: editableTextState.contextMenuAnchors,
-                                buttonItems: items,
+                  border: Border.all(
+                    color: _focused
+                        ? accent
+                        : HermesGlassTheme.of(context).enabled
+                        ? Colors.transparent
+                        : borderColor,
+                  ),
+                  boxShadow: _focused && !HermesGlassTheme.of(context).enabled
+                      ? hermesShadow(context, HermesShadowTier.md)
+                      : null,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: widget.controller,
+                      builder: (context, value, _) {
+                        final tokens = parseComposerTokens(
+                          value.text,
+                        ).where((token) => token.atomic).toList();
+                        if (tokens.isEmpty) return const SizedBox.shrink();
+                        return SizedBox(
+                          height: 38,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                            scrollDirection: Axis.horizontal,
+                            itemCount: tokens.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 6),
+                            itemBuilder: (context, index) {
+                              final token = tokens[index];
+                              return InputChip(
+                                visualDensity: VisualDensity.compact,
+                                avatar: Icon(switch (token.kind) {
+                                  ComposerTokenKind.file =>
+                                    Icons.description_outlined,
+                                  ComposerTokenKind.folder =>
+                                    Icons.folder_outlined,
+                                  ComposerTokenKind.image =>
+                                    Icons.image_outlined,
+                                  ComposerTokenKind.session =>
+                                    Icons.forum_outlined,
+                                  ComposerTokenKind.slash => Icons.terminal,
+                                  _ => Icons.link,
+                                }, size: 15),
+                                label: Text(
+                                  token.value,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                onDeleted: widget.readOnly
+                                    ? null
+                                    : () {
+                                        final source = widget.controller.text;
+                                        widget
+                                            .controller
+                                            .value = TextEditingValue(
+                                          text: source.replaceRange(
+                                            token.start,
+                                            token.end,
+                                            '',
+                                          ),
+                                          selection: TextSelection.collapsed(
+                                            offset: token.start,
+                                          ),
+                                        );
+                                      },
                               );
                             },
-                            decoration: InputDecoration(
-                              hintText: widget.readOnly
-                                  ? context.l10n.composerReadOnly
-                                  : context.l10n.composerMessageHint,
-                              hintStyle: TextStyle(
-                                color: muted,
+                          ),
+                        );
+                      },
+                    ),
+                    // ── Text field + send button (prototype `.composerbox`) ──
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: _wrapWithEnterToSend(
+                            TextField(
+                              key: const ValueKey('composer-input'),
+                              controller: widget.controller,
+                              focusNode: _focusNode,
+                              readOnly: widget.readOnly,
+                              enabled: !widget.readOnly,
+                              minLines: 1,
+                              maxLines: keyboardInset > 0 ? 5 : 8,
+                              textInputAction:
+                                  mobilePlatform && _mobileEnterSends
+                                  ? TextInputAction.send
+                                  : TextInputAction.newline,
+                              onSubmitted: mobilePlatform && _mobileEnterSends
+                                  ? (_) => _onSendTap()
+                                  : null,
+                              style: TextStyle(
+                                color: palette.text,
                                 fontSize: 16,
                                 height: 1.5,
                               ),
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              // `isCollapsed` hands vertical positioning
-                              // fully to `textAlignVertical` + this padding.
-                              // Without it, InputDecorator's own (label/
-                              // border-oriented) layout algorithm still
-                              // governs the text/cursor position even with
-                              // textAlignVertical set, which reads as the
-                              // text sitting at the bottom of the field
-                              // while the send button beside it is truly
-                              // centered in the row.
-                              isCollapsed: true,
-                              contentPadding: const EdgeInsets.fromLTRB(
-                                16,
-                                9,
-                                8,
-                                9,
+                              strutStyle: const StrutStyle(
+                                fontSize: 16,
+                                height: 1.5,
+                                forceStrutHeight: true,
+                              ),
+                              textAlignVertical: TextAlignVertical.center,
+                              contextMenuBuilder: (context, editableTextState) {
+                                final items = <ContextMenuButtonItem>[
+                                  ...editableTextState.contextMenuButtonItems,
+                                  if (widget.onUndo != null && widget.canUndo)
+                                    ContextMenuButtonItem(
+                                      label: context.l10n.composerUndoInput,
+                                      onPressed: () {
+                                        widget.onUndo!.call();
+                                        editableTextState.hideToolbar();
+                                      },
+                                    ),
+                                  if (widget.onRedo != null && widget.canRedo)
+                                    ContextMenuButtonItem(
+                                      label: context.l10n.composerRedoInput,
+                                      onPressed: () {
+                                        widget.onRedo!.call();
+                                        editableTextState.hideToolbar();
+                                      },
+                                    ),
+                                ];
+                                return AdaptiveTextSelectionToolbar.buttonItems(
+                                  anchors: editableTextState.contextMenuAnchors,
+                                  buttonItems: items,
+                                );
+                              },
+                              decoration: InputDecoration(
+                                hintText: widget.readOnly
+                                    ? context.l10n.composerReadOnly
+                                    : context.l10n.composerMessageHint,
+                                hintStyle: TextStyle(
+                                  color: muted,
+                                  fontSize: 16,
+                                  height: 1.5,
+                                ),
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                // `isCollapsed` hands vertical positioning
+                                // fully to `textAlignVertical` + this padding.
+                                // Without it, InputDecorator's own (label/
+                                // border-oriented) layout algorithm still
+                                // governs the text/cursor position even with
+                                // textAlignVertical set, which reads as the
+                                // text sitting at the bottom of the field
+                                // while the send button beside it is truly
+                                // centered in the row.
+                                isCollapsed: true,
+                                contentPadding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  9,
+                                  8,
+                                  9,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      if (widget.beforeSendAction != null) ...[
-                        widget.beforeSendAction!,
-                        const SizedBox(width: 2),
+                        if (widget.beforeSendAction != null) ...[
+                          widget.beforeSendAction!,
+                          const SizedBox(width: 2),
+                        ],
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: sendButton,
+                        ),
                       ],
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: sendButton,
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
             ...widget.bottomExtensions,
@@ -1057,6 +1083,18 @@ class _SelectorIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    if (HermesGlassTheme.of(context).enabled) {
+      return GlassButton(
+        tooltip: tooltip,
+        onPressed: onTap,
+        selected: selected,
+        child: Badge(
+          isLabelVisible: showStatusDot,
+          backgroundColor: colors.primary,
+          child: Icon(icon, size: 18),
+        ),
+      );
+    }
     final enabled = onTap != null;
     final foreground = selected
         ? colors.primary

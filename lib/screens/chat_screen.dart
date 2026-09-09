@@ -28,6 +28,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/chat_message.dart';
 import '../widgets/chat_content_column.dart';
+import '../widgets/glass/glass_surface.dart';
+import '../theme/hermes_glass_theme.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../core/clipboard.dart';
 import '../core/clipboard_image.dart';
@@ -7321,6 +7323,9 @@ class _ChatScreenState extends State<ChatScreen> {
         : null;
 
     final appBar = AppBar(
+      backgroundColor: HermesGlassTheme.of(context).enabled ? Colors.transparent : null,
+      flexibleSpace: HermesGlassTheme.of(context).enabled
+          ? const GlassSurface(radius: 0, thick: true, child: SizedBox.expand()) : null,
       // XL App Shell already owns the global navigation affordance. Keeping
       // a second back button in the conversation header duplicates that
       // chrome; retain the back affordance for tablet/phone surfaces.

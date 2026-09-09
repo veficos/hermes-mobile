@@ -13,6 +13,8 @@ import 'package:hermes_mobile/core/stores/session_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 import 'package:hermes_mobile/screens/app_shell.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -74,10 +76,15 @@ class _ShellStores {
   }
 }
 
-Widget _app(_ShellStores stores, {required TextScaler textScaler}) {
+Widget _app(
+  _ShellStores stores, {
+  required TextScaler textScaler,
+  HermesVisualStyle style = HermesVisualStyle.classic,
+}) {
   return MultiProvider(
     providers: stores.providers,
     child: MaterialApp(
+      theme: buildHermesTheme(brightness: Brightness.light, visualStyle: style),
       locale: const Locale('ar'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -122,29 +129,33 @@ void main() {
       ),
     ];
 
-    for (final testCase in cases) {
-      tester.view.physicalSize = testCase.size;
-      tester.view.devicePixelRatio = 1;
-      final stores = _ShellStores();
+    for (final style in HermesVisualStyle.values) {
+      for (final testCase in cases) {
+        tester.view.physicalSize = testCase.size;
+        tester.view.devicePixelRatio = 1;
+        final stores = _ShellStores();
 
-      await tester.pumpWidget(_app(stores, textScaler: testCase.scaler));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _app(stores, textScaler: testCase.scaler, style: style),
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(ValueKey(testCase.navigationKey)), findsOneWidget);
-      expect(
-        Directionality.of(tester.element(find.byType(Scaffold).first)),
-        TextDirection.rtl,
-      );
-      expect(find.text('الرئيسية'), findsWidgets);
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: 'unexpected layout error at ${testCase.size}',
-      );
+        expect(find.byKey(ValueKey(testCase.navigationKey)), findsOneWidget);
+        expect(
+          Directionality.of(tester.element(find.byType(Scaffold).first)),
+          TextDirection.rtl,
+        );
+        expect(find.text('الرئيسية'), findsWidgets);
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'unexpected layout error at ${testCase.size}',
+        );
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump();
-      stores.dispose();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        stores.dispose();
+      }
     }
 
     tester.view.resetPhysicalSize();

@@ -1,5 +1,9 @@
 {
   "@@locale": "ar",
+  "appearanceVisualStyle": "نمط الواجهة",
+  "appearanceClassic": "كلاسيكي",
+  "appearanceLiquid": "Liquid Glass",
+  "appearanceReduceTransparency": "تقليل الشفافية",
   "commonCopyFailed": "تعذر النسخ إلى الحافظة",
   "commonClipboardReadFailed": "تعذرت قراءة الحافظة",
   "petGenerateReferenceFailed": "تعذرت إضافة الصورة المرجعية: {error}",

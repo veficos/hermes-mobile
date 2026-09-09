@@ -9,6 +9,18 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get appearanceVisualStyle => '界面风格';
+
+  @override
+  String get appearanceClassic => '经典';
+
+  @override
+  String get appearanceLiquid => 'Liquid Glass';
+
+  @override
+  String get appearanceReduceTransparency => '降低透明度';
+
+  @override
   String get chatTurnLabel => '回合';
 
   @override
@@ -11353,6 +11365,18 @@ class AppLocalizationsZh extends AppLocalizations {
 /// The translations for Chinese, using the Han script (`zh_Hant`).
 class AppLocalizationsZhHant extends AppLocalizationsZh {
   AppLocalizationsZhHant() : super('zh_Hant');
+
+  @override
+  String get appearanceVisualStyle => '介面風格';
+
+  @override
+  String get appearanceClassic => '經典';
+
+  @override
+  String get appearanceLiquid => 'Liquid Glass';
+
+  @override
+  String get appearanceReduceTransparency => '降低透明度';
 
   @override
   String get commonCopyFailed => '無法複製到剪貼簿';

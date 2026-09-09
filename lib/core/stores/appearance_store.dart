@@ -9,9 +9,29 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../haptics.dart';
 
 class AppearanceStore extends ChangeNotifier {
+  HermesVisualStyle _visualStyle = HermesVisualStyle.classic;
+  bool _reduceTransparency = false;
+  HermesVisualStyle get visualStyle => _visualStyle;
+  bool get reduceTransparency => _reduceTransparency;
+
+  Future<void> setVisualStyle(HermesVisualStyle style) async {
+    _visualStyle = style;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('hm_visual_style', style.name);
+  }
+
+  Future<void> setReduceTransparency(bool value) async {
+    _reduceTransparency = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('hm_reduce_transparency', value);
+  }
+
   static const _modeKey = 'hm_appearance_mode';
   static const _accentKey = 'hm_appearance_accent';
   static const _highContrastKey = 'hm_appearance_high_contrast';
@@ -41,6 +61,10 @@ class AppearanceStore extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final mode = prefs.getString(_modeKey);
+    _visualStyle = prefs.getString('hm_visual_style') == 'liquid'
+        ? HermesVisualStyle.liquid
+        : HermesVisualStyle.classic;
+    _reduceTransparency = prefs.getBool('hm_reduce_transparency') ?? false;
     _mode = switch (mode) {
       'system' => ThemeMode.system,
       'light' => ThemeMode.light,

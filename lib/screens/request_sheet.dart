@@ -20,6 +20,8 @@ import '../core/stores/connection_store.dart';
 import '../core/stores/request_store.dart';
 import '../core/stores/session_store.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
+import '../widgets/glass/glass_surface.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
@@ -31,6 +33,7 @@ Future<void> showRequestSheet(
   String? sessionId,
 }) async {
   final width = MediaQuery.sizeOf(context).width;
+  final liquid = HermesGlassTheme.of(context).enabled;
   if (width >= 1200) {
     await showDialog<void>(
       context: context,
@@ -38,12 +41,17 @@ Future<void> showRequestSheet(
       builder: (_) => PopScope(
         canPop: false,
         child: Dialog(
-          child: SizedBox(
-            width: 560,
-            child: RequestSheet(
-              requestId: requestId,
-              ownerRoute: ownerRoute,
-              sessionId: sessionId,
+          backgroundColor: liquid ? Colors.transparent : null,
+          child: GlassSurface(
+            radius: 30,
+            thick: true,
+            child: SizedBox(
+              width: 560,
+              child: RequestSheet(
+                requestId: requestId,
+                ownerRoute: ownerRoute,
+                sessionId: sessionId,
+              ),
             ),
           ),
         ),
@@ -56,16 +64,21 @@ Future<void> showRequestSheet(
     isScrollControlled: true,
     isDismissible: false,
     enableDrag: false,
+    backgroundColor: liquid ? Colors.transparent : null,
     builder: (_) => Align(
       alignment: Alignment.bottomCenter,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: width >= 840 ? 640 : double.infinity,
         ),
-        child: RequestSheet(
-          requestId: requestId,
-          ownerRoute: ownerRoute,
-          sessionId: sessionId,
+        child: GlassSurface(
+          radius: 30,
+          thick: true,
+          child: RequestSheet(
+            requestId: requestId,
+            ownerRoute: ownerRoute,
+            sessionId: sessionId,
+          ),
         ),
       ),
     ),
@@ -106,13 +119,17 @@ class _RequestSheetState extends State<RequestSheet> {
     if (owner == null) return null;
     // Previously persisted requests can predate owner/profile resolution.
     // Accept only a unique same-connection request for this exact session.
-    final candidates = context.read<RequestStore>().pendingRequests.where((req) =>
-        req.requestId == widget.requestId &&
-        req.ownerRoute?.connectionId == owner.connectionId &&
-        (req.ownerRoute?.profile == null || req.ownerRoute == owner) &&
-        ((req.sessionId != null &&
-            (req.sessionId == session.runtimeId || req.sessionId == session.durableId)) ||
-         (req.durableSessionId != null && req.durableSessionId == session.durableId)));
+    final candidates = context.read<RequestStore>().pendingRequests.where(
+      (req) =>
+          req.requestId == widget.requestId &&
+          req.ownerRoute?.connectionId == owner.connectionId &&
+          (req.ownerRoute?.profile == null || req.ownerRoute == owner) &&
+          ((req.sessionId != null &&
+                  (req.sessionId == session.runtimeId ||
+                      req.sessionId == session.durableId)) ||
+              (req.durableSessionId != null &&
+                  req.durableSessionId == session.durableId)),
+    );
     return candidates.length == 1 ? candidates.single.ownerRoute : owner;
   }
 
@@ -123,10 +140,19 @@ class _RequestSheetState extends State<RequestSheet> {
     // Requests may arrive before the runtime-to-durable mapping is registered.
     // Resolve either id within the same owner, and use that scope for replies.
     for (final id in [session.durableId, session.runtimeId]) {
-      if (id != null && (requests.byId(widget.requestId,
-          ownerRoute: _effectiveOwnerRoute, sessionId: id) != null ||
-          requests.resolution(widget.requestId,
-              ownerRoute: _effectiveOwnerRoute, sessionId: id) != null)) {
+      if (id != null &&
+          (requests.byId(
+                    widget.requestId,
+                    ownerRoute: _effectiveOwnerRoute,
+                    sessionId: id,
+                  ) !=
+                  null ||
+              requests.resolution(
+                    widget.requestId,
+                    ownerRoute: _effectiveOwnerRoute,
+                    sessionId: id,
+                  ) !=
+                  null)) {
         return id;
       }
     }
@@ -581,12 +607,16 @@ class _RequestSheetState extends State<RequestSheet> {
         return Card(
           child: ListTile(
             dense: true,
-            leading: Icon(resolved == null
-                ? Icons.hourglass_empty
-                : Icons.check_circle_outline),
-            title: Text(resolved == null
-                ? context.l10n.requestPending
-                : context.l10n.requestInteractionProcessed),
+            leading: Icon(
+              resolved == null
+                  ? Icons.hourglass_empty
+                  : Icons.check_circle_outline,
+            ),
+            title: Text(
+              resolved == null
+                  ? context.l10n.requestPending
+                  : context.l10n.requestInteractionProcessed,
+            ),
             subtitle: resolved == null ? null : Text(detail.toString()),
           ),
         );
@@ -635,7 +665,9 @@ class _RequestSheetState extends State<RequestSheet> {
         left: 20,
         right: 20,
         top: 16,
-        bottom: (widget.embedded ? 0 : MediaQuery.of(context).viewInsets.bottom) + 20,
+        bottom:
+            (widget.embedded ? 0 : MediaQuery.of(context).viewInsets.bottom) +
+            20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -836,70 +868,87 @@ class _RequestSheetState extends State<RequestSheet> {
       if (choices.contains('deny')) 'deny',
       ...choices.where((choice) => choice != 'once' && choice != 'deny'),
     ];
-    return LayoutBuilder(builder: (context, constraints) {
-      final singleColumn = constraints.maxWidth < 300 ||
-          MediaQuery.textScalerOf(context).scale(14) > 20;
-      final width = singleColumn
-          ? constraints.maxWidth
-          : (constraints.maxWidth - 10) / 2;
-      return Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          for (final choice in ordered)
-            SizedBox(
-              width: width,
-              child: FilledButton(
-                onPressed: _busy ? null : () {
-                  if (choice == 'always') {
-                    _confirmAlwaysAllow(request, choice);
-                  } else {
-                    _respond(choice: choice);
-                  }
-                },
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 46),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  backgroundColor: choice == 'once'
-                      ? scheme.primary
-                      : choice == 'deny'
-                          ? scheme.error.withValues(alpha: .08)
-                          : palette.codeBg,
-                  foregroundColor: choice == 'once'
-                      ? scheme.onPrimary
-                      : choice == 'deny' ? scheme.error : palette.text2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final singleColumn =
+            constraints.maxWidth < 300 ||
+            MediaQuery.textScalerOf(context).scale(14) > 20;
+        final width = singleColumn
+            ? constraints.maxWidth
+            : (constraints.maxWidth - 10) / 2;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final choice in ordered)
+              SizedBox(
+                width: width,
+                child: FilledButton(
+                  onPressed: _busy
+                      ? null
+                      : () {
+                          if (choice == 'always') {
+                            _confirmAlwaysAllow(request, choice);
+                          } else {
+                            _respond(choice: choice);
+                          }
+                        },
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 46),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    backgroundColor: choice == 'once'
+                        ? scheme.primary
+                        : choice == 'deny'
+                        ? scheme.error.withValues(alpha: .08)
+                        : palette.codeBg,
+                    foregroundColor: choice == 'once'
+                        ? scheme.onPrimary
+                        : choice == 'deny'
+                        ? scheme.error
+                        : palette.text2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: choice == 'once'
+                        ? BorderSide.none
+                        : BorderSide(
+                            color: choice == 'deny'
+                                ? scheme.error.withValues(alpha: .2)
+                                : palette.border,
+                          ),
+                    textStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  side: choice == 'once' ? BorderSide.none : BorderSide(
-                    color: choice == 'deny'
-                        ? scheme.error.withValues(alpha: .2)
-                        : palette.border,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(switch (choice) {
+                        'once' => Icons.check_rounded,
+                        'deny' => Icons.close_rounded,
+                        'session' => Icons.chat_bubble_outline_rounded,
+                        'always' => Icons.verified_user_outlined,
+                        _ => Icons.check_circle_outline,
+                      }, size: 18),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _choiceLabel(request.kind, choice),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
                   ),
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(switch (choice) {
-                      'once' => Icons.check_rounded,
-                      'deny' => Icons.close_rounded,
-                      'session' => Icons.chat_bubble_outline_rounded,
-                      'always' => Icons.verified_user_outlined,
-                      _ => Icons.check_circle_outline,
-                    }, size: 18),
-                    const SizedBox(width: 8),
-                    Flexible(child: Text(
-                      _choiceLabel(request.kind, choice),
-                      textAlign: TextAlign.center,
-                    )),
-                  ],
                 ),
               ),
-            ),
-        ],
-      );
-    });
+          ],
+        );
+      },
+    );
   }
 
   String _choiceLabel(RequestKind kind, String choice) {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
+import 'glass/glass_surface.dart';
 import 'mobile/mobile_page_scaffold.dart';
 
 /// Keyboard-safe editing surface: a scrollable sheet on phones, dialog on
@@ -19,7 +21,9 @@ Future<T?> showAdaptiveFormDialog<T>({
       avoidViewInsets: false,
       (sheetContext) => AnimatedPadding(
         key: const ValueKey('adaptive-phone-form-sheet'),
-        duration: HermesMotion.fast,
+        duration: MediaQuery.disableAnimationsOf(sheetContext)
+            ? Duration.zero
+            : HermesMotion.fast,
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
         ),
@@ -46,12 +50,56 @@ Future<T?> showAdaptiveFormDialog<T>({
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: actions,
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+  if (HermesGlassTheme.of(context).enabled) {
+    return showDialog<T>(
+      context: context,
+      builder: (ctx) => Dialog(
+        key: const ValueKey('adaptive-wide-form-dialog'),
+        backgroundColor: Colors.transparent,
+        child: GlassSurface(
+          radius: HermesGlassTokens.sheetRadius,
+          thick: true,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Semantics(
+                    namesRoute: true,
+                    header: true,
+                    child: Text(
+                      title,
+                      style: Theme.of(ctx).textTheme.titleLarge,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Flexible(child: SingleChildScrollView(child: content)),
+                  const SizedBox(height: 20),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: actions,
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

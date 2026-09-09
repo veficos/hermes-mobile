@@ -1,5 +1,9 @@
 {
   "@@locale": "zh",
+  "appearanceVisualStyle": "界面风格",
+  "appearanceClassic": "经典",
+  "appearanceLiquid": "Liquid Glass",
+  "appearanceReduceTransparency": "降低透明度",
   "chatTurnLabel": "回合",
   "chatCurrentTurnLabel": "本回合 · {label}",
   "commonCopyFailed": "无法复制到剪贴板",

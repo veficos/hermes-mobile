@@ -14,13 +14,17 @@ library;
 import 'package:flutter/material.dart';
 
 import 'hermes_tokens.dart';
+import 'hermes_glass_theme.dart';
 
 ThemeData buildHermesTheme({
   required Brightness brightness,
   HermesAccent accent = HermesAccents.graphite,
   bool highContrast = false,
+  HermesVisualStyle visualStyle = HermesVisualStyle.classic,
+  bool reduceTransparency = false,
 }) {
   final isDark = brightness == Brightness.dark;
+  final liquid = visualStyle == HermesVisualStyle.liquid;
   final palette = accent.paletteOf(brightness);
   final accentColor = palette.accent;
 
@@ -72,6 +76,10 @@ ThemeData buildHermesTheme({
     colorScheme: scheme,
     scaffoldBackgroundColor: palette.bg,
     extensions: [
+      HermesGlassTheme(
+        enabled: visualStyle == HermesVisualStyle.liquid,
+        reduceTransparency: reduceTransparency,
+      ),
       palette,
       HermesA11y(highContrast: highContrast),
     ],
@@ -166,7 +174,7 @@ ThemeData buildHermesTheme({
       backgroundColor: palette.elevated,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(HermesRadius.dialog),
+        borderRadius: BorderRadius.circular(liquid ? 28 : HermesRadius.dialog),
         side: BorderSide(color: border, width: borderWidth),
       ),
     ),
@@ -178,12 +186,12 @@ ThemeData buildHermesTheme({
       elevation: 0,
       modalElevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(HermesRadius.sheet),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(liquid ? 30 : HermesRadius.sheet),
         ),
         side: BorderSide(color: border, width: borderWidth),
       ),
-      showDragHandle: false,
+      showDragHandle: liquid,
     ),
     // 弹出菜单（PopupMenuButton/showMenu）：默认 Material3 会用一套跟随
     // seed color 走的浅色调 tonal surface，跟卡片/对话框实际用的 palette
@@ -192,10 +200,14 @@ ThemeData buildHermesTheme({
     popupMenuTheme: PopupMenuThemeData(
       color: palette.elevated,
       surfaceTintColor: Colors.transparent,
-      elevation: 8,
+      elevation: liquid && (isDark || highContrast || reduceTransparency)
+          ? 0
+          : 8,
       menuPadding: const EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(HermesRadius.dialog),
+        borderRadius: BorderRadius.circular(
+          liquid ? HermesGlassTokens.controlRadius : HermesRadius.dialog,
+        ),
         side: BorderSide(color: border, width: borderWidth),
       ),
       textStyle: TextStyle(color: textPrimary, fontSize: 14),
@@ -210,15 +222,23 @@ ThemeData buildHermesTheme({
     ),
     menuTheme: MenuThemeData(
       style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(palette.elevated),
+        backgroundColor: WidgetStatePropertyAll(
+          liquid && !reduceTransparency && !highContrast
+              ? palette.surface.withValues(alpha: .92)
+              : palette.elevated,
+        ),
         surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
-        elevation: const WidgetStatePropertyAll(8),
+        elevation: WidgetStatePropertyAll(
+          liquid && (isDark || reduceTransparency || highContrast) ? 0 : 8,
+        ),
         padding: const WidgetStatePropertyAll(
           EdgeInsets.symmetric(vertical: 6),
         ),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(HermesRadius.dialog),
+            borderRadius: BorderRadius.circular(
+              liquid ? HermesGlassTokens.controlRadius : HermesRadius.dialog,
+            ),
             side: BorderSide(color: border, width: borderWidth),
           ),
         ),

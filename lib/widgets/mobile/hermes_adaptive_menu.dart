@@ -3,6 +3,8 @@ import 'dart:ui' show SemanticsRole;
 import 'package:flutter/material.dart';
 
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
+import '../glass/glass_surface.dart';
 
 /// A project-wide menu button that uses a thumb-friendly action sheet on
 /// phones and an anchored popup menu on larger displays.
@@ -142,71 +144,79 @@ class _HermesPhoneMenuSheet<T> extends StatelessWidget {
           maxWidth: 600,
           maxHeight: MediaQuery.sizeOf(context).height * .78,
         ),
-        child: Material(
-          color: palette.elevated,
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            side: BorderSide(color: palette.border),
-          ),
-          child: Padding(
-            padding: EdgeInsets.only(bottom: keyboard),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 8),
-                Container(
-                  width: 36,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: palette.borderStrong,
-                    borderRadius: BorderRadius.circular(99),
+        child: GlassSurface(
+          radius: 28,
+          thick: true,
+          child: Material(
+            color: HermesGlassTheme.of(context).enabled
+                ? Colors.transparent
+                : palette.elevated,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+              side: BorderSide(color: palette.border),
+            ),
+            child: Padding(
+              padding: EdgeInsets.only(bottom: keyboard),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 36,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: palette.borderStrong,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
                   ),
-                ),
-                if (title != null && title!.trim().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 13, 12, 7),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
+                  if (title != null && title!.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 13, 12, 7),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: MaterialLocalizations.of(
-                            context,
-                          ).closeButtonTooltip,
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, size: 20),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  const SizedBox(height: 8),
-                Flexible(
-                  child: Semantics(
-                    role: SemanticsRole.menu,
-                    explicitChildNodes: true,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final entry in entries)
-                            _phoneEntry(context, entry),
+                          IconButton(
+                            tooltip: MaterialLocalizations.of(
+                              context,
+                            ).closeButtonTooltip,
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close, size: 20),
+                          ),
                         ],
+                      ),
+                    )
+                  else
+                    const SizedBox(height: 8),
+                  Flexible(
+                    child: Semantics(
+                      role: SemanticsRole.menu,
+                      explicitChildNodes: true,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final entry in entries)
+                              _phoneEntry(context, entry),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

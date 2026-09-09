@@ -9,6 +9,18 @@ class AppLocalizationsJa extends AppLocalizations {
   AppLocalizationsJa([String locale = 'ja']) : super(locale);
 
   @override
+  String get appearanceVisualStyle => 'インターフェイスのスタイル';
+
+  @override
+  String get appearanceClassic => 'クラシック';
+
+  @override
+  String get appearanceLiquid => 'Liquid Glass';
+
+  @override
+  String get appearanceReduceTransparency => '透明度を下げる';
+
+  @override
   String get chatTurnLabel => 'Turn';
 
   @override

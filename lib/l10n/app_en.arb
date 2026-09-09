@@ -1,5 +1,9 @@
 {
   "@@locale": "en",
+  "appearanceVisualStyle": "Interface style",
+  "appearanceClassic": "Classic",
+  "appearanceLiquid": "Liquid Glass",
+  "appearanceReduceTransparency": "Reduce transparency",
   "chatTurnLabel": "Turn",
   "chatCurrentTurnLabel": "Current turn · {label}",
   "@chatCurrentTurnLabel": {"placeholders": {"label": {"type": "String"}}},

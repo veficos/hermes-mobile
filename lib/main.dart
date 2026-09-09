@@ -529,11 +529,15 @@ class HermesMobileApp extends StatelessWidget {
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               theme: buildHermesTheme(
+                visualStyle: appearance.visualStyle,
+                reduceTransparency: appearance.reduceTransparency,
                 brightness: Brightness.light,
                 accent: accent,
                 highContrast: highContrast,
               ),
               darkTheme: buildHermesTheme(
+                visualStyle: appearance.visualStyle,
+                reduceTransparency: appearance.reduceTransparency,
                 brightness: Brightness.dark,
                 accent: accent,
                 highContrast: highContrast,

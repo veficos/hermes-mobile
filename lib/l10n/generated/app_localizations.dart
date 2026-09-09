@@ -103,6 +103,30 @@ abstract class AppLocalizations {
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
   ];
 
+  /// No description provided for @appearanceVisualStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface style'**
+  String get appearanceVisualStyle;
+
+  /// No description provided for @appearanceClassic.
+  ///
+  /// In en, this message translates to:
+  /// **'Classic'**
+  String get appearanceClassic;
+
+  /// No description provided for @appearanceLiquid.
+  ///
+  /// In en, this message translates to:
+  /// **'Liquid Glass'**
+  String get appearanceLiquid;
+
+  /// No description provided for @appearanceReduceTransparency.
+  ///
+  /// In en, this message translates to:
+  /// **'Reduce transparency'**
+  String get appearanceReduceTransparency;
+
   /// No description provided for @chatTurnLabel.
   ///
   /// In en, this message translates to:

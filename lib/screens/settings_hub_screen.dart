@@ -13,13 +13,13 @@ import '../core/stores/locale_store.dart';
 import '../core/stores/plugin_contribution_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
-import '../theme/hermes_glass_theme.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/glass/appearance_preview.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/glass/glass_surface.dart';
+import '../theme/hermes_glass_theme.dart';
 import 'about_screen.dart';
 import 'billing_screen.dart';
 import 'config_screen.dart';
@@ -1005,6 +1005,7 @@ class _ThemePreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = theme.paletteOf(dark ? Brightness.dark : Brightness.light);
+    final liquid = HermesGlassTheme.of(context).enabled;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(HermesRadius.card),
@@ -1012,13 +1013,19 @@ class _ThemePreviewCard extends StatelessWidget {
         children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            height: 72,
+            height: liquid ? 78 : 72,
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: palette.bg,
+              color: liquid
+                  ? palette.surface.withValues(alpha: .72)
+                  : palette.bg,
               borderRadius: BorderRadius.circular(HermesRadius.card),
               border: Border.all(
-                color: selected ? palette.accent : palette.border,
+                color: selected
+                    ? palette.accent
+                    : liquid
+                    ? palette.border.withValues(alpha: .72)
+                    : palette.border,
                 width: selected ? 2 : 1,
               ),
             ),

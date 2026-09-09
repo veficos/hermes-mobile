@@ -2395,6 +2395,7 @@
   "filesDeleteFailed": "削除失敗: {error}",
   "filesNewFile": "新規ファイル",
   "filesFileName": "ファイル名",
+  "filesInvalidName": "Names cannot contain /, \\ or ..",
   "filesCreateFileFailed": "ファイルを作成できません: {error}",
   "filesNewSessionPrompt": "次のファイルを確認して処理してください:\n{references}",
   "filesNewFolder": "新規フォルダー",

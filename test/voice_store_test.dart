@@ -357,4 +357,48 @@ void main() {
       expect(recorder.stops, 1);
     },
   );
+
+  test('speak cancels the completion listener when playback fails', () async {
+    final api = _SpeakApi();
+    final connection = ConnectionStore()..api = api;
+    final player = _FailingVoicePlayer();
+    final store = VoiceStore(
+      connection: connection,
+      recorder: _VoiceRecorder(),
+      player: player,
+    );
+    addTearDown(store.dispose);
+    addTearDown(connection.dispose);
+
+    await store.speak('hello');
+
+    expect(store.voiceError, isNotNull);
+    // The onComplete subscription must be cancelled on the error path too —
+    // before the fix it only ran after a normal completion and leaked.
+    expect(player.hasListener, isFalse);
+  });
+}
+
+class _SpeakApi extends ApiClient {
+  _SpeakApi() : super(baseUrl: 'http://voice.invalid', apiKey: 'test');
+
+  @override
+  Future<Uint8List> audioSpeak(String text) async =>
+      Uint8List.fromList([1, 2, 3]);
+}
+
+final class _FailingVoicePlayer implements VoicePlayerAdapter {
+  final StreamController<void> _completed = StreamController<void>.broadcast();
+
+  bool get hasListener => _completed.hasListener;
+
+  @override
+  Stream<void> get onComplete => _completed.stream;
+  @override
+  Future<void> play(Uint8List bytes) async =>
+      throw StateError('playback failed');
+  @override
+  Future<void> stop() async {}
+  @override
+  Future<void> dispose() => _completed.close();
 }

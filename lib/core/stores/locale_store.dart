@@ -9,6 +9,7 @@ class LocaleStore extends ChangeNotifier {
 
   Locale? _locale;
   bool _loaded = false;
+  bool _setByUser = false;
 
   Locale? get locale => _locale;
   bool get loaded => _loaded;
@@ -16,12 +17,19 @@ class LocaleStore extends ChangeNotifier {
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
+    // A setLocale() that raced ahead of load() is the fresher intent — never
+    // let the startup read clobber the user's choice with a stale pref.
+    if (_setByUser) {
+      _loaded = true;
+      return;
+    }
     _locale = localeFromTag(prefs.getString(_preferenceKey));
     _loaded = true;
     notifyListeners();
   }
 
   Future<void> setLocale(Locale? value) async {
+    _setByUser = true;
     final normalized = localeFromTag(localeTag(value));
     if (_loaded && normalized == _locale) return;
     _locale = normalized;

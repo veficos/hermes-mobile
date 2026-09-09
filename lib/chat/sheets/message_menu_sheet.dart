@@ -146,7 +146,13 @@ void showChatMessageMenu(
                 }
               },
             ),
-          if (!session.readOnly && message.role == 'user') ...[
+          // Edit/restore rewrite server-side history, so they only apply to
+          // persisted user messages: a pending (optimistic) bubble has no
+          // rowId yet and editing/restoring it would target nothing.
+          if (!session.readOnly &&
+              message.role == 'user' &&
+              !message.pending &&
+              message.rowId != null) ...[
             ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: Text(context.l10n.commonEdit),

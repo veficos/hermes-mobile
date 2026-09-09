@@ -206,8 +206,18 @@ class ChatStore extends ChangeNotifier {
 
   final List<ChatMessage> _messages = [];
   int _transcriptRevision = 0;
+  int _structureSnapshotRevision = -1;
+  List<ChatMessage> _structureSnapshot = const [];
   int get transcriptRevision => _transcriptRevision;
-  void _markTranscriptChanged() => _transcriptRevision++;
+  void _markTranscriptChanged() {
+    _transcriptRevision++;
+    // Release old snapshot ownership immediately, even if no widget reads
+    // the new revision (for example after navigating away or clearing).
+    _structureSnapshot = const [];
+    _structureSnapshotRevision = -1;
+    _composedMessagesView = null;
+  }
+
   int _transcriptStructureRevision = 0;
   int get transcriptStructureRevision => _transcriptStructureRevision;
   void _markTranscriptStructureChanged() {
@@ -234,6 +244,8 @@ class ChatStore extends ChangeNotifier {
   int _composedMessagesIndex = -1;
   String? _composedMessagesId;
   final List<ChatMessage> _newerTranscriptWindow = [];
+  final List<ChatMessage> _olderTranscriptWindow = [];
+  bool _hasRemoteOlderHistory = false;
   String? _transcriptWindowAnchorId;
   MutableAssistantMessage? _streaming;
   bool _interimBoundaryPending = false;
@@ -1010,7 +1022,14 @@ class ChatStore extends ChangeNotifier {
     if (_versionPreviewAnchor != null && _versionPreviewIndex != null) {
       return messages;
     }
-    return _messagesView;
+    if (_structureSnapshotRevision != _transcriptRevision) {
+      // A read-only *view* changes underneath an existing sliver delegate
+      // before that delegate receives the matching timeline update. Keep
+      // each revision immutable; reuse it for every streaming-only tick.
+      _structureSnapshot = List<ChatMessage>.unmodifiable(_messages);
+      _structureSnapshotRevision = _transcriptRevision;
+    }
+    return _structureSnapshot;
   }
 
   bool get busy => _busy;
@@ -1142,6 +1161,7 @@ class ChatStore extends ChangeNotifier {
   }
 
   bool get hasNewerTranscriptWindow => _newerTranscriptWindow.isNotEmpty;
+  bool get hasOlderTranscriptWindow => _olderTranscriptWindow.isNotEmpty;
   String? get transcriptWindowAnchorId => _transcriptWindowAnchorId;
 
   /// Cumulative context tokens across the loaded transcript, summed from the
@@ -1441,6 +1461,8 @@ class ChatStore extends ChangeNotifier {
     _versionPreviewAnchor = null;
     _versionPreviewIndex = null;
     _newerTranscriptWindow.clear();
+    _olderTranscriptWindow.clear();
+    _hasRemoteOlderHistory = false;
     _transcriptWindowAnchorId = null;
     _streaming = null;
     _busy = false;
@@ -1467,6 +1489,12 @@ class ChatStore extends ChangeNotifier {
   /// WebUI `/clear` parity (commands.js `cmdClear`): clear the current view
   /// only — server-side history is untouched and reloads on the next open.
   void clearView() {
+    _cancelStreamNotifyTimer();
+    _materializedStreamingMessage = null;
+    _materializedStreamingTick = -1;
+    _newerTranscriptWindow.clear();
+    _olderTranscriptWindow.clear();
+    _hasRemoteOlderHistory = false;
     _messages.clear();
     _markTranscriptStructureChanged();
     _turnVersions.clear();
@@ -1511,6 +1539,8 @@ class ChatStore extends ChangeNotifier {
     }
     _markTranscriptStructureChanged();
     _newerTranscriptWindow.clear();
+    _olderTranscriptWindow.clear();
+    _hasRemoteOlderHistory = hasMore;
     _transcriptWindowAnchorId = list.isEmpty ? null : list.first.id;
     if (!_busy) _streaming = null;
     hasMoreHistory = hasMore;
@@ -1551,8 +1581,10 @@ class ChatStore extends ChangeNotifier {
   }) {
     final beforeCount = _messages.length;
     historyError = null;
+    _hasRemoteOlderHistory = hasMore;
     if (older.isEmpty) {
-      hasMoreHistory = false;
+      _hasRemoteOlderHistory = false;
+      hasMoreHistory = _olderTranscriptWindow.isNotEmpty;
       loadingHistory = false;
       if (_diagnosticLogging) {
         _logStream(
@@ -1563,10 +1595,34 @@ class ChatStore extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _messages.insertAll(0, older);
+    // Offset-based pages can overlap when the server transcript changes
+    // between requests. Duplicate IDs also duplicate GlobalKeys in the UI.
+    final knownIds = <String>{
+      for (final message in _messages) message.id,
+      for (final message in _newerTranscriptWindow) message.id,
+      for (final message in _olderTranscriptWindow) message.id,
+    };
+    final uniqueOlder = older
+        .where((message) => knownIds.add(message.id))
+        .toList(growable: false);
+    _messages.insertAll(0, uniqueOlder);
+    // A cursor page is not guaranteed to be ordered relative to the already
+    // hydrated window (replayed sessions and mixed provider timestamps are
+    // common). Normalize the complete visible window after every merge so the
+    // timeline has one ordering across page boundaries, not one ordering per
+    // page. The stable index tie-breaker keeps equal/missing metadata intact.
+    final indexed = _messages.indexed.toList(growable: false);
+    indexed.sort((a, b) {
+      final result = _compareMessageChronology(a.$2, b.$2);
+      return result != 0 ? result : a.$1.compareTo(b.$1);
+    });
+    _messages
+      ..clear()
+      ..addAll(indexed.map((entry) => entry.$2));
     _markTranscriptStructureChanged();
     if (!deferTrim) _trimTranscriptWindowAfterPrepend();
-    hasMoreHistory = hasMore || _newerTranscriptWindow.isNotEmpty;
+    // Newer cached content says nothing about the server's older boundary.
+    hasMoreHistory = hasMore || _olderTranscriptWindow.isNotEmpty;
     loadingHistory = false;
     if (_diagnosticLogging) {
       _logStream(
@@ -1578,18 +1634,28 @@ class ChatStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  static int _compareMessageChronology(ChatMessage left, ChatMessage right) {
+    final lo = left.historyOrdinal;
+    final ro = right.historyOrdinal;
+    if (lo != null && ro != null && lo != ro) return lo.compareTo(ro);
+    final lt = left.timestamp;
+    final rt = right.timestamp;
+    if (lt != null && rt != null && lt != rt) return lt.compareTo(rt);
+    return 0;
+  }
+
   /// Runs the transcript-window trim that [appendOlderHistory] skipped for
   /// `deferTrim: true`. Safe to call unconditionally (a no-op once the
   /// transcript is already under budget) and safe to call more than once.
-  void trimTranscriptWindowIfNeeded() {
+  void trimTranscriptWindowIfNeeded({String? preserveMessageId}) {
     final before = _newerTranscriptWindow.length;
-    _trimTranscriptWindowAfterPrepend();
+    _trimTranscriptWindowAfterPrepend(preserveMessageId: preserveMessageId);
     if (_newerTranscriptWindow.length == before) return;
-    hasMoreHistory = true;
+    _markTranscriptStructureChanged();
     notifyListeners();
   }
 
-  void _trimTranscriptWindowAfterPrepend() {
+  void _trimTranscriptWindowAfterPrepend({String? preserveMessageId}) {
     if (_streaming != null || _busy) return;
     final totalWeight = _messages.fold<int>(
       0,
@@ -1603,9 +1669,13 @@ class ChatStore extends ChangeNotifier {
     if (totalWeight <= transcriptWindowBudget) return;
     var keptWeight = 0;
     var split = 0;
+    final anchorIndex = preserveMessageId == null
+        ? -1
+        : _messages.indexWhere((message) => message.id == preserveMessageId);
     while (split < _messages.length) {
       final next = chatMessageRenderWeight(_messages[split]);
       if (split >= transcriptWindowMinMessages &&
+          split > anchorIndex &&
           keptWeight + next > transcriptWindowBudget) {
         break;
       }
@@ -1618,27 +1688,59 @@ class ChatStore extends ChangeNotifier {
     _transcriptWindowAnchorId = _messages.isEmpty ? null : _messages.first.id;
   }
 
-  void restoreNewerTranscriptWindow() {
+  void restoreNewerTranscriptWindow({
+    int? pageSize,
+    String? preserveMessageId,
+  }) {
     if (_newerTranscriptWindow.isEmpty) return;
-    _messages.addAll(_newerTranscriptWindow);
+    final count = pageSize == null
+        ? _newerTranscriptWindow.length
+        : pageSize.clamp(1, _newerTranscriptWindow.length);
+    _messages.addAll(_newerTranscriptWindow.take(count));
     _markTranscriptStructureChanged();
-    _newerTranscriptWindow.clear();
+    _newerTranscriptWindow.removeRange(0, count);
+    final anchorIndex = preserveMessageId == null
+        ? -1
+        : _messages.indexWhere((message) => message.id == preserveMessageId);
     var weight = _messages.fold<int>(
       0,
       (sum, message) => sum + chatMessageRenderWeight(message),
     );
     var removeCount = 0;
     while (_messages.length - removeCount > transcriptWindowMinMessages &&
-        weight > transcriptWindowBudget) {
+        weight > transcriptWindowBudget &&
+        (anchorIndex < 0 || removeCount < anchorIndex)) {
       weight -= chatMessageRenderWeight(_messages[removeCount]);
       removeCount++;
     }
     if (removeCount > 0) {
+      _olderTranscriptWindow.addAll(_messages.take(removeCount));
       _messages.removeRange(0, removeCount);
       hasMoreHistory = true;
     }
     _transcriptWindowAnchorId = _messages.isEmpty ? null : _messages.first.id;
     notifyListeners();
+  }
+
+  /// Recover the adjacent cached page before moving the server offset. The
+  /// server cursor tracks fetched history, not the currently visible window.
+  bool restoreOlderTranscriptWindow({bool deferTrim = false}) {
+    if (_olderTranscriptWindow.isEmpty) return false;
+    final start = (_olderTranscriptWindow.length - 50).clamp(
+      0,
+      _olderTranscriptWindow.length,
+    );
+    final page = _olderTranscriptWindow.sublist(start);
+    _olderTranscriptWindow.removeRange(start, _olderTranscriptWindow.length);
+    _messages.insertAll(0, page);
+    if (!deferTrim) _trimTranscriptWindowAfterPrepend();
+    _markTranscriptStructureChanged();
+    hasMoreHistory =
+        _olderTranscriptWindow.isNotEmpty || _hasRemoteOlderHistory;
+    loadingHistory = false;
+    historyError = null;
+    notifyListeners();
+    return true;
   }
 
   void startLoadingHistory() {
@@ -1712,6 +1814,7 @@ class ChatStore extends ChangeNotifier {
   List<ChatMessage> fromSessionMessages(
     List<dynamic> raw, {
     String? sessionModel,
+    int startOffset = 0,
   }) {
     final resultByToolId = <String, String>{};
     final declaredToolIds = <String>{};
@@ -1746,9 +1849,10 @@ class ChatStore extends ChangeNotifier {
     }
 
     final out = <ChatMessage>[];
-    var i = 0;
-    var msgIndex = 0;
+    var rawOrdinal = startOffset;
     for (final value in raw) {
+      final ordinal = rawOrdinal++;
+      var msgIndex = 0;
       if (value is! Map) continue;
       final m = Map<String, dynamic>.from(value);
       if (m['display_kind']?.toString() == 'hidden') continue;
@@ -1769,7 +1873,9 @@ class ChatStore extends ChangeNotifier {
         // The result is already attached to its declared assistant call.
         if (id.isNotEmpty && declaredToolIds.contains(id)) continue;
         parts.add(
-          ChatPart.toolCall(_historyToolData(m, fallbackId: 's-$msgIndex-$i')),
+          ChatPart.toolCall(
+            _historyToolData(m, fallbackId: 's-$ordinal-$msgIndex'),
+          ),
         );
         msgIndex++;
       } else {
@@ -1789,7 +1895,7 @@ class ChatStore extends ChangeNotifier {
             ChatPart.toolCall(
               _historyToolData(
                 call,
-                fallbackId: 's-$msgIndex-$i',
+                fallbackId: 's-$ordinal-$msgIndex',
                 pairedResult: id.isEmpty ? null : resultByToolId[id],
               ),
             ),
@@ -1876,7 +1982,7 @@ class ChatStore extends ChangeNotifier {
                   .toList(growable: false)
             : const <MessageReaction>[];
         final built = ChatMessage(
-          id: 'h-${m['id'] ?? m['row_id'] ?? m['history_ordinal'] ?? i++}',
+          id: 'h-${m['id'] ?? m['row_id'] ?? m['history_ordinal'] ?? ordinal}',
           role: role,
           parts: parts,
           rowId: (m['row_id'] ?? m['id']) is num
@@ -1942,13 +2048,35 @@ class ChatStore extends ChangeNotifier {
         }
       }
     }
-    return [
+    final normalized = [
       for (final message in out)
         if (message.role == 'assistant')
           message.copyWith(parts: _dedupeHistoryAssistantParts(message.parts))
         else
           message,
     ];
+    // History pages can arrive in transport order rather than chronological
+    // order (and some providers mix epoch timestamps with ordinals). Sort the
+    // normalized rows once so every page contributes to one consistent
+    // timeline; retain input order when neither field is available.
+    final indexed = normalized.indexed.toList(growable: false);
+    indexed.sort((a, b) {
+      final left = a.$2;
+      final right = b.$2;
+      final ordinal =
+          left.historyOrdinal != null && right.historyOrdinal != null
+          ? left.historyOrdinal!.compareTo(right.historyOrdinal!)
+          : 0;
+      if (ordinal != 0) return ordinal;
+      final lts = left.timestamp;
+      final rts = right.timestamp;
+      if (lts != null && rts != null) {
+        final time = lts.compareTo(rts);
+        if (time != 0) return time;
+      }
+      return a.$1.compareTo(b.$1);
+    });
+    return [for (final entry in indexed) entry.$2];
   }
 
   static Map<String, dynamic>? _historyMetadata(dynamic value) {
@@ -3054,7 +3182,7 @@ class ChatStore extends ChangeNotifier {
   }
 
   void _appendDelta(Map<String, dynamic> payload) {
-    final delta = _extractDeltaText(payload['text']);
+    final delta = _extractDeltaText(payload['text'] ?? payload['delta']);
     if (delta.isEmpty) return;
     _streaming ??= MutableAssistantMessage(
       'assistant-${DateTime.now().millisecondsSinceEpoch}',
@@ -3340,7 +3468,7 @@ class ChatStore extends ChangeNotifier {
         timestamp: stamp,
       );
       _messages.add(
-        m.toChatMessage(isError: isError, rowId: payload['row_id'] as int?),
+        m.toChatMessage(isError: isError, rowId: (payload['row_id'] as num?)?.toInt()),
       );
       _markTranscriptStructureChanged();
     } else {
@@ -3355,7 +3483,7 @@ class ChatStore extends ChangeNotifier {
         source: source,
         timestamp: stamp,
       );
-      _replaceStreaming(streaming, isError, payload['row_id'] as int?);
+      _replaceStreaming(streaming, isError, (payload['row_id'] as num?)?.toInt());
       if (settlingInterim != null) {
         final index = _messages.indexWhere(
           (message) => message.id == settlingInterim!.id,

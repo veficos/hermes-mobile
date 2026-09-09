@@ -24,8 +24,9 @@ Future<void> showChatContextPopover(
   }
 
   final anchor = anchorContext.findRenderObject()! as RenderBox;
-  final overlay =
-      Overlay.of(anchorContext).context.findRenderObject()! as RenderBox;
+  final overlayState = Overlay.of(anchorContext);
+  if (!overlayState.mounted) return;
+  final overlay = overlayState.context.findRenderObject()! as RenderBox;
   final anchorRect = Rect.fromPoints(
     anchor.localToGlobal(Offset.zero, ancestor: overlay),
     anchor.localToGlobal(

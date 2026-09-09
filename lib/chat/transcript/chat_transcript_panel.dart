@@ -13,6 +13,7 @@ import '../../core/stores/composer_status_store.dart';
 import '../../core/stores/session_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../widgets/h/hermes_states.dart';
 import '../widgets/provider_maybe.dart';
 import 'chat_message_list.dart';
 import '../timeline/chat_timeline.dart';
@@ -183,6 +184,7 @@ class ChatTranscriptPanel extends StatefulWidget {
 
 class _ChatTranscriptPanelState extends State<ChatTranscriptPanel> {
   int _lastMessageCount = -1;
+  int _lastNotifiedRevision = -1;
   List<ChatTimelineItem> _timeline = const [];
   int _timelineMessageCount = -1;
   ChatMessage? _timelineFirst;
@@ -223,8 +225,10 @@ class _ChatTranscriptPanelState extends State<ChatTranscriptPanel> {
   }
 
   void _notifyTranscriptChanged(ChatTranscriptSnapshot snapshot) {
-    if (_lastMessageCount != snapshot.messages.length) {
+    if (_lastMessageCount != snapshot.messages.length ||
+        _lastNotifiedRevision != snapshot.transcriptRevision) {
       _lastMessageCount = snapshot.messages.length;
+      _lastNotifiedRevision = snapshot.transcriptRevision;
       widget.onTranscriptChanged(
         snapshot.messages.length,
         snapshot.streamTick,
@@ -369,36 +373,10 @@ class TranscriptLoadError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_outlined, size: 42, color: palette.text3),
-            const SizedBox(height: 12),
-            Text(context.l10n.chatTranscriptLoadFailed),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            if (onRetry != null) ...[
-              const SizedBox(height: 12),
-              FilledButton.tonalIcon(
-                key: const ValueKey('transcript-retry'),
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: Text(context.l10n.commonReload),
-              ),
-            ],
-          ],
-        ),
-      ),
+    return HermesErrorState(
+      title: context.l10n.chatTranscriptLoadFailed,
+      description: message,
+      onRetry: onRetry,
     );
   }
 }
@@ -410,56 +388,41 @@ class EmptyChat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.psychology_alt_outlined,
-              size: 56,
-              color: HermesSemantic.purple.withValues(alpha: 0.6),
+    final onPromptSelected = this.onPromptSelected;
+    return HermesEmptyState(
+      icon: Icons.psychology_alt_outlined,
+      iconSize: 56,
+      iconColor: HermesSemantic.purple.withValues(alpha: 0.6),
+      title: context.l10n.chatEmptyTitle,
+      description: context.l10n.chatEmptyDescription,
+      actions: onPromptSelected == null
+          ? null
+          : Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final prompt in [
+                  (
+                    context.l10n.chatStarterExplainProject,
+                    context.l10n.chatStarterExplainProjectPrompt,
+                  ),
+                  (
+                    context.l10n.chatStarterReviewChanges,
+                    context.l10n.chatStarterReviewChangesPrompt,
+                  ),
+                  (
+                    context.l10n.chatStarterDebugIssue,
+                    context.l10n.chatStarterDebugIssuePrompt,
+                  ),
+                ])
+                  ActionChip(
+                    avatar: const Icon(Icons.auto_awesome_outlined, size: 16),
+                    label: Text(prompt.$1),
+                    onPressed: () => onPromptSelected(prompt.$2),
+                  ),
+              ],
             ),
-            const SizedBox(height: 12),
-            Text(context.l10n.chatEmptyTitle),
-            const SizedBox(height: 4),
-            Text(
-              context.l10n.chatEmptyDescription,
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-            if (onPromptSelected != null) ...[
-              const SizedBox(height: 20),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final prompt in [
-                    (
-                      context.l10n.chatStarterExplainProject,
-                      context.l10n.chatStarterExplainProjectPrompt,
-                    ),
-                    (
-                      context.l10n.chatStarterReviewChanges,
-                      context.l10n.chatStarterReviewChangesPrompt,
-                    ),
-                    (
-                      context.l10n.chatStarterDebugIssue,
-                      context.l10n.chatStarterDebugIssuePrompt,
-                    ),
-                  ])
-                    ActionChip(
-                      avatar: const Icon(Icons.auto_awesome_outlined, size: 16),
-                      label: Text(prompt.$1),
-                      onPressed: () => onPromptSelected!(prompt.$2),
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }

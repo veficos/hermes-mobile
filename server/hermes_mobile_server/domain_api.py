@@ -1373,7 +1373,7 @@ def build_domain_router(
         be = require_backend()
         await _reject_subagent_mutation(be, session_id, profile=profile)
         source = await _session_detail_compat(be, session_id, profile=profile)
-        messages = await _session_messages_compat(be, session_id, profile=profile)
+        messages = await _all_session_messages(be, session_id, profile=profile)
         if not isinstance(source, dict):
             raise HTTPException(status_code=404, detail="session not found")
         now = time.time()
@@ -3775,12 +3775,6 @@ def build_domain_router(
                         "session_title": stitle,
                         "row_id": row_id,
                     })
-                    if len(all_artifacts) >= limit + offset:
-                        break
-                if len(all_artifacts) >= limit + offset:
-                    break
-            if len(all_artifacts) >= limit + offset:
-                break
 
         page = all_artifacts[offset:offset + limit]
         return {"artifacts": page, "total": len(all_artifacts)}

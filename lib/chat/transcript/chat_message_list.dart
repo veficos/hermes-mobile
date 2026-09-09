@@ -15,6 +15,7 @@ import '../../core/stores/session_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
 import '../../widgets/chat_enter_to_send.dart';
+import '../../widgets/chat_content_column.dart';
 import '../../widgets/h/hermes_badge.dart';
 import '../../widgets/message_bubble.dart';
 import '../tools/tool_group_card.dart';
@@ -84,16 +85,12 @@ class ChatMessageList extends StatelessWidget {
     return day != DateTime(prev.year, prev.month, prev.day);
   }
 
-  Widget _wrapRow(BuildContext context, Widget row) {
-    final width = MediaQuery.sizeOf(context).width;
-    return Center(
-      child: ConstrainedBox(
+  Widget _wrapRow(BuildContext context, Widget row, {Key? key}) {
+    return ChatContentColumn(
+      key: key,
+      child: KeyedSubtree(
         key: const ValueKey('transcript-content-column'),
-        constraints: BoxConstraints(maxWidth: width < 600 ? width : 820),
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: width < 600 ? 8 : 12),
-          child: row,
-        ),
+        child: row,
       ),
     );
   }
@@ -140,6 +137,13 @@ class ChatMessageList extends StatelessWidget {
         ? (context.read<ChatStore>().streamingMessage ?? m)
         : m;
     final children = <Widget>[];
+    // Visually group the linear transcript into user turns without changing
+    // the underlying timeline model (important for stable pagination keys).
+    // The marker is rendered once per user message and gives long sessions a
+    // consistent scan rhythm.
+    if (logical.role == 'user' && firstForSource) {
+      children.add(_TurnMarker(message: logical));
+    }
     if (firstForSource && _showDateDivider(messages, sourceIndex)) {
       children.add(
         DateDivider(
@@ -255,6 +259,7 @@ class ChatMessageList extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
       ),
+      key: ValueKey('transcript-row-${item.key}'),
     );
   }
 
@@ -262,109 +267,162 @@ class ChatMessageList extends StatelessWidget {
   Widget build(BuildContext context) {
     final messages = snapshot.messages;
     final itemCount = 1 + timeline.length + (snapshot.hasNewerWindow ? 1 : 0);
-    return RefreshIndicator(
-      onRefresh: () async {
-        final session = context.read<SessionStore>();
-        if (session.chat.hasMoreHistory && !session.chat.loadingHistory) {
-          await session.loadOlderMessages();
-        }
-      },
-      child: ListView.builder(
-        controller: scrollCtrl,
-        scrollCacheExtent: const ScrollCacheExtent.pixels(640),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: itemCount,
-        itemBuilder: (context, i) {
-          if (i == 0) {
-            return _wrapRow(
-              context,
-              HistoryHeader(
-                loadingHistory: snapshot.loadingHistory,
-                hasMoreHistory: snapshot.hasMoreHistory,
-                historyError: snapshot.historyError,
-              ),
-            );
-          }
-          final index = i - 1;
-          if (snapshot.hasNewerWindow && index == timeline.length) {
-            return _wrapRow(
-              context,
-              Center(
-                child: OutlinedButton.icon(
-                  key: const ValueKey('restore-newer-transcript-window'),
-                  onPressed: () {
-                    context.read<ChatStore>().restoreNewerTranscriptWindow();
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (scrollCtrl.hasClients) {
-                        scrollCtrl.jumpTo(scrollCtrl.position.maxScrollExtent);
-                      }
-                    });
-                  },
-                  icon: const Icon(Icons.south),
-                  label: Text(context.l10n.chatBackToNewerMessages),
-                ),
-              ),
-            );
-          }
-          final item = timeline[index];
-          final firstForSource =
-              index == 0 || timeline[index - 1].sourceIndex != item.sourceIndex;
-          final lastForSource =
-              index + 1 >= timeline.length ||
-              timeline[index + 1].sourceIndex != item.sourceIndex;
-          if (item is ChatTimelineToolGroup) {
-            return _wrapRow(
-              context,
-              Container(
-                key: firstForSource
-                    ? keyForMessage(item.sourceMessage)
-                    : ValueKey('timeline-row-${item.key}'),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: ToolGroupCard(
-                  groupId: item.id,
-                  parts: item.tools,
-                  interactions: item.interactions,
-                  detailBuilder: buildToolCallCard,
-                ),
-              ),
-            );
-          }
-          if (item is ChatTimelineTurnActivity) {
-            // Unkeyed rows here used to let ListView's default index-based
-            // element reuse silently attach a *different* turn's stats to a
-            // recycled Element once older messages were prepended by
-            // pagination — visibly wrong content at a given scroll position
-            // ("错屏") once the transcript had enough messages to page.
-            return _wrapRow(
-              context,
-              TurnActivityCard(
-                key: firstForSource
-                    ? keyForMessage(item.sourceMessage)
-                    : ValueKey('timeline-row-${item.key}'),
-                activity: item.activity,
-              ),
-            );
-          }
-          if (item is ChatTimelineChangedFiles) {
-            return _wrapRow(
-              context,
-              Container(
-                key: firstForSource
-                    ? keyForMessage(item.sourceMessage)
-                    : ValueKey('timeline-row-${item.key}'),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: ChangedFilesCard(files: item.files),
-              ),
-            );
-          }
-          return _messageRow(
+    // Keys must live on the direct sliver children. Descendant GlobalKeys
+    // alone cannot relocate an existing row when history shifts its index.
+    const historyKey = ValueKey('transcript-history-header');
+    const newerKey = ValueKey('transcript-newer-window');
+    final rowIndices = <Key, int>{
+      historyKey: 0,
+      for (var i = 0; i < timeline.length; i++)
+        ValueKey('transcript-row-${timeline[i].key}'): i + 1,
+      if (snapshot.hasNewerWindow) newerKey: timeline.length + 1,
+    };
+    // Pagination is driven by ChatScreen's near-top listener, which also
+    // preserves the visible anchor after prepending. A RefreshIndicator here
+    // launched a second, uncompensated request from the same overscroll
+    // gesture and left its modal-looking grey drag layer visible on web.
+    return ListView.builder(
+      controller: scrollCtrl,
+      scrollCacheExtent: const ScrollCacheExtent.pixels(640),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: itemCount,
+      findChildIndexCallback: (key) => rowIndices[key],
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          return _wrapRow(
             context,
-            item as ChatTimelineMessage,
-            messages,
-            firstForSource: firstForSource,
-            lastForSource: lastForSource,
+            HistoryHeader(
+              loadingHistory: snapshot.loadingHistory,
+              hasMoreHistory: snapshot.hasMoreHistory,
+              historyError: snapshot.historyError,
+            ),
+            key: historyKey,
           );
-        },
+        }
+        final index = i - 1;
+        if (snapshot.hasNewerWindow && index == timeline.length) {
+          return _wrapRow(
+            context,
+            Center(
+              child: OutlinedButton.icon(
+                key: const ValueKey('restore-newer-transcript-window'),
+                onPressed: () {
+                  context.read<ChatStore>().restoreNewerTranscriptWindow();
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (scrollCtrl.hasClients) {
+                      scrollCtrl.jumpTo(scrollCtrl.position.maxScrollExtent);
+                    }
+                  });
+                },
+                icon: const Icon(Icons.south),
+                label: Text(context.l10n.chatBackToNewerMessages),
+              ),
+            ),
+            key: newerKey,
+          );
+        }
+        final item = timeline[index];
+        final firstForSource =
+            index == 0 || timeline[index - 1].sourceIndex != item.sourceIndex;
+        final lastForSource =
+            index + 1 >= timeline.length ||
+            timeline[index + 1].sourceIndex != item.sourceIndex;
+        if (item is ChatTimelineToolGroup) {
+          return _wrapRow(
+            context,
+            Container(
+              key: firstForSource
+                  ? keyForMessage(item.sourceMessage)
+                  : ValueKey('timeline-row-${item.key}'),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: ToolGroupCard(
+                groupId: item.id,
+                parts: item.tools,
+                interactions: item.interactions,
+                detailBuilder: buildToolCallCard,
+              ),
+            ),
+            key: ValueKey('transcript-row-${item.key}'),
+          );
+        }
+        if (item is ChatTimelineTurnActivity) {
+          // Unkeyed rows here used to let ListView's default index-based
+          // element reuse silently attach a *different* turn's stats to a
+          // recycled Element once older messages were prepended by
+          // pagination — visibly wrong content at a given scroll position
+          // ("错屏") once the transcript had enough messages to page.
+          return _wrapRow(
+            context,
+            TurnActivityCard(
+              key: firstForSource
+                  ? keyForMessage(item.sourceMessage)
+                  : ValueKey('timeline-row-${item.key}'),
+              activity: item.activity,
+            ),
+            key: ValueKey('transcript-row-${item.key}'),
+          );
+        }
+        if (item is ChatTimelineChangedFiles) {
+          return _wrapRow(
+            context,
+            Container(
+              key: firstForSource
+                  ? keyForMessage(item.sourceMessage)
+                  : ValueKey('timeline-row-${item.key}'),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: ChangedFilesCard(files: item.files),
+            ),
+            key: ValueKey('transcript-row-${item.key}'),
+          );
+        }
+        return _messageRow(
+          context,
+          item as ChatTimelineMessage,
+          messages,
+          firstForSource: firstForSource,
+          lastForSource: lastForSource,
+        );
+      },
+    );
+  }
+}
+
+class _TurnMarker extends StatelessWidget {
+  const _TurnMarker({required this.message});
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    final stamp = message.timestamp?.toLocal();
+    final label = stamp == null
+        ? context.l10n.chatTurnLabel
+        : '${stamp.hour.toString().padLeft(2, '0')}:${stamp.minute.toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 2),
+      child: Row(
+        children: [
+          Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(
+              color: palette.accent,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            context.l10n.chatCurrentTurnLabel(label),
+            style: TextStyle(
+              color: palette.text3,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: .2,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Divider(color: palette.border, height: 1)),
+        ],
       ),
     );
   }
@@ -383,8 +441,7 @@ class UserMessageMountMarker extends StatefulWidget {
   final Widget child;
 
   @override
-  State<UserMessageMountMarker> createState() =>
-      _UserMessageMountMarkerState();
+  State<UserMessageMountMarker> createState() => _UserMessageMountMarkerState();
 }
 
 class _UserMessageMountMarkerState extends State<UserMessageMountMarker> {
@@ -442,20 +499,12 @@ class StreamingBubble extends StatelessWidget {
       builder: (context, tick, _) {
         WidgetsBinding.instance.addPostFrameCallback((_) => onTick(tick));
         final live = context.read<ChatStore>().streamingMessage;
-        return AnimatedSize(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-          alignment: Alignment.topCenter,
-          clipBehavior: Clip.none,
-          child: MessageBubble(
-            message: live != null && live.id == fallback.id ? live : fallback,
-            showRoleHeader: showRoleHeader,
-            onRegenerate: onRegenerate,
-            onJumpToQuestion: onJumpToQuestion,
-            isActivelyStreaming: true,
-          ),
+        return MessageBubble(
+          message: live != null && live.id == fallback.id ? live : fallback,
+          showRoleHeader: showRoleHeader,
+          onRegenerate: onRegenerate,
+          onJumpToQuestion: onJumpToQuestion,
+          isActivelyStreaming: true,
         );
       },
     );

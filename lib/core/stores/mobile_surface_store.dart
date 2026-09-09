@@ -55,6 +55,7 @@ class MobileSurfaceStore extends ChangeNotifier {
   MobileSurfaceReveal? _reveal;
   List<MobileTourStep> _tourSteps = const [];
   int _tourIndex = 0;
+  bool _disposed = false;
   MobileTourStep? get activeTourStep =>
       _tourSteps.isEmpty ? null : _tourSteps[_tourIndex];
   int get activeTourIndex => _tourIndex;
@@ -217,7 +218,7 @@ class MobileSurfaceStore extends ChangeNotifier {
           _tourSteps = [step];
           _tourIndex = 0;
           await _revealTarget(step.selector);
-          notifyListeners();
+          if (!_disposed) notifyListeners();
           result = {'success': true, 'selector': step.selector};
         case 'start':
           final raw = payload['steps'];
@@ -231,7 +232,7 @@ class MobileSurfaceStore extends ChangeNotifier {
             steps.length - 1,
           );
           await _revealTarget(_tourSteps[_tourIndex].selector);
-          notifyListeners();
+          if (!_disposed) notifyListeners();
           result = {'success': true, 'step_index': _tourIndex};
         case 'next':
           await advanceTour(1);
@@ -277,7 +278,7 @@ class MobileSurfaceStore extends ChangeNotifier {
     if (_tourSteps.isEmpty) return;
     _tourIndex = (_tourIndex + delta).clamp(0, _tourSteps.length - 1);
     await _revealTarget(_tourSteps[_tourIndex].selector);
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   void stopTour() {
@@ -289,6 +290,7 @@ class MobileSurfaceStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     unawaited(_events?.cancel());
     super.dispose();
   }

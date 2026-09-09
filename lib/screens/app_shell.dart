@@ -47,6 +47,7 @@ import '../widgets/h/hermes_toast.dart';
 import '../widgets/pet_overlay.dart';
 import '../widgets/mobile/mobile_tour_overlay.dart';
 import 'chat_screen.dart';
+import 'agent_screen.dart';
 import 'connect_screen.dart';
 import 'feature_registry.dart';
 import 'home_screen.dart';
@@ -77,8 +78,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// XL 档侧边导航折叠状态持久化键（design-system §7.2：状态持久化）。
   static const _xlNavKey = 'hm_xl_nav_expanded';
   bool _xlNavExpanded = true;
+  final GlobalKey<_LazyIndexedStackState> _tabStackKey = GlobalKey();
+  bool _tabSelectedByUser = false;
+  bool _chatRouteOpen = false;
   bool _wakeNavigationScheduled = false;
   bool _onboardingChecked = false;
+  final Completer<void> _onboardingReady = Completer<void>();
   Set<String> _backgroundStreamingIds = {};
   String? _backgroundConnectionId;
   DateTime? _backgroundedAt;
@@ -91,11 +96,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   // Spec §194: tabs are built lazily — only the visited ones stay alive in
   // the IndexedStack, so cold start only pays for the visible tab.
-  // IA：首页 / 会话 / 任务 / 更多。
+  // IA：首页 / 会话 / 任务 / 机器人 / 更多。
   static const _tabBuilders = <Widget Function()>[
     HomeScreen.new,
     SessionListScreen.new,
     KanbanCanonicalScreen.new,
+    AgentScreen.new,
     MoreScreen.new,
   ];
 
@@ -103,6 +109,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     Icons.home_outlined,
     Icons.chat_bubble_outline,
     Icons.task_alt_outlined,
+    Icons.smart_toy_outlined,
     Icons.more_horiz,
   ];
 
@@ -161,7 +168,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         prefs.remove(_legacyTabKey);
       }
       if (saved != null && saved >= 0 && saved < _tabBuilders.length) {
-        _selectTab(saved);
+        if (!_tabSelectedByUser) _selectTab(saved, persist: false);
       }
       final expanded = prefs.getBool(_xlNavKey);
       if (expanded != null && expanded != _xlNavExpanded) {
@@ -334,12 +341,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   Future<void> _openNotificationTarget(NotificationTarget target) async {
+    await _onboardingReady.future;
+    if (!mounted) return;
+    if (_updateStore?.requiresUpdate == true) return;
     final store = context.read<NotificationStore>();
     if (target.notificationId.isNotEmpty) {
       store.markRead(target.notificationId);
     }
     if (target.approval) {
       final navContext = hermesNavigatorKey.currentContext ?? context;
+      if (!navContext.mounted) return;
       final owner = target.connectionId == null
           ? null
           : OwnerRoute(
@@ -380,9 +391,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         await sessions.resumeSession(sessionId, profile: target.profile);
       }
       if (!mounted) return;
-      hermesNavigatorKey.currentState?.push(
-        MaterialPageRoute<void>(builder: (_) => const ChatScreen()),
-      );
+      await _pushChatRoute(const ChatScreen());
     } catch (error) {
       final navContext = hermesNavigatorKey.currentContext ?? context;
       if (!navContext.mounted) return;
@@ -395,6 +404,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   Future<void> _handleDeepLink(HermesDeepLink link) async {
+    await _onboardingReady.future;
+    if (!mounted) return;
+    if (_updateStore?.requiresUpdate == true) return;
     final action = resolveDeepLink(link);
     switch (action) {
       case SessionDeepLinkAction():
@@ -407,17 +419,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ),
         );
       case BlueprintDeepLinkAction():
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('hm_chat_draft', action.command);
-        if (!mounted) return;
         final sessions = context.read<SessionStore>();
-        hermesNavigatorKey.currentState?.push(
-          MaterialPageRoute<void>(
-            builder: (_) => sessions.hasSession
-                ? const ChatScreen()
-                : NewSessionScreen(initialDraftText: action.command),
-          ),
-        );
+        if (sessions.hasSession) {
+          await _pushChatRoute(ChatScreen(initialDraftText: action.command));
+        } else {
+          await _pushChatRoute(
+            NewSessionScreen(initialDraftText: action.command),
+          );
+        }
       case PluginInstallDeepLinkAction():
         await _confirmPluginInstall(action);
       case McpInstallDeepLinkAction():
@@ -696,10 +705,25 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
   }
 
-  void _selectTab(int i) {
+  Future<void> _pushChatRoute(Widget page) async {
+    if (_chatRouteOpen || _updateStore?.requiresUpdate == true) return;
+    final navigator = hermesNavigatorKey.currentState;
+    if (navigator == null) return;
+    _chatRouteOpen = true;
+    try {
+      await navigator.push(MaterialPageRoute<void>(builder: (_) => page));
+    } finally {
+      _chatRouteOpen = false;
+    }
+  }
+
+  void _selectTab(int i, {bool persist = true}) {
+    if (persist) _tabSelectedByUser = true;
     setState(() => _index = i);
     // Persist lazily; failures are non-fatal.
-    SharedPreferences.getInstance().then((prefs) => prefs.setInt(_tabKey, i));
+    if (persist) {
+      SharedPreferences.getInstance().then((prefs) => prefs.setInt(_tabKey, i));
+    }
   }
 
   void _toggleXlNav() {
@@ -717,35 +741,39 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final voice = context.watch<VoiceStore>();
 
     if (voice.wakeDetection != null &&
-        !_wakeNavigationScheduled &&
-        ModalRoute.of(context)?.isCurrent != false) {
+        ModalRoute.of(context)?.isCurrent == false) {
+      voice.dismissWakeDetection();
+    } else if (voice.wakeDetection != null && !_wakeNavigationScheduled) {
       _wakeNavigationScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _wakeNavigationScheduled = false;
         if (context.read<VoiceStore>().wakeDetection == null) return;
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
+        unawaited(_pushChatRoute(const ChatScreen()));
       });
     }
 
     if (!connection.isConfigured) {
+      if (!_onboardingReady.isCompleted) _onboardingReady.complete();
       return const ConnectScreen();
     }
 
     if (!_onboardingChecked) {
       _onboardingChecked = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!context.mounted) return;
-        if (await hasSeenOnboarding()) return;
-        if (!context.mounted) return;
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const OnboardingScreen(),
-            fullscreenDialog: true,
-          ),
-        );
+        try {
+          if (!context.mounted) return;
+          if (!await hasSeenOnboarding() && context.mounted) {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const OnboardingScreen(),
+                fullscreenDialog: true,
+              ),
+            );
+          }
+        } finally {
+          if (!_onboardingReady.isCompleted) _onboardingReady.complete();
+        }
       });
     }
 
@@ -753,7 +781,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final isXl = width >= HermesBreakpoints.desktop;
     final isTablet = width >= HermesBreakpoints.navigation && !isXl;
 
-    final body = _LazyIndexedStack(index: _index, builders: _tabBuilders);
+    final body = _LazyIndexedStack(
+      key: _tabStackKey,
+      index: _index,
+      builders: _tabBuilders,
+    );
 
     if (isXl) {
       // XL 档：类 IDE 三栏工作台（design-system §7.2）。
@@ -787,7 +819,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     if (isTablet) {
       // Tablet: NavigationRail + Main + ContextRail (spec §164).
-      // Rail 目的地与手机 Tab 对齐（首页/会话/任务/更多）。
+      // Rail 目的地与手机 Tab 对齐（首页/会话/任务/机器人/更多）。
       // 选中态与手机档 NavigationBar 对齐：accentBg 胶囊 + accent 图标/label
       // （hermes_theme.dart 暂无 navigationRailTheme，本地补齐）。
       final palette = HermesPalette.of(context);
@@ -801,9 +833,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     NavigationRailTheme(
                       data: NavigationRailThemeData(
                         indicatorColor: palette.accentBg,
-                        selectedIconTheme: IconThemeData(
-                          color: palette.accent,
-                        ),
+                        selectedIconTheme: IconThemeData(color: palette.accent),
                         unselectedIconTheme: IconThemeData(
                           color: palette.text3,
                         ),
@@ -828,6 +858,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                               context.read<CommandPaletteStore>().open(),
                           child: const Icon(Icons.search),
                         ),
+                        trailing: requests.pendingCount > 0
+                            ? IconButton(
+                                tooltip: context.l10n.approvalRequests,
+                                onPressed: () => showRequestSheet(context),
+                                icon: Badge.count(
+                                  count: requests.pendingCount,
+                                  child: const Icon(Icons.rule),
+                                ),
+                              )
+                            : null,
                         destinations: [
                           NavigationRailDestination(
                             icon: const Icon(Icons.home_outlined),
@@ -843,6 +883,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                             icon: const Icon(Icons.task_alt_outlined),
                             selectedIcon: const Icon(Icons.task_alt),
                             label: Text(context.l10n.navTasks),
+                          ),
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.smart_toy_outlined),
+                            selectedIcon: const Icon(Icons.smart_toy),
+                            label: Text(context.l10n.featureAgent),
                           ),
                           NavigationRailDestination(
                             icon: const Icon(Icons.more_horiz),
@@ -988,7 +1033,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     icon: _tabIcons[0],
                     label: labels[0],
                     selected: _index == 0,
-                    badgeCount: requests.pendingCount,
                     onTap: () => _selectTab(0),
                   ),
                   _xlNavItem(
@@ -996,6 +1040,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     icon: _tabIcons[1],
                     label: labels[1],
                     selected: _index == 1,
+                    badgeCount: requests.pendingCount,
                     onTap: () => _selectTab(1),
                   ),
                   if (expanded)
@@ -1012,14 +1057,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   _xlFeatureNavItem(context, 'git'),
                   if (expanded)
                     _xlSectionLabel(context, l10n.shellIntelligenceArea),
-                  _xlFeatureNavItem(context, 'agent'),
-                  _xlFeatureNavItem(context, 'skills'),
                   _xlNavItem(
                     context,
                     icon: _tabIcons[3],
                     label: labels[3],
                     selected: _index == 3,
                     onTap: () => _selectTab(3),
+                  ),
+                  _xlFeatureNavItem(context, 'skills'),
+                  _xlNavItem(
+                    context,
+                    icon: _tabIcons[4],
+                    label: labels[4],
+                    selected: _index == 4,
+                    onTap: () => _selectTab(4),
                   ),
                 ],
               ),
@@ -1155,7 +1206,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 /// 手机档底部导航：Material [NavigationBar]，样式统一来自
 /// `NavigationBarTheme`（hermes_theme.dart：66px、accentBg 胶囊选中态、
 /// 11px label、accent/text3 图标色）。角标/tour 目标键叠加在 destination
-/// icon 上；Semantics（selected/button/"Tab x of 4"）由组件内置。
+/// icon 上；Semantics（selected/button/"Tab x of 5"）由组件内置。
 class _PhoneNavigationBar extends StatelessWidget {
   const _PhoneNavigationBar({
     required this.selectedIndex,
@@ -1171,6 +1222,7 @@ class _PhoneNavigationBar extends StatelessWidget {
     'nav.home',
     'nav.sessions',
     'nav.tasks',
+    'nav.agent',
     'nav.more',
   ];
 
@@ -1220,7 +1272,13 @@ class _PhoneNavigationBar extends StatelessWidget {
 
 List<String> _tabLabels(BuildContext context) {
   final l10n = context.l10n;
-  return [l10n.navHome, l10n.navSessions, l10n.navTasks, l10n.navMore];
+  return [
+    l10n.navHome,
+    l10n.navSessions,
+    l10n.navTasks,
+    l10n.featureAgent,
+    l10n.navMore,
+  ];
 }
 
 /// XL 档顶栏（48px）：页面标题 + 全局搜索入口（⌘K）+ 连接状态点 + 审批角标。
@@ -1411,7 +1469,11 @@ class _LazyIndexedStack extends StatefulWidget {
   final int index;
   final List<Widget Function()> builders;
 
-  const _LazyIndexedStack({required this.index, required this.builders});
+  const _LazyIndexedStack({
+    super.key,
+    required this.index,
+    required this.builders,
+  });
 
   @override
   State<_LazyIndexedStack> createState() => _LazyIndexedStackState();

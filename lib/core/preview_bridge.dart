@@ -120,6 +120,9 @@ PreviewBridgeEvent? parsePreviewBridgeMessage(String raw, String token) {
 /// The caller must never use this document for an arbitrary remote URL. The
 /// channel lets agent-authored local HTML resize, report console output, and
 /// submit a short hidden user intent through `window.hermes.send(prompt)`.
+/// Intents are only honored within a few seconds of a real (trusted) user
+/// gesture, so page scripts cannot silently inject hidden session messages
+/// from timers, remote subresources, or synthetic events.
 String withPreviewBridge(
   String document,
   String token, {
@@ -134,7 +137,12 @@ String withPreviewBridge(
 var token=$encodedToken;
 var scriptErrorLabel=$encodedScriptError,unhandledRejectionLabel=$encodedUnhandledRejection;
 function emit(value){try{$_bridgeChannel.postMessage(JSON.stringify(value))}catch(_){}}
+var lastTrustedGesture=-1e9;
+function noteGesture(event){if(event&&event.isTrusted)lastTrustedGesture=Date.now()}
+["pointerdown","touchstart","keydown","click"].forEach(function(type){
+ addEventListener(type,noteGesture,true)});
 function send(prompt){if(typeof prompt!=="string"||!prompt.trim())return false;
+ if(Date.now()-lastTrustedGesture>5000)return false;
  emit({type:"$_intentMessageType",token:token,prompt:prompt.slice(0,$kPreviewMaxIntentLength)});return true}
 var previous=window.hermes&&typeof window.hermes==="object"?window.hermes:{};
 window.hermes=Object.assign(previous,{send:send});

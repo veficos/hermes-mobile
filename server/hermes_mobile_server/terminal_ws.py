@@ -80,7 +80,7 @@ def build_terminal_router(
                             cols=_dimension(request.get("cols"), 80),
                             rows=_dimension(request.get("rows"), 24),
                         )
-                    except RuntimeError as exc:
+                    except (RuntimeError, ValueError) as exc:
                         await outgoing.put(
                             {"event": "error", "request_id": request_id, "message": str(exc)}
                         )
@@ -99,7 +99,7 @@ def build_terminal_router(
                             cols=_dimension(request.get("cols"), 80),
                             rows=_dimension(request.get("rows"), 24),
                         )
-                    except RuntimeError as exc:
+                    except (RuntimeError, ValueError) as exc:
                         await outgoing.put(
                             {"event": "error", "request_id": request_id, "message": str(exc)}
                         )

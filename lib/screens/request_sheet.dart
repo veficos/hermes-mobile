@@ -99,13 +99,39 @@ class _RequestSheetState extends State<RequestSheet> {
   final _clarifyOtherCtrl = TextEditingController();
   bool _busy = false;
 
-  OwnerRoute? get _effectiveOwnerRoute =>
-      widget.ownerRoute ??
-      (widget.embedded ? context.read<SessionStore>().owner?.route : null);
+  OwnerRoute? get _effectiveOwnerRoute {
+    if (widget.ownerRoute != null || !widget.embedded) return widget.ownerRoute;
+    final session = context.read<SessionStore>();
+    final owner = session.owner?.route;
+    if (owner == null) return null;
+    // Previously persisted requests can predate owner/profile resolution.
+    // Accept only a unique same-connection request for this exact session.
+    final candidates = context.read<RequestStore>().pendingRequests.where((req) =>
+        req.requestId == widget.requestId &&
+        req.ownerRoute?.connectionId == owner.connectionId &&
+        (req.ownerRoute?.profile == null || req.ownerRoute == owner) &&
+        ((req.sessionId != null &&
+            (req.sessionId == session.runtimeId || req.sessionId == session.durableId)) ||
+         (req.durableSessionId != null && req.durableSessionId == session.durableId)));
+    return candidates.length == 1 ? candidates.single.ownerRoute : owner;
+  }
 
-  String? get _effectiveSessionId =>
-      widget.sessionId ??
-      (widget.embedded ? context.read<SessionStore>().durableId : null);
+  String? get _effectiveSessionId {
+    if (widget.sessionId != null || !widget.embedded) return widget.sessionId;
+    final session = context.read<SessionStore>();
+    final requests = context.read<RequestStore>();
+    // Requests may arrive before the runtime-to-durable mapping is registered.
+    // Resolve either id within the same owner, and use that scope for replies.
+    for (final id in [session.durableId, session.runtimeId]) {
+      if (id != null && (requests.byId(widget.requestId,
+          ownerRoute: _effectiveOwnerRoute, sessionId: id) != null ||
+          requests.resolution(widget.requestId,
+              ownerRoute: _effectiveOwnerRoute, sessionId: id) != null)) {
+        return id;
+      }
+    }
+    return session.durableId ?? session.runtimeId;
+  }
 
   PendingRequest? _selected(RequestStore store) => store.byId(
     widget.requestId,
@@ -555,9 +581,13 @@ class _RequestSheetState extends State<RequestSheet> {
         return Card(
           child: ListTile(
             dense: true,
-            leading: const Icon(Icons.check_circle_outline),
-            title: Text(context.l10n.requestInteractionProcessed),
-            subtitle: Text(detail.toString()),
+            leading: Icon(resolved == null
+                ? Icons.hourglass_empty
+                : Icons.check_circle_outline),
+            title: Text(resolved == null
+                ? context.l10n.requestPending
+                : context.l10n.requestInteractionProcessed),
+            subtitle: resolved == null ? null : Text(detail.toString()),
           ),
         );
       }
@@ -594,6 +624,9 @@ class _RequestSheetState extends State<RequestSheet> {
         req.kind == RequestKind.secret ||
         req.kind == RequestKind.sudo ||
         req.kind == RequestKind.terminalRead;
+    final choices = req.kind == RequestKind.approval && req.choices.isEmpty
+        ? const ['once', 'deny']
+        : req.choices;
     final isSecret =
         req.kind == RequestKind.secret || req.kind == RequestKind.sudo;
 
@@ -602,7 +635,7 @@ class _RequestSheetState extends State<RequestSheet> {
         left: 20,
         right: 20,
         top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        bottom: (widget.embedded ? 0 : MediaQuery.of(context).viewInsets.bottom) + 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -620,7 +653,9 @@ class _RequestSheetState extends State<RequestSheet> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: warning.withValues(alpha: .12),
+                    color: warning.withValues(
+                      alpha: hermesTintAlpha(context, .12),
+                    ),
                     borderRadius: BorderRadius.circular(HermesRadius.capsule),
                   ),
                   child: Text(
@@ -642,10 +677,7 @@ class _RequestSheetState extends State<RequestSheet> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: palette.border),
               ),
-              child: Text(
-                req.command!,
-                style: HermesType.code,
-              ),
+              child: Text(req.command!, style: HermesType.code),
             ),
             const SizedBox(height: 10),
           ],
@@ -677,12 +709,14 @@ class _RequestSheetState extends State<RequestSheet> {
               req.choices.isNotEmpty &&
               !needsText)
             _buildClarifyChoices(req)
-          else if (req.choices.isNotEmpty && !needsText)
+          else if (req.kind == RequestKind.approval)
+            _buildApprovalActions(req, choices)
+          else if (choices.isNotEmpty && !needsText)
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final choice in req.choices)
+                for (final choice in choices)
                   if (req.kind == RequestKind.approval && choice == 'deny')
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _respond(choice: choice),
@@ -781,10 +815,10 @@ class _RequestSheetState extends State<RequestSheet> {
     if (!widget.embedded) return content;
     return Container(
       key: const ValueKey('inline-request-card'),
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
-          kindTone.withValues(alpha: .05),
+          kindTone.withValues(alpha: hermesTintAlpha(context, .05)),
           palette.surface,
         ),
         borderRadius: BorderRadius.circular(HermesRadius.card),
@@ -792,6 +826,80 @@ class _RequestSheetState extends State<RequestSheet> {
       ),
       child: content,
     );
+  }
+
+  Widget _buildApprovalActions(PendingRequest request, List<String> choices) {
+    final palette = HermesPalette.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final ordered = [
+      if (choices.contains('once')) 'once',
+      if (choices.contains('deny')) 'deny',
+      ...choices.where((choice) => choice != 'once' && choice != 'deny'),
+    ];
+    return LayoutBuilder(builder: (context, constraints) {
+      final singleColumn = constraints.maxWidth < 300 ||
+          MediaQuery.textScalerOf(context).scale(14) > 20;
+      final width = singleColumn
+          ? constraints.maxWidth
+          : (constraints.maxWidth - 10) / 2;
+      return Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          for (final choice in ordered)
+            SizedBox(
+              width: width,
+              child: FilledButton(
+                onPressed: _busy ? null : () {
+                  if (choice == 'always') {
+                    _confirmAlwaysAllow(request, choice);
+                  } else {
+                    _respond(choice: choice);
+                  }
+                },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 46),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  backgroundColor: choice == 'once'
+                      ? scheme.primary
+                      : choice == 'deny'
+                          ? scheme.error.withValues(alpha: .08)
+                          : palette.codeBg,
+                  foregroundColor: choice == 'once'
+                      ? scheme.onPrimary
+                      : choice == 'deny' ? scheme.error : palette.text2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  side: choice == 'once' ? BorderSide.none : BorderSide(
+                    color: choice == 'deny'
+                        ? scheme.error.withValues(alpha: .2)
+                        : palette.border,
+                  ),
+                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(switch (choice) {
+                      'once' => Icons.check_rounded,
+                      'deny' => Icons.close_rounded,
+                      'session' => Icons.chat_bubble_outline_rounded,
+                      'always' => Icons.verified_user_outlined,
+                      _ => Icons.check_circle_outline,
+                    }, size: 18),
+                    const SizedBox(width: 8),
+                    Flexible(child: Text(
+                      _choiceLabel(request.kind, choice),
+                      textAlign: TextAlign.center,
+                    )),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
+    });
   }
 
   String _choiceLabel(RequestKind kind, String choice) {

@@ -17,13 +17,17 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
+import '../chat/transcript/viewport_anchor.dart';
+import '../chat/transcript/transcript_scroll_controller.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/chat_message.dart';
+import '../widgets/chat_content_column.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../core/clipboard.dart';
 import '../core/clipboard_image.dart';
@@ -101,10 +105,10 @@ import '../widgets/h/hermes_composer.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
-import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/h/hermes_voice_menu.dart';
 import '../widgets/pet_overlay.dart';
+import '../widgets/mobile/hermes_adaptive_ui.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/web_preview.dart';
 import '../widgets/right_sidebar/right_sidebar.dart';
@@ -175,7 +179,13 @@ class _ChatScreenState extends State<ChatScreen> {
   String _composerHistoryKey(String scope) =>
       'hm_composer_input_history_v1:$scope';
   final _composerFocus = FocusNode();
-  final _scrollCtrl = ScrollController();
+  final _scrollCtrl = TranscriptScrollController();
+  bool _bottomFollowScheduled = false;
+  bool _restoringNewerViewport = false;
+  bool _bottomFollowForce = false;
+  int? _bottomFollowEpoch;
+  int _lastKeyStructureRevision = -1;
+  int _lastKeySessionEpoch = -1;
   final _picker = ImagePicker();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _sending = false;
@@ -201,7 +211,7 @@ class _ChatScreenState extends State<ChatScreen> {
     context.maybeRead<SessionSurfaceStore>()?.publishTranscript(
       id: id,
       owner: owner.route,
-      messages: chat.messages,
+      messagesBuilder: () => chat.messages,
       revision: revision,
       awaitingInput: false,
     );
@@ -210,6 +220,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _pendingAttachmentMessageId;
   int _uploadDoneBytes = 0;
   int _uploadTotalBytes = 0;
+  // Footer usage-button context, captured at build time so the `/usage`
+  // slash command can anchor its popover to the same button.
+  BuildContext? _usageAnchorContext;
   int _uploadAttachmentBase = 0;
   bool _cancelSendRequested = false;
   UploadCancellation? _uploadCancellation;
@@ -900,7 +913,12 @@ class _ChatScreenState extends State<ChatScreen> {
   ) {
     final chat = context.read<ChatStore>();
     final session = context.read<SessionStore>();
-    _pruneMessageKeys(chat.messages);
+    if (_lastKeyStructureRevision != chat.transcriptStructureRevision ||
+        _lastKeySessionEpoch != _scrollCoordinator.sessionEpoch) {
+      _lastKeyStructureRevision = chat.transcriptStructureRevision;
+      _lastKeySessionEpoch = _scrollCoordinator.sessionEpoch;
+      _pruneMessageKeys(chat.transcriptStructure);
+    }
     _publishTranscriptProjection(chat, session);
     if (_scrollCoordinator.messagesChanged(messageCount)) {
       _scrollToBottom();
@@ -1345,6 +1363,40 @@ class _ChatScreenState extends State<ChatScreen> {
           orElse: () => current,
         ),
   ];
+
+  /// Returns the current (possibly uploaded) version of each attachment that
+  /// belonged to this submission. Attachments added while the request was in
+  /// flight are deliberately excluded.
+  List<ComposerAttachment> _liveSubmissionAttachments(
+    List<ComposerAttachment> snapshot,
+  ) => [
+    for (final submitted in snapshot)
+      _attachments.firstWhere(
+        (current) => submitted.occurrenceId != null
+            ? current.occurrenceId == submitted.occurrenceId
+            : identical(current, submitted),
+        orElse: () => submitted,
+      ),
+  ];
+
+  /// Consumes only the attachments included in a completed submission. New
+  /// chips staged by the user during upload/send remain available for the
+  /// next message.
+  void _consumeSubmittedAttachments(List<ComposerAttachment> snapshot) {
+    final ids = snapshot
+        .map((item) => item.occurrenceId)
+        .whereType<String>()
+        .toSet();
+    setState(() {
+      _attachments = _attachments
+          .where(
+            (current) => current.occurrenceId != null
+                ? !ids.contains(current.occurrenceId)
+                : !snapshot.any((submitted) => identical(submitted, current)),
+          )
+          .toList(growable: false);
+    });
+  }
 
   List<QueuedAttachment> _queueAttachments(
     List<ComposerAttachment> attachments,
@@ -1791,8 +1843,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onScroll() {
     if (!_scrollCtrl.hasClients) return;
+    if (_scrollCtrl.correctingContent) {
+      _scheduleActiveTopicUpdate();
+      return;
+    }
     final position = _scrollCtrl.position;
-    final nextStuck = position.pixels >= position.maxScrollExtent - 120;
+    final nextStuck = position.userScrollDirection == ScrollDirection.forward
+        ? false
+        : position.userScrollDirection == ScrollDirection.reverse
+        ? position.pixels >= position.maxScrollExtent - 40
+        : _scrollCoordinator.stuckToBottom;
     if (nextStuck != _scrollCoordinator.stuckToBottom) {
       if (_diagnosticLogging) {
         _logScroll(
@@ -1818,6 +1878,15 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          _loadingOlderViewport = false;
+          return;
+        }
+        // This task is intentionally detached from the scroll callback. Keep
+        // every failure inside it: an uncaught Future error reaches Flutter's
+        // root ErrorWidget, which is rendered as a full grey chat surface in
+        // release web builds. SessionStore already records the retryable
+        // history error for the inline header.
         unawaited(_loadOlderKeepingViewport());
       });
     }
@@ -1829,16 +1898,15 @@ class _ChatScreenState extends State<ChatScreen> {
     // loads no matter how far they drag, because the rest genuinely isn't
     // in the list anymore. Mirror the near-top auto-load-older trigger on
     // the other end: get close to the bottom of what's currently loaded and
-    // bring the newer window back automatically. Unlike a prepend, this
-    // appends at the end (and any resulting re-trim removes from the far,
-    // off-screen front) — neither needs scroll-position compensation, and
-    // once restored `maxScrollExtent` grows past the current position, so
-    // this can't re-trigger itself in a loop.
+    // restore one adjacent page. Removing old rows from the front changes
+    // the scroll coordinate, so preserve a visible message across the edit.
     if (_scrollCoordinator.allowPagination &&
         position.pixels > position.maxScrollExtent - 160 &&
         mounted) {
       final chat = context.read<ChatStore>();
-      if (chat.hasNewerTranscriptWindow) {
+      if (chat.hasNewerTranscriptWindow && !_restoringNewerViewport) {
+        _restoringNewerViewport = true;
+        final epoch = _scrollCoordinator.sessionEpoch;
         if (_diagnosticLogging) {
           _logScroll(
             'event=newer_window.restore_triggered '
@@ -1847,7 +1915,44 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) chat.restoreNewerTranscriptWindow();
+          if (!mounted ||
+              !_scrollCtrl.hasClients ||
+              !_scrollCoordinator.ownsEpoch(epoch)) {
+            _restoringNewerViewport = false;
+            return;
+          }
+          final anchor = TranscriptViewportAnchor.capture(
+            _messageKeys.values,
+            _scrollCtrl.position,
+          );
+          String? anchorId;
+          if (anchor != null) {
+            for (final entry in _messageKeys.entries) {
+              if (identical(entry.value, anchor.key)) {
+                anchorId = entry.key;
+                break;
+              }
+            }
+          }
+          chat.restoreNewerTranscriptWindow(
+            pageSize: 50,
+            preserveMessageId: anchorId,
+          );
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            try {
+              if (!mounted ||
+                  !_scrollCtrl.hasClients ||
+                  !_scrollCoordinator.ownsEpoch(epoch)) {
+                return;
+              }
+              final target = anchor?.restoredOffset(_scrollCtrl.position);
+              if (target != null && (target - _scrollCtrl.offset).abs() > .5) {
+                _scrollCtrl.correctContentOffset(target);
+              }
+            } finally {
+              _restoringNewerViewport = false;
+            }
+          });
         });
       }
     }
@@ -1860,8 +1965,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final session = context.read<SessionStore>();
     final beforeCount = session.chat.loadedCount;
+    int? countBeforeApply;
     final sessionEpoch = _scrollCoordinator.sessionEpoch;
-    final beforeExtent = _scrollCtrl.position.maxScrollExtent;
+    var beforeExtent = _scrollCtrl.position.maxScrollExtent;
+    TranscriptViewportAnchor? anchor;
     final beforePixels = _scrollCtrl.position.pixels;
     final elapsed = Stopwatch()..start();
     if (_diagnosticLogging) {
@@ -1876,9 +1983,25 @@ class _ChatScreenState extends State<ChatScreen> {
       // window trim runs after the restore below instead of alongside the
       // prepend, so the extent delta this restore measures reflects only
       // the prepend and the pixel math stays correct.
-      await session.loadOlderMessages(deferTrim: true);
-      if (!mounted) return;
-      if (session.chat.loadedCount == beforeCount) {
+      await session.loadOlderMessages(
+        deferTrim: true,
+        beforeApply: () {
+          if (!mounted ||
+              !_scrollCtrl.hasClients ||
+              !_scrollCoordinator.ownsEpoch(sessionEpoch)) {
+            return;
+          }
+          beforeExtent = _scrollCtrl.position.maxScrollExtent;
+          countBeforeApply = session.chat.loadedCount;
+          anchor = TranscriptViewportAnchor.capture(
+            _messageKeys.values,
+            _scrollCtrl.position,
+          );
+        },
+      );
+      if (!mounted || !_scrollCoordinator.ownsEpoch(sessionEpoch)) return;
+      if (countBeforeApply == null ||
+          session.chat.loadedCount == countBeforeApply) {
         // Nothing was actually prepended — either history was already
         // exhausted or the fetch came back empty. Jumping to a
         // "restored" position when `maxScrollExtent` never changed is a
@@ -1921,14 +2044,36 @@ class _ChatScreenState extends State<ChatScreen> {
             // of where the user has scrolled to meanwhile — so only the
             // anchor needs to change, not the compensation math.
             final livePixels = position.pixels;
-            final restoredPixels = _scrollCoordinator.restorePrependOffset(
-              beforePixels: livePixels,
-              beforeExtent: beforeExtent,
-              afterExtent: position.maxScrollExtent,
-              minExtent: position.minScrollExtent,
-              maxExtent: position.maxScrollExtent,
-            );
-            _scrollCtrl.jumpTo(restoredPixels);
+            final measuredAnchorOffset = anchor?.restoredOffset(position);
+            final restoredPixels =
+                measuredAnchorOffset ??
+                _scrollCoordinator.restorePrependOffset(
+                  beforePixels: livePixels,
+                  beforeExtent: beforeExtent,
+                  afterExtent: position.maxScrollExtent,
+                  minExtent: position.minScrollExtent,
+                  maxExtent: position.maxScrollExtent,
+                );
+            _scrollCtrl.correctContentOffset(restoredPixels);
+            if (anchor != null && measuredAnchorOffset == null) {
+              final capturedAnchor = anchor!;
+              final userDelta = livePixels - capturedAnchor.pixels;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted ||
+                    !_scrollCtrl.hasClients ||
+                    !_scrollCoordinator.ownsEpoch(sessionEpoch)) {
+                  return;
+                }
+                final current = _scrollCtrl.position;
+                final corrected = capturedAnchor.restoredOffset(
+                  current,
+                  userScrollDelta: userDelta + current.pixels - restoredPixels,
+                );
+                if (corrected != null) {
+                  _scrollCtrl.correctContentOffset(corrected);
+                }
+              });
+            }
             if (_diagnosticLogging) {
               _logScroll(
                 'event=history.completed before_count=$beforeCount '
@@ -1950,7 +2095,18 @@ class _ChatScreenState extends State<ChatScreen> {
       // Now that the viewport is anchored, trimming the newer end (if the
       // transcript crossed budget) is just an off-screen removal — no
       // further position compensation needed.
-      if (mounted) session.chat.trimTranscriptWindowIfNeeded();
+      if (mounted && _scrollCoordinator.ownsEpoch(sessionEpoch)) {
+        String? anchorId;
+        if (anchor != null) {
+          for (final entry in _messageKeys.entries) {
+            if (identical(entry.value, anchor!.key)) {
+              anchorId = entry.key;
+              break;
+            }
+          }
+        }
+        session.chat.trimTranscriptWindowIfNeeded(preserveMessageId: anchorId);
+      }
     } catch (error, stackTrace) {
       if (_diagnosticLogging) {
         _logScroll(
@@ -1963,7 +2119,8 @@ class _ChatScreenState extends State<ChatScreen> {
           stackTrace,
         );
       }
-      rethrow;
+      // Do not rethrow from this unawaited pagination task. The transcript and
+      // composer must stay mounted; HistoryHeader exposes the retry action.
     } finally {
       _loadingOlderViewport = false;
     }
@@ -1980,26 +2137,36 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       return;
     }
+    final epoch = _scrollCoordinator.sessionEpoch;
+    if (_bottomFollowEpoch != epoch) {
+      _bottomFollowForce = false;
+      _bottomFollowScheduled = false;
+      _bottomFollowEpoch = epoch;
+    }
+    _bottomFollowForce |= force;
+    if (_bottomFollowScheduled) return;
+    _bottomFollowScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_bottomFollowEpoch != epoch) return;
+      final force = _bottomFollowForce;
+      _bottomFollowScheduled = false;
+      _bottomFollowForce = false;
+      if (!mounted || !_scrollCoordinator.ownsEpoch(epoch)) return;
+      if (!force && !_scrollCoordinator.stuckToBottom) return;
       if (_scrollCtrl.hasClients) {
         final position = _scrollCtrl.position;
         final target = position.maxScrollExtent;
-        final jump = force || MediaQuery.disableAnimationsOf(context);
-        if (jump) {
+        // Continuous following uses one correction per frame. Animating
+        // every token repeatedly cancels the previous scroll animation.
+        if ((target - position.pixels).abs() > 0.5) {
           _scrollCtrl.jumpTo(target);
-        } else {
-          _scrollCtrl.animateTo(
-            target,
-            duration: HermesMotion.fast,
-            curve: Curves.easeOut,
-          );
         }
         if (_diagnosticLogging) {
           final now = _autoScrollLogWatch.elapsedMilliseconds;
           if (force || now - _lastAutoScrollLogMs >= 500) {
             _lastAutoScrollLogMs = now;
             _logScroll(
-              'event=auto_scroll.executed force=$force mode=${jump ? 'jump' : 'animate'} '
+              'event=auto_scroll.executed force=$force mode=jump '
               'from_pixels=${position.pixels.toStringAsFixed(1)} '
               'target_pixels=${target.toStringAsFixed(1)}',
             );
@@ -2021,16 +2188,23 @@ class _ChatScreenState extends State<ChatScreen> {
           // manual drag forced Flutter to relayout and correct it. Re-check
           // across a few more frames and jump again while the estimate is
           // still growing, so entry alone settles it.
-          _settleInitialScrollToBottom(attemptsLeft: 5);
+          _settleInitialScrollToBottom(attemptsLeft: 5, epoch: epoch);
         }
       }
     });
   }
 
-  void _settleInitialScrollToBottom({required int attemptsLeft}) {
+  void _settleInitialScrollToBottom({
+    required int attemptsLeft,
+    required int epoch,
+  }) {
     if (attemptsLeft <= 0) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollCtrl.hasClients) return;
+      if (!_scrollCoordinator.ownsEpoch(epoch) ||
+          !_scrollCoordinator.stuckToBottom) {
+        return;
+      }
       final position = _scrollCtrl.position;
       final target = position.maxScrollExtent;
       // Within half a pixel of the current position: the estimate has
@@ -2043,7 +2217,10 @@ class _ChatScreenState extends State<ChatScreen> {
           'attempts_left=${attemptsLeft - 1}',
         );
       }
-      _settleInitialScrollToBottom(attemptsLeft: attemptsLeft - 1);
+      _settleInitialScrollToBottom(
+        attemptsLeft: attemptsLeft - 1,
+        epoch: epoch,
+      );
     });
   }
 
@@ -2078,6 +2255,13 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// The composer stays editable while a send/steer is in flight. Returns
+  /// true when the composer text no longer matches the snapshot captured at
+  /// submit time — i.e. the user typed (or cleared) something in the
+  /// meantime — so clear/restore paths must leave the current text alone.
+  bool _composerEditedSince(String submitSnapshot) =>
+      _composerCtrl.text != submitSnapshot;
+
   Future<void> _send(String text) async {
     final l10n = context.l10n;
     final session = context.read<SessionStore>();
@@ -2095,13 +2279,19 @@ class _ChatScreenState extends State<ChatScreen> {
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
+    // Snapshot of the composer at submit time (the composer already
+    // pre-cleared it). If this diverges mid-send, the user typed a new draft
+    // that clear/restore paths below must not clobber.
+    final submittedComposerText = _composerCtrl.text;
     final submittedAttachments = _attachments;
     if ((trimmed.isEmpty && submittedAttachments.isEmpty) || _sending) return;
     if (submittedAttachments.isEmpty &&
         voice.continuousConversation &&
         VoiceStore.isStopPhrase(trimmed)) {
       await voice.endConversation();
-      _composerCtrl.clear();
+      if (!_composerEditedSince(submittedComposerText)) {
+        _composerCtrl.clear();
+      }
       return;
     }
     // Lock before any async slash-command or attachment work so rapid taps
@@ -2129,24 +2319,6 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       });
     }
-    if (submittedAttachments.isNotEmpty) {
-      final refs = submittedAttachments
-          .where(
-            (a) =>
-                a.kind == ComposerAttachmentKind.file ||
-                a.kind == ComposerAttachmentKind.image,
-          )
-          .map(
-            (a) => a.kind == ComposerAttachmentKind.image
-                ? '@image:${a.label}'
-                : '@file:${a.label}',
-          )
-          .toList(growable: false);
-      if (refs.isNotEmpty) {
-        _pendingAttachmentMessageId = session.chat
-            .stagePendingAttachmentMessage(trimmed, refs, _uploadTotalBytes);
-      }
-    }
     if (trimmed.isNotEmpty) {
       _composerHistory.add(trimmed);
       final historyScope = _lastDraftSid ?? session.durableId ?? 'new';
@@ -2166,22 +2338,56 @@ class _ChatScreenState extends State<ChatScreen> {
         handledLocally = true;
       }
     } catch (e) {
-      _failPendingAttachmentMessage(session);
       if (mounted) {
-        _composerCtrl.value = originalValue;
+        if (!_composerEditedSince(submittedComposerText)) {
+          _composerCtrl.value = originalValue;
+        }
         showHermesErrorSnackBar(
           context,
           e,
           fallback: context.l10n.chatCommandFailed('$e'),
         );
+        setState(() {
+          _sending = false;
+          _sendStatusLabel = null;
+        });
       }
-      if (mounted) setState(() => _sending = false);
       return;
     }
     if (handledLocally || !mounted) {
-      _failPendingAttachmentMessage(session);
-      if (mounted) setState(() => _sending = false);
+      // A locally-handled slash command never reaches the transcript — no
+      // staged attachment bubble exists yet, just reset the send progress UI.
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          _sendStatusLabel = null;
+          _uploadCancellation = null;
+        });
+        _publishSendPhase(SessionSendPhase.draft);
+      }
       return;
+    }
+    // Stage the optimistic "uploading attachments" bubble only after local
+    // slash interception: a bubble staged for a locally-handled command would
+    // never reach a real send and could only be marked 'failed', leaving a
+    // ghost failure message for something the user never submitted.
+    if (submittedAttachments.isNotEmpty) {
+      final refs = submittedAttachments
+          .where(
+            (a) =>
+                a.kind == ComposerAttachmentKind.file ||
+                a.kind == ComposerAttachmentKind.image,
+          )
+          .map(
+            (a) => a.kind == ComposerAttachmentKind.image
+                ? '@image:${a.label}'
+                : '@file:${a.label}',
+          )
+          .toList(growable: false);
+      if (refs.isNotEmpty) {
+        _pendingAttachmentMessageId = session.chat
+            .stagePendingAttachmentMessage(trimmed, refs, _uploadTotalBytes);
+      }
     }
     final sid = _lastDraftSid ?? session.durableId ?? '';
     final submittedFiles = List<dynamic>.from(_attachmentsForPersist);
@@ -2198,7 +2404,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (prepared == null) {
         _failPendingAttachmentMessage(session);
         if (mounted) {
-          _composerCtrl.value = originalValue;
+          if (!_composerEditedSince(submittedComposerText)) {
+            _composerCtrl.value = originalValue;
+          }
           setState(() => _sending = false);
         }
         return;
@@ -2228,7 +2436,9 @@ class _ChatScreenState extends State<ChatScreen> {
           _sending = false;
           _sendStatusLabel = context.l10n.chatAttachmentUploadFailed('$e');
         });
-        _composerCtrl.value = originalValue;
+        if (!_composerEditedSince(submittedComposerText)) {
+          _composerCtrl.value = originalValue;
+        }
         showHermesErrorSnackBar(
           context,
           e,
@@ -2238,17 +2448,33 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
+    // Server-side refs for the staged attachment bubble, captured right
+    // after upload: both the direct-send and the busy-queue paths write these
+    // back so a queued message later drains with resolvable references.
+    final uploadedSubmissionAttachments = _liveSubmissionAttachments(
+      submittedAttachments,
+    );
+    final finalRefs = <String>[
+      for (final item in uploadedSubmissionAttachments)
+        if (item.path?.trim().isNotEmpty == true)
+          item.kind == ComposerAttachmentKind.image
+              ? '@image:${item.path}'
+              : '@file:${item.path}',
+    ];
+
     final editingQueueId = _editingQueuedMessageId;
     if (editingQueueId != null) {
       await session.updateQueued(
         editingQueueId,
         composed,
         displayText: trimmed,
-        attachments: _queueAttachments(submittedAttachments),
+        attachments: _queueAttachments(uploadedSubmissionAttachments),
       );
       _editingQueuedMessageId = null;
-      _composerCtrl.clear();
-      if (mounted) setState(() => _attachments = const []);
+      if (!_composerEditedSince(submittedComposerText)) {
+        _composerCtrl.clear();
+      }
+      if (mounted) _consumeSubmittedAttachments(submittedAttachments);
       if (mounted) {
         showHermesToast(
           context,
@@ -2269,7 +2495,7 @@ class _ChatScreenState extends State<ChatScreen> {
         session.enqueueMessage(
           composed,
           displayText: trimmed,
-          attachments: _queueAttachments(submittedAttachments),
+          attachments: _queueAttachments(uploadedSubmissionAttachments),
         );
         if (_pendingAttachmentMessageId != null && mounted) {
           context.read<ChatStore>().updateAttachmentUpload(
@@ -2277,10 +2503,13 @@ class _ChatScreenState extends State<ChatScreen> {
             state: 'accepted',
             sent: _uploadTotalBytes,
             total: _uploadTotalBytes,
+            refs: finalRefs.isEmpty ? null : finalRefs,
           );
         }
-        _composerCtrl.clear();
-        if (mounted) setState(() => _attachments = const []);
+        if (!_composerEditedSince(submittedComposerText)) {
+          _composerCtrl.clear();
+        }
+        if (mounted) _consumeSubmittedAttachments(submittedAttachments);
         _setStuckToBottom(true);
         if (sid.isNotEmpty) {
           session.suppressDraftRestoreAfterSubmit(
@@ -2306,13 +2535,6 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         _publishSendPhase(SessionSendPhase.accepted);
         if (_pendingAttachmentMessageId != null && mounted) {
-          final finalRefs = <String>[
-            for (final item in _attachments)
-              if (item.path?.trim().isNotEmpty == true)
-                item.kind == ComposerAttachmentKind.image
-                    ? '@image:${item.path}'
-                    : '@file:${item.path}',
-          ];
           context.read<ChatStore>().updateAttachmentUpload(
             _pendingAttachmentMessageId!,
             state: 'accepted',
@@ -2327,8 +2549,10 @@ class _ChatScreenState extends State<ChatScreen> {
         if (runtimeBeforeSubmit != session.runtimeId) {
           await _loadToolsets();
         }
-        _composerCtrl.clear();
-        if (mounted) setState(() => _attachments = const []);
+        if (!_composerEditedSince(submittedComposerText)) {
+          _composerCtrl.clear();
+        }
+        if (mounted) _consumeSubmittedAttachments(submittedAttachments);
         _scrollToBottom();
         // WebUI parity: suppress stale draft restore for 30 s after submit
         // so a slow server poll doesn't repopulate the just-cleared composer.
@@ -2341,10 +2565,12 @@ class _ChatScreenState extends State<ChatScreen> {
           );
           // Flush the cleared state immediately — the composer has been
           // submitted and must not be rehydrated from the stale server state.
+          // If the user kept typing during the await chain above, flush the
+          // text actually retained instead of wiping the new draft.
           await session.flushDraftNow(
             sid,
-            currentText: '',
-            currentFiles: const [],
+            currentText: _composerCtrl.text,
+            currentFiles: _attachmentsForPersist,
             serverDraft: remembered,
           );
         }
@@ -2353,9 +2579,13 @@ class _ChatScreenState extends State<ChatScreen> {
       // E2: restore the text and attachments on failure so the user doesn't
       // lose their input. Attachments that finished uploading before this
       // failure keep their uploaded state instead of reverting to the
-      // pre-upload snapshot (which would force a re-upload on retry).
+      // pre-upload snapshot (which would force a re-upload on retry). If the
+      // user already typed a new draft while the send was in flight, keep it
+      // instead of restoring the failed submission over it.
       if (mounted) {
-        _composerCtrl.value = originalValue;
+        if (!_composerEditedSince(submittedComposerText)) {
+          _composerCtrl.value = originalValue;
+        }
         _sendFailed = true;
         setState(() {
           _attachments = _preserveUploadedAttachments(submittedAttachments);
@@ -2403,6 +2633,9 @@ class _ChatScreenState extends State<ChatScreen> {
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
+    // Same in-flight edit guard as `_send`: never clobber a draft the user
+    // typed while the steer was being prepared/sent.
+    final submittedComposerText = _composerCtrl.text;
     final submittedAttachments = _attachments;
     if (trimmed.isEmpty && submittedAttachments.isEmpty) return;
     // Local built-in commands win over steering — `/retry` while busy must
@@ -2425,7 +2658,9 @@ class _ChatScreenState extends State<ChatScreen> {
         submittedAttachments,
       );
       if (prepared == null) {
-        if (mounted) _composerCtrl.value = originalValue;
+        if (mounted && !_composerEditedSince(submittedComposerText)) {
+          _composerCtrl.value = originalValue;
+        }
         return;
       }
       final withAttachments = await _composeWithAttachments(
@@ -2436,7 +2671,9 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _sending = false);
-        _composerCtrl.value = originalValue;
+        if (!_composerEditedSince(submittedComposerText)) {
+          _composerCtrl.value = originalValue;
+        }
         showHermesErrorSnackBar(
           context,
           e,
@@ -2449,7 +2686,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await session.steer(composed);
       if (!mounted) return;
-      setState(() => _attachments = const []);
+      _consumeSubmittedAttachments(submittedAttachments);
       if (sid.isNotEmpty) {
         session.suppressDraftRestoreAfterSubmit(
           sid,
@@ -2474,11 +2711,11 @@ class _ChatScreenState extends State<ChatScreen> {
         composed,
         displayText: trimmed,
         attachments: _queueAttachments(
-          _preserveUploadedAttachments(submittedAttachments),
+          _liveSubmissionAttachments(submittedAttachments),
         ),
       );
       if (!mounted) return;
-      setState(() => _attachments = const []);
+      _consumeSubmittedAttachments(submittedAttachments);
       showHermesToast(context, message: context.l10n.chatSteerQueued);
     }
   }
@@ -2674,13 +2911,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   /// Run a WebUI built-in local slash command (composer already cleared).
+  /// Staged attachments are NOT consumed: a local command never uploads or
+  /// sends them, so they stay in the tray for the next real send.
   Future<void> _runLocalSlashCommand(
     String trimmed,
     LocalSlashCommand command,
   ) async {
     final l10n = context.l10n;
     setState(() {
-      _attachments = const [];
       _slashSuggestions = const [];
     });
     final arg = localSlashArg(trimmed, command);
@@ -2748,7 +2986,14 @@ class _ChatScreenState extends State<ChatScreen> {
           await _queueSlash(arg);
           break;
         case LocalSlashHandler.usage:
-          await _showContextPopover(context);
+          // Slash invocations have no button context; anchor the popover to
+          // the footer usage button instead of this State's element (whose
+          // render box spans the whole screen and misplaces the popover).
+          await _showContextPopover(
+            _usageAnchorContext?.mounted == true
+                ? _usageAnchorContext!
+                : context,
+          );
           break;
         case LocalSlashHandler.version:
           await _showVersionSlash();
@@ -3807,15 +4052,20 @@ class _ChatScreenState extends State<ChatScreen> {
       footerActions: [
         _footerQueueButton(count: session.queueCount, onTap: _showQueuePanel),
         Builder(
-          builder: (anchorContext) => _footerIconButton(
-            tooltip: _contextUsagePercent == null
-                ? context.l10n.chatContextUsage
-                : context.l10n.chatContextUsagePercent(
-                    _contextUsagePercent!.round(),
-                  ),
-            icon: Icons.data_usage,
-            onTap: () => _showContextPopover(anchorContext),
-          ),
+          builder: (anchorContext) {
+            // Remembered so the `/usage` slash command can anchor its
+            // popover to this same button.
+            _usageAnchorContext = anchorContext;
+            return _footerIconButton(
+              tooltip: _contextUsagePercent == null
+                  ? context.l10n.chatContextUsage
+                  : context.l10n.chatContextUsagePercent(
+                      _contextUsagePercent!.round(),
+                    ),
+              icon: Icons.data_usage,
+              onTap: () => _showContextPopover(anchorContext),
+            );
+          },
         ),
         HermesAdaptiveMenuButton<String>(
           tooltip: context.l10n.commonMore,
@@ -3954,7 +4204,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     return KeyedSubtree(
       key: surfaces?.targetKey('chat.composer'),
-      child: composer,
+      child: ChatContentColumn(includeGutter: false, child: composer),
     );
   }
 
@@ -4618,6 +4868,17 @@ class _ChatScreenState extends State<ChatScreen> {
     VoidCallback? onCodingTap,
   }) {
     final palette = HermesPalette.of(context);
+    final activityState = agentStatus == HermesAgentStatus.failed
+        ? HermesActivityState.failed
+        : agentStatus == HermesAgentStatus.waiting ||
+              agentStatus == HermesAgentStatus.approval ||
+              agentStatus == HermesAgentStatus.paused
+        ? HermesActivityState.waiting
+        : agentStatus == HermesAgentStatus.idle ||
+              agentStatus == HermesAgentStatus.completed ||
+              agentStatus == HermesAgentStatus.stopped
+        ? HermesActivityState.success
+        : HermesActivityState.processing;
 
     Widget divider() => Container(
       width: 1,
@@ -4665,7 +4926,29 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.only(left: 8),
               child: Row(
                 children: [
-                  HermesAgentStatusView(status: agentStatus, animate: false),
+                  HermesActivityPill(
+                    label: switch (agentStatus) {
+                      HermesAgentStatus.idle => context.l10n.statusReady,
+                      HermesAgentStatus.thinking => context.l10n.statusThinking,
+                      HermesAgentStatus.planning => context.l10n.statusPlanning,
+                      HermesAgentStatus.running => context.l10n.statusRunning,
+                      HermesAgentStatus.waiting => context.l10n.statusWaiting,
+                      HermesAgentStatus.approval =>
+                        context.l10n.approvalRequests,
+                      HermesAgentStatus.paused => context.l10n.statusPaused,
+                      HermesAgentStatus.completed =>
+                        context.l10n.statusCompleted,
+                      HermesAgentStatus.failed => context.l10n.statusFailed,
+                      HermesAgentStatus.stopped => context.l10n.statusStopped,
+                    },
+                    state: activityState,
+                    onTap: hasDetails
+                        ? () => setState(
+                            () => _statusDetailsExpanded =
+                                !_statusDetailsExpanded,
+                          )
+                        : null,
+                  ),
                   if (branch?.isNotEmpty == true) ...[
                     divider(),
                     segment(
@@ -6669,6 +6952,34 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
       if (!mounted) return;
+      // Locate the request's existing transcript row before opening a modal.
+      // Background requests without a loaded interaction still use the sheet.
+      final sameOwner = request.ownerRoute == null ||
+          request.ownerRoute == session.owner?.route;
+      final sameSession = request.sessionId == session.runtimeId ||
+          request.sessionId == session.durableId ||
+          (request.durableSessionId != null &&
+              request.durableSessionId == session.durableId);
+      for (final message in sameOwner && sameSession
+          ? session.chat.messages
+          : const <ChatMessage>[]) {
+        final containsRequest = message.parts.any(
+          (part) => part.kind == 'interaction' &&
+              part.interaction?['request_id']?.toString() == request.requestId,
+        );
+        if (!containsRequest) continue;
+        final rowContext = _keyForMessage(message).currentContext;
+        if (rowContext != null && rowContext.mounted) {
+          await Scrollable.ensureVisible(
+            rowContext,
+            alignment: .5,
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : HermesMotion.deliberate,
+          );
+          return;
+        }
+      }
       await showRequestSheet(
         context,
         requestId: request.requestId,
@@ -6834,7 +7145,17 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final connection = context.watch<ConnectionStore>();
+    context.select<ConnectionStore, Object>(
+      (connection) => (
+        connection.phase,
+        connection.isConfigured,
+        connection.isConnected,
+        connection.error,
+        connection.activeConnectionId,
+        connection.api,
+      ),
+    );
+    final connection = context.read<ConnectionStore>();
     final session = context.read<SessionStore>();
     final suggestionStore = context.maybeRead<ComposerSuggestionStore>();
     suggestionStore?.bindPluginContributions(
@@ -6854,7 +7175,24 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     final chat = context.read<ChatStore>();
-    final voice = context.watch<VoiceStore>();
+    // Input-level notifications belong to the voice control, not the whole
+    // transcript. Retain lifecycle fields required by conversation effects.
+    context.select<VoiceStore, Object>(
+      (voice) => (
+        voice.recording,
+        voice.speaking,
+        voice.continuousConversation,
+        voice.autoSpeak,
+        voice.muted,
+        voice.bargeMonitoring,
+        voice.phase,
+        voice.voiceError,
+        voice.generation,
+        voice.streamingSpeechId,
+        voice.wakeDetection,
+      ),
+    );
+    final voice = context.read<VoiceStore>();
     _sessionStoreRef = session;
     final toolDismiss = context.maybeRead<ToolDismissStore>();
     if (toolDismiss != null) {
@@ -6983,8 +7321,15 @@ class _ChatScreenState extends State<ChatScreen> {
         : null;
 
     final appBar = AppBar(
-      automaticallyImplyLeading: !widget.embedded && !hasSessionRail,
-      leading: hasSessionRail ? const ChatPageBackButton() : null,
+      // XL App Shell already owns the global navigation affordance. Keeping
+      // a second back button in the conversation header duplicates that
+      // chrome; retain the back affordance for tablet/phone surfaces.
+      automaticallyImplyLeading:
+          !widget.embedded &&
+          (!hasSessionRail || screenWidth < HermesBreakpoints.desktop),
+      leading: hasSessionRail && screenWidth < HermesBreakpoints.desktop
+          ? const ChatPageBackButton()
+          : null,
       title: hasSessionRail
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -48,6 +48,13 @@ void main() {
     expect(legacy.legacyKind, 'plugin-agent');
   });
 
+  test('rejects plugin install links without an identifier', () {
+    expect(
+      resolveDeepLink(const HermesDeepLink(kind: 'plugin', name: 'install')),
+      isA<RejectedDeepLinkAction>(),
+    );
+  });
+
   test('routes session with profile and connection scope', () {
     final action =
         resolveDeepLink(

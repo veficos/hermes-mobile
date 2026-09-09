@@ -1,6 +1,7 @@
 /// Unified empty / error / loading states (design-system.md §6.9):
-/// 空态 64px 线性图标 text-4 + title + callout 描述 + 可选 Primary；
-/// 加载优先骨架屏（surface 上 6% 底呼吸块）；错误 error 图标 + 描述 +
+/// 空态 64px（可调）线性图标 text-4 + title + callout 描述 + 可选
+/// Primary/Secondary/自定义 actions；加载优先骨架屏（surface 上 6% 底
+/// 呼吸块，高对比提升透明度并加粗边框）；错误 error 图标 + 描述 +
 /// 重试 Secondary。
 library;
 
@@ -57,6 +58,16 @@ class HermesEmptyState extends StatelessWidget {
   final String? secondaryLabel;
   final VoidCallback? onSecondary;
 
+  /// 图标尺寸，默认 64（§6.9）；紧凑面板可传更小值。
+  final double iconSize;
+
+  /// 图标颜色，默认 text-4；品牌向空态（如 chat 欢迎页）可覆写。
+  final Color? iconColor;
+
+  /// 追加在内置 Primary/Secondary 按钮之后的自定义行动区
+  /// （如 starter prompt chips）。
+  final Widget? actions;
+
   const HermesEmptyState({
     super.key,
     required this.icon,
@@ -66,6 +77,9 @@ class HermesEmptyState extends StatelessWidget {
     this.onPrimary,
     this.secondaryLabel,
     this.onSecondary,
+    this.iconSize = 64,
+    this.iconColor,
+    this.actions,
   });
 
   @override
@@ -77,7 +91,7 @@ class HermesEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 64, color: palette.text4),
+            Icon(icon, size: iconSize, color: iconColor ?? palette.text4),
             const SizedBox(height: HermesSpacing.md),
             Text(
               title,
@@ -99,6 +113,10 @@ class HermesEmptyState extends StatelessWidget {
             if (secondaryLabel != null) ...[
               const SizedBox(height: HermesSpacing.xs),
               TextButton(onPressed: onSecondary, child: Text(secondaryLabel!)),
+            ],
+            if (actions != null) ...[
+              const SizedBox(height: HermesSpacing.lg),
+              actions!,
             ],
           ],
         ),
@@ -134,10 +152,10 @@ class HermesErrorState extends StatelessWidget {
       HermesSemanticDark.red,
     );
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(HermesSpacing.xl),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.error_outline, size: 64, color: error),
             const SizedBox(height: HermesSpacing.md),
@@ -283,8 +301,11 @@ class _HermesSkeletonBlockState extends State<HermesSkeletonBlock>
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // 6% 底呼吸块：浅色叠黑 6%，深色叠白 6%。
+    final highContrast = HermesA11y.highContrastOf(context);
+    // 6% 底呼吸块：浅色叠黑 6%，深色叠白 6%；高对比下底色透明度
+    // 提升（§3.7），边框升级 borderStrong + 1.5px 与主题边框一致。
     final overlay = isDark ? Colors.white : Colors.black;
+    final baseAlpha = hermesTintAlpha(context, 0.06);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedBuilder(
       animation: _controller,
@@ -296,11 +317,14 @@ class _HermesSkeletonBlockState extends State<HermesSkeletonBlock>
           decoration: BoxDecoration(
             color: palette.surface,
             borderRadius: BorderRadius.circular(widget.radius),
-            border: Border.all(color: palette.border),
+            border: Border.all(
+              color: highContrast ? palette.borderStrong : palette.border,
+              width: highContrast ? 1.5 : 1,
+            ),
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: overlay.withValues(alpha: 0.06 * t),
+              color: overlay.withValues(alpha: baseAlpha * t),
               borderRadius: BorderRadius.circular(widget.radius),
             ),
           ),
@@ -324,7 +348,12 @@ class HermesLoadingPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.accentBg,
         borderRadius: BorderRadius.circular(HermesRadius.capsule),
-        border: Border.all(color: palette.accent.withValues(alpha: 0.25)),
+        border: Border.all(
+          color: palette.accent.withValues(
+            // 高对比：0.25 的 accent 描边过淡，提升至 0.45。
+            alpha: hermesTintAlpha(context, 0.25),
+          ),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

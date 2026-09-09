@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../core/app_navigation.dart';
 import '../core/models.dart';
 import '../core/stores/command_palette_store.dart';
 import '../core/stores/connection_store.dart';
@@ -85,212 +86,220 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
     final size = MediaQuery.sizeOf(context);
     final isDesktop = size.width >= 840;
 
-    return Focus(
-      onKeyEvent: (_, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-          palette.moveSelection(1);
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-          palette.moveSelection(-1);
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.enter) {
-          _selectCurrent(context);
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.escape) {
-          palette.close();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
+    // The palette is not a route: intercept the system back button so the
+    // first press closes the palette instead of popping the route below.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) palette.close();
       },
-      child: GestureDetector(
-        onTap: () => palette.close(),
-        child: Container(
-          color: Colors.black54,
-          child: SafeArea(
-            child: GestureDetector(
-              onTap: () {},
-              child: Align(
-                alignment: isDesktop ? Alignment.topCenter : Alignment.center,
-                child: Padding(
-                  padding: isDesktop
-                      ? const EdgeInsets.symmetric(vertical: 24)
-                      : EdgeInsets.zero,
-                  // §6.12 Popover：elevated 底 + shadow-md。
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: isDesktop ? 640 : double.infinity,
-                      maxHeight: isDesktop
-                          ? size.height * 0.7
-                          : double.infinity,
-                    ),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: isDesktop ? null : double.infinity,
-                      child: HermesGlassCard(
-                        padding: EdgeInsets.zero,
-                        radius: isDesktop ? HermesRadius.largeCard : 0,
-                        tint: tokens.elevated,
-                        shadow: HermesShadowTier.md,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Search field
-                            Semantics(
-                              textField: true,
-                              label: l10n.featureGlobalSearchDesc,
-                              child: TextField(
-                                controller: _controller,
-                                focusNode: _focus,
-                                onChanged: palette.setQuery,
-                                onSubmitted: (_) => _selectCurrent(context),
-                                style: HermesType.onSurface(
-                                  HermesType.body,
-                                  theme,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: l10n.paletteHint,
-                                  hintStyle: TextStyle(color: tokens.text3),
-                                  prefixIcon: Icon(
-                                    Icons.search,
-                                    color: tokens.accent,
+      child: Focus(
+        onKeyEvent: (_, event) {
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            palette.moveSelection(1);
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+            palette.moveSelection(-1);
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.enter) {
+            _selectCurrent(context);
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.escape) {
+            palette.close();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          onTap: () => palette.close(),
+          child: Container(
+            color: Colors.black54,
+            child: SafeArea(
+              child: GestureDetector(
+                onTap: () {},
+                child: Align(
+                  alignment: isDesktop ? Alignment.topCenter : Alignment.center,
+                  child: Padding(
+                    padding: isDesktop
+                        ? const EdgeInsets.symmetric(vertical: 24)
+                        : EdgeInsets.zero,
+                    // §6.12 Popover：elevated 底 + shadow-md。
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isDesktop ? 640 : double.infinity,
+                        maxHeight: isDesktop
+                            ? size.height * 0.7
+                            : double.infinity,
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: isDesktop ? null : double.infinity,
+                        child: HermesGlassCard(
+                          padding: EdgeInsets.zero,
+                          radius: isDesktop ? HermesRadius.largeCard : 0,
+                          tint: tokens.elevated,
+                          shadow: HermesShadowTier.md,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Search field
+                              Semantics(
+                                textField: true,
+                                label: l10n.featureGlobalSearchDesc,
+                                child: TextField(
+                                  controller: _controller,
+                                  focusNode: _focus,
+                                  onChanged: palette.setQuery,
+                                  onSubmitted: (_) => _selectCurrent(context),
+                                  style: HermesType.onSurface(
+                                    HermesType.body,
+                                    theme,
                                   ),
-                                  suffixIcon: IconButton(
-                                    tooltip: l10n.commonClose,
-                                    icon: const Icon(Icons.close),
-                                    onPressed: palette.close,
-                                  ),
-                                  border: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 14,
+                                  decoration: InputDecoration(
+                                    hintText: l10n.paletteHint,
+                                    hintStyle: TextStyle(color: tokens.text3),
+                                    prefixIcon: Icon(
+                                      Icons.search,
+                                      color: tokens.accent,
+                                    ),
+                                    suffixIcon: IconButton(
+                                      tooltip: l10n.commonClose,
+                                      icon: const Icon(Icons.close),
+                                      onPressed: palette.close,
+                                    ),
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 14,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            const Divider(height: 1),
-                            Builder(
-                              builder: (context) {
-                                PluginContributionStore plugin;
-                                try {
-                                  plugin = context
-                                      .watch<PluginContributionStore>();
-                                } on ProviderNotFoundException {
-                                  return const SizedBox.shrink();
-                                }
-                                final items = plugin.forArea(
-                                  MobileContributionArea.command,
-                                );
-                                if (items.isEmpty) {
-                                  return const SizedBox.shrink();
-                                }
-                                return Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    12,
-                                    8,
-                                    12,
-                                    4,
-                                  ),
-                                  child: Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    children: [
-                                      for (final item in items)
-                                        ActionChip(
-                                          avatar: const Icon(
-                                            Icons.extension_outlined,
-                                            size: 16,
+                              const Divider(height: 1),
+                              Builder(
+                                builder: (context) {
+                                  PluginContributionStore plugin;
+                                  try {
+                                    plugin = context
+                                        .watch<PluginContributionStore>();
+                                  } on ProviderNotFoundException {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final items = plugin.forArea(
+                                    MobileContributionArea.command,
+                                  );
+                                  if (items.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      8,
+                                      12,
+                                      4,
+                                    ),
+                                    child: Wrap(
+                                      spacing: 8,
+                                      runSpacing: 6,
+                                      children: [
+                                        for (final item in items)
+                                          ActionChip(
+                                            avatar: const Icon(
+                                              Icons.extension_outlined,
+                                              size: 16,
+                                            ),
+                                            label: Text(item.title),
+                                            onPressed: () async {
+                                              await plugin.invoke(item);
+                                              palette.close();
+                                            },
                                           ),
-                                          label: Text(item.title),
-                                          onPressed: () async {
-                                            await plugin.invoke(item);
-                                            palette.close();
-                                          },
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                              // Results
+                              Flexible(
+                                child: results.isEmpty
+                                    ? Padding(
+                                        padding: const EdgeInsets.all(24),
+                                        child: Text(
+                                          l10n.paletteNoResults,
+                                          textAlign: TextAlign.center,
+                                          style: HermesType.onSurfaceVariant(
+                                            HermesType.callout,
+                                            theme,
+                                          ),
                                         ),
-                                    ],
+                                      )
+                                    : ListView.builder(
+                                        shrinkWrap: true,
+                                        itemCount: results.length,
+                                        itemBuilder: (ctx, i) {
+                                          final r = results[i];
+                                          final selected =
+                                              i == palette.selectedIndex;
+                                          return _ResultTile(
+                                            result: r,
+                                            selected: selected,
+                                            onTap: () {
+                                              palette.selectedIndex = i;
+                                              _selectCurrent(context);
+                                            },
+                                          );
+                                        },
+                                      ),
+                              ),
+                              if (isDesktop) ...[
+                                const Divider(height: 1),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
                                   ),
-                                );
-                              },
-                            ),
-                            // Results
-                            Flexible(
-                              child: results.isEmpty
-                                  ? Padding(
-                                      padding: const EdgeInsets.all(24),
-                                      child: Text(
-                                        l10n.paletteNoResults,
-                                        textAlign: TextAlign.center,
+                                  child: Row(
+                                    children: [
+                                      const HermesKbd('↑↓'),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        l10n.paletteHintNavigate,
                                         style: HermesType.onSurfaceVariant(
-                                          HermesType.callout,
+                                          HermesType.caption,
                                           theme,
                                         ),
                                       ),
-                                    )
-                                  : ListView.builder(
-                                      shrinkWrap: true,
-                                      itemCount: results.length,
-                                      itemBuilder: (ctx, i) {
-                                        final r = results[i];
-                                        final selected =
-                                            i == palette.selectedIndex;
-                                        return _ResultTile(
-                                          result: r,
-                                          selected: selected,
-                                          onTap: () {
-                                            palette.selectedIndex = i;
-                                            _selectCurrent(context);
-                                          },
-                                        );
-                                      },
-                                    ),
-                            ),
-                            if (isDesktop) ...[
-                              const Divider(height: 1),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
+                                      const SizedBox(width: 16),
+                                      const HermesKbd('Enter'),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        l10n.paletteHintOpen,
+                                        style: HermesType.onSurfaceVariant(
+                                          HermesType.caption,
+                                          theme,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      const HermesKbd('Esc'),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        l10n.paletteHintClose,
+                                        style: HermesType.onSurfaceVariant(
+                                          HermesType.caption,
+                                          theme,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    const HermesKbd('↑↓'),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      l10n.paletteHintNavigate,
-                                      style: HermesType.onSurfaceVariant(
-                                        HermesType.caption,
-                                        theme,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    const HermesKbd('Enter'),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      l10n.paletteHintOpen,
-                                      style: HermesType.onSurfaceVariant(
-                                        HermesType.caption,
-                                        theme,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    const HermesKbd('Esc'),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      l10n.paletteHintClose,
-                                      style: HermesType.onSurfaceVariant(
-                                        HermesType.caption,
-                                        theme,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -426,12 +435,20 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
         await store.resumeSession(sessionId, profile: row?.profile);
       }
     } catch (error) {
-      if (context.mounted) {
+      // close() unmounts this overlay before the await above completes, so
+      // the overlay's context is dead here — report through the app-level
+      // navigator context instead of letting the failure vanish.
+      final navContext = hermesNavigatorKey.currentContext;
+      if (navContext != null && navContext.mounted) {
+        showHermesErrorSnackBar(navContext, error);
+      } else if (context.mounted) {
         showHermesErrorSnackBar(context, error);
       }
       return;
     }
-    if (!context.mounted) return;
+    // Same unmount reasoning: the captured root navigator outlives the
+    // overlay, so gate on it rather than on the dead overlay context.
+    if (!nav.mounted) return;
     nav.push(MaterialPageRoute(builder: (_) => const ChatScreen()));
   }
 }

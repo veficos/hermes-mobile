@@ -49,16 +49,26 @@ class SessionSurfaceState {
     this.projectionRevision = 0,
   }) : messages = List.unmodifiable(messages);
 
+  const SessionSurfaceState._immutable({
+    required this.sessionId,
+    required this.owner,
+    required this.messages,
+    required this.sendState,
+    required this.awaitingInput,
+    required this.transcriptRevision,
+    required this.projectionRevision,
+  });
+
   SessionSurfaceState copyWith({
     List<ChatMessage>? messages,
     SessionSendState? sendState,
     bool? awaitingInput,
     int? transcriptRevision,
     int? projectionRevision,
-  }) => SessionSurfaceState(
+  }) => SessionSurfaceState._immutable(
     sessionId: sessionId,
     owner: owner,
-    messages: messages ?? this.messages,
+    messages: messages == null ? this.messages : List.unmodifiable(messages),
     sendState: sendState ?? this.sendState,
     awaitingInput: awaitingInput ?? this.awaitingInput,
     transcriptRevision: transcriptRevision ?? this.transcriptRevision,
@@ -80,7 +90,7 @@ class SessionSurfaceStore extends ChangeNotifier {
 
   void updatePhase(String id, OwnerRoute owner, SessionSendState phase) {
     final current = _states[id];
-    final next = current == null
+    final next = current == null || current.owner != owner
         ? SessionSurfaceState(sessionId: id, owner: owner, sendState: phase)
         : current.copyWith(sendState: phase);
     _states[id] = next;
@@ -97,10 +107,12 @@ class SessionSurfaceStore extends ChangeNotifier {
   void publishTranscript({
     required String id,
     required OwnerRoute owner,
-    required List<ChatMessage> messages,
+    List<ChatMessage>? messages,
+    List<ChatMessage> Function()? messagesBuilder,
     required int revision,
     bool awaitingInput = false,
   }) {
+    assert((messages == null) != (messagesBuilder == null));
     final current = _states[id];
     if (current != null &&
         current.transcriptRevision == revision &&
@@ -111,8 +123,11 @@ class SessionSurfaceStore extends ChangeNotifier {
     _states[id] = SessionSurfaceState(
       sessionId: id,
       owner: owner,
-      messages: messages,
-      sendState: current?.sendState ?? SessionSendState.idle,
+      // Delay streaming materialization until revision deduplication passes.
+      messages: messages ?? messagesBuilder!(),
+      sendState: current?.owner == owner
+          ? current!.sendState
+          : SessionSendState.idle,
       awaitingInput: awaitingInput,
       transcriptRevision: revision,
       projectionRevision: current?.projectionRevision ?? 0,

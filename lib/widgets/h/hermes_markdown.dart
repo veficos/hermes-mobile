@@ -70,7 +70,8 @@ MarkdownStyleSheet hermesMarkdownStyle(
     ),
     blockquoteDecoration: BoxDecoration(
       border: Border(left: BorderSide(color: accent, width: 3)),
-      color: accent.withValues(alpha: 0.04),
+      // 高对比：4% accent 底近乎不可见，提升至 ~7%。
+      color: accent.withValues(alpha: hermesTintAlpha(context, 0.04)),
       borderRadius: const BorderRadius.only(
         topRight: Radius.circular(10),
         bottomRight: Radius.circular(10),

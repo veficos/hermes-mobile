@@ -19,6 +19,7 @@ import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 class BillingScreen extends StatefulWidget {
   final bool embedded;
@@ -763,18 +764,16 @@ class _BillingScreenState extends State<BillingScreen>
         : _billing == null
         ? HermesErrorState(description: _error, onRetry: _load)
         : _content();
-    if (widget.embedded) return body;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.billingTitle),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.billingTitle,
+      showAppBar: !widget.embedded,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _busy ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: body,
     );
   }

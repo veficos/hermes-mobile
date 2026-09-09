@@ -206,17 +206,15 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
       'image': _imageDataUrl,
     };
     final busy = _saving || _uploading || _generating;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.agentEditAvatarMenuItem),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.shuffle),
-            tooltip: context.l10n.avatarEditorRandomize,
-            onPressed: busy ? null : _randomize,
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.agentEditAvatarMenuItem,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.shuffle),
+          tooltip: context.l10n.avatarEditorRandomize,
+          onPressed: busy ? null : _randomize,
+        ),
+      ],
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [

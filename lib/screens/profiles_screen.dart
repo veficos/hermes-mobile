@@ -330,9 +330,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
               );
               if (!mounted) return;
               await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => BotRoutinesScreen(bot: bot),
-                ),
+                MaterialPageRoute(builder: (_) => BotRoutinesScreen(bot: bot)),
               );
             },
             child: Text(context.l10n.profilesModelChangeViewRoutines),
@@ -688,36 +686,33 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: widget.embedded
-          ? null
-          : AppBar(
-              title: Text(context.l10n.profilesTitle),
-              actions: [
-                if (widget.fixedProfile == null) ...[
-                  IconButton(
-                    tooltip: context.l10n.profilesImport,
-                    onPressed: _transferring ? null : _importProfile,
-                    icon: _transferring
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.file_upload_outlined),
-                  ),
-                  IconButton(
-                    tooltip: context.l10n.profilesNew,
-                    onPressed: () => _openEditor(),
-                    icon: const Icon(Icons.add),
-                  ),
-                ],
-                IconButton(
-                  tooltip: context.l10n.commonRefresh,
-                  onPressed: _load,
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
-            ),
+    return MobilePageScaffold(
+      title: context.l10n.profilesTitle,
+      showAppBar: !widget.embedded,
+      actions: [
+        if (widget.fixedProfile == null) ...[
+          IconButton(
+            tooltip: context.l10n.profilesImport,
+            onPressed: _transferring ? null : _importProfile,
+            icon: _transferring
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.file_upload_outlined),
+          ),
+          IconButton(
+            tooltip: context.l10n.profilesNew,
+            onPressed: () => _openEditor(),
+            icon: const Icon(Icons.add),
+          ),
+        ],
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: _loading
           ? HermesLoadingState(label: context.l10n.profilesLoading)
           : _error != null

@@ -98,18 +98,29 @@ class _StreamingInlineContentRendererState
   final IncrementalStreamingMarkdownScanner _scanner =
       IncrementalStreamingMarkdownScanner();
   final List<String> _stableBlocks = <String>[];
+  final List<Widget> _stableWidgets = <Widget>[];
+
+  Widget _stableWidget(int index) => InlineContentRenderer(
+    key: ValueKey('stream-block-$index'),
+    text: linkifySessionRefs(
+      _stableBlocks[index],
+      titleOf: widget.sessionTitleOf,
+    ),
+    selectable: widget.selectable,
+  );
   int oldScannedLength = 0;
   String _displayedText = '';
   Timer? _paceTimer;
+  String? _countedTarget;
+  int _remainingUnits = 0;
+  int _revealTicksLeft = 0;
 
   @override
   void initState() {
     super.initState();
-    // Start at an empty prefix so a provider that puts the first whole burst
-    // in one event is paced too. On completion this streaming renderer is
-    // replaced by the regular renderer, which shows the authoritative final
-    // text immediately.
-    _displayedText = '';
+    // Paint already-received text immediately on mount (including remounts
+    // while scrolling). Only subsequent additions need a paced reveal.
+    _displayedText = widget.text;
   }
 
   @override
@@ -121,18 +132,46 @@ class _StreamingInlineContentRendererState
   @override
   void didUpdateWidget(covariant StreamingInlineContentRenderer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.text.startsWith(oldWidget.text)) {
+    if (_displayedText.isEmpty && widget.text.isNotEmpty) {
+      _displayedText = widget.text;
+    } else if (!widget.text.startsWith(oldWidget.text)) {
       _stableBlocks.clear();
+      _stableWidgets.clear();
       _scanner.reset();
       oldScannedLength = 0;
       _displayedText = widget.text;
+      _countedTarget = null;
     } else if (widget.text.length > _displayedText.length) {
       _schedulePace();
+    }
+    if (oldWidget.selectable != widget.selectable) {
+      _stableWidgets
+        ..clear()
+        ..addAll(List.generate(_stableBlocks.length, _stableWidget));
+    } else if (oldWidget.sessionTitleOf != widget.sessionTitleOf) {
+      // Parents commonly allocate a new resolver closure on each token.
+      // Only reference-bearing blocks can change, and equal resolved text
+      // should retain the existing widget configuration.
+      for (var i = 0; i < _stableBlocks.length; i++) {
+        if (!_stableBlocks[i].contains('@session:')) continue;
+        final resolved = linkifySessionRefs(
+          _stableBlocks[i],
+          titleOf: widget.sessionTitleOf,
+        );
+        if ((_stableWidgets[i] as InlineContentRenderer).text != resolved) {
+          _stableWidgets[i] = _stableWidget(i);
+        }
+      }
     }
   }
 
   void _schedulePace() {
     if (_paceTimer != null) return;
+    _revealTicksLeft =
+        (_maxRevealLag.inMicroseconds ~/ _wordCadence.inMicroseconds).clamp(
+          1,
+          1000,
+        );
     _paceTimer = Timer.periodic(_wordCadence, (_) {
       if (!mounted) return;
       final target = widget.text;
@@ -147,12 +186,20 @@ class _StreamingInlineContentRendererState
       // of leaving the UI many seconds behind the network stream (Hermex's
       // lag-bound word drain behaves the same way).
       final remainder = target.substring(cursor);
-      final quota = StreamingWordDrain.drainQuota(
-        backlogUnitCount: StreamingWordDrain.unitCount(remainder),
-        cadence: _wordCadence,
-        maxLag: _maxRevealLag,
+      if (!identical(_countedTarget, target)) {
+        _countedTarget = target;
+        _remainingUnits = StreamingWordDrain.unitCount(remainder);
+      }
+      // Spend the remaining cadence budget instead of repeatedly granting
+      // the shrinking backlog a fresh 600ms. New tokens do not postpone
+      // completion of a burst already being displayed.
+      final quota = (_remainingUnits / _revealTicksLeft).ceil().clamp(
+        1,
+        _remainingUnits.clamp(1, 1 << 30),
       );
+      _revealTicksLeft = (_revealTicksLeft - 1).clamp(1, 1000);
       final take = StreamingWordDrain.splitOffset(remainder, quota);
+      _remainingUnits = (_remainingUnits - quota).clamp(0, _remainingUnits);
       setState(() {
         _displayedText = target.substring(0, cursor + take);
       });
@@ -163,17 +210,23 @@ class _StreamingInlineContentRendererState
   Widget build(BuildContext context) {
     // Keep the active tail readable while smoothing large token bursts. The
     // final target is always reached verbatim, so pacing cannot lose content.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _paceTimer?.cancel();
+      _paceTimer = null;
+      _displayedText = widget.text;
+    }
     if (_displayedText.length < widget.text.length) _schedulePace();
     final sourceText = _displayedText;
-    final added = _scanner.update(sourceText);
+    // didUpdateWidget resets the scanner on source replacement; the pacing
+    // cursor only advances through that validated source between updates.
+    final added = _scanner.update(sourceText, appendOnly: true);
     final metrics = ClientPerformanceMetrics.instance;
     metrics.markdownScannedChars += (sourceText.length - oldScannedLength)
         .clamp(0, sourceText.length);
     oldScannedLength = sourceText.length;
     for (final block in added) {
-      _stableBlocks.add(
-        linkifySessionRefs(block, titleOf: widget.sessionTitleOf),
-      );
+      _stableBlocks.add(block);
+      _stableWidgets.add(_stableWidget(_stableBlocks.length - 1));
       ClientPerformanceMetrics.instance.streamingStablePrefixChars +=
           block.length;
     }
@@ -185,12 +238,10 @@ class _StreamingInlineContentRendererState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var index = 0; index < _stableBlocks.length; index++)
-          InlineContentRenderer(
-            key: ValueKey('stream-block-$index'),
-            text: _stableBlocks[index],
-            selectable: widget.selectable,
-          ),
+        // Reuse immutable widget configurations so a tail update does not
+        // rebuild completed Markdown. Inherited theme changes still rebuild
+        // the dependent descendants normally.
+        ..._stableWidgets,
         if (tail.isNotEmpty)
           InlineContentRenderer(
             text: remendStreamingMarkdown(tail),
@@ -361,6 +412,13 @@ class _TextNode extends StatefulWidget {
 
 class _TextNodeState extends State<_TextNode> {
   bool _expanded = false;
+  final ScrollController _expandedScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _expandedScrollController.dispose();
+    super.dispose();
+  }
 
   Widget _markdown(BuildContext context, String data) => MarkdownBody(
     data: prettifyBareLinks(upgradeImageLinks(data)),
@@ -394,7 +452,23 @@ class _TextNodeState extends State<_TextNode> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _markdown(context, text),
+        SizedBox(
+          height: 480,
+          child: Markdown(
+            key: const ValueKey('expanded-markdown-viewport'),
+            controller: _expandedScrollController,
+            data: prettifyBareLinks(upgradeImageLinks(text)),
+            selectable: widget.selectable,
+            padding: EdgeInsets.zero,
+            styleSheet: hermesMarkdownStyle(context, compact: true),
+            extensionSet: md.ExtensionSet.gitHubFlavored,
+            builders: {'table': ResizableMarkdownTableBuilder()},
+            sizedImageBuilder: hermesMarkdownImageBuilder,
+            onTapLink: (_, href, _) {
+              if (href != null && href.isNotEmpty) openChatLink(context, href);
+            },
+          ),
+        ),
         TextButton.icon(
           onPressed: () => setState(() => _expanded = false),
           icon: const Icon(Icons.expand_less),

@@ -159,6 +159,7 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
   String? _error;
   bool _loading = false;
   final _address = TextEditingController();
+  final _addressFocus = FocusNode();
   final _script = TextEditingController();
   bool _canGoBack = false;
   bool _canGoForward = false;
@@ -190,6 +191,7 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
       );
     } catch (_) {}
     _address.dispose();
+    _addressFocus.dispose();
     _script.dispose();
     super.dispose();
   }
@@ -339,7 +341,8 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
     final forward = await controller.canGoForward();
     if (!mounted) return;
     setState(() {
-      if (url != null) _address.text = url;
+      // Don't clobber the address field while the user is typing in it.
+      if (url != null && !_addressFocus.hasFocus) _address.text = url;
       _canGoBack = back;
       _canGoForward = forward;
     });
@@ -888,6 +891,7 @@ class _WebPreviewPaneState extends State<WebPreviewPane>
                 Expanded(
                   child: TextField(
                     controller: _address,
+                    focusNode: _addressFocus,
                     decoration: const InputDecoration(isDense: true),
                     maxLines: 1,
                     textInputAction: TextInputAction.go,

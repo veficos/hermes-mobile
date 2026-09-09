@@ -214,6 +214,33 @@ class _ChatRig {
     await tester.pump();
     await tester.pump();
     expect(session.durableId, 'sid-1');
+    // The fake gateway has no transcript event carrying a durable row id.
+    // Model the accepted server row here so message-menu actions exercise the
+    // same persisted-message contract as production.
+    final accepted = chat.messages.map((message) {
+      if (message.role != 'user' || message.rowId != null) return message;
+      return ChatMessage(
+        id: message.id,
+        role: message.role,
+        parts: message.parts,
+        pending: false,
+        interim: message.interim,
+        isError: message.isError,
+        errorSurface: message.errorSurface,
+        durationS: message.durationS,
+        attachmentRefs: message.attachmentRefs,
+        rowId: 1,
+        historyOrdinal: message.historyOrdinal ?? 0,
+        timestamp: message.timestamp,
+        source: message.source,
+        model: message.model,
+        provider: message.provider,
+        usage: message.usage,
+        reactions: message.reactions,
+      );
+    }).toList();
+    chat.loadHistory(accepted, hasMore: false);
+    await tester.pump();
   }
 }
 
@@ -307,10 +334,15 @@ void main() {
       expect(submits, hasLength(2));
       expect(submits.last['text'], 'edited turn');
       expect(submits.last['confirm_truncate'], isTrue);
-      expect(submits.last['truncate_before_user_ordinal'], 0);
+      // Persisted messages rewind by stable row id; ordinal is the legacy
+      // fallback used only when a transcript row has no server id.
+      expect(submits.last['truncate_before_row_id'], 1);
       // Editor is gone after submit.
       expect(find.text('发送编辑'), findsNothing);
-      expect(find.text('edited turn'), findsOneWidget);
+      expect(
+        rig.chat.messages.any((message) => message.fullText == 'edited turn'),
+        isTrue,
+      );
 
       rig.connection.dispose();
     });

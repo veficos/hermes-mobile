@@ -102,7 +102,13 @@ orange，failed→red（`HermesAgentStatus.color`）。工具状态映射见 `He
 
 - 一级文字拉满纯黑（浅色）/ 纯白（深色），二级文字 `#1F232B` / `#EFF2F6`；
 - 边框升级为 `borderStrong` 且加粗至 1.5px；
-- accent 不变。
+- accent 不变；
+- 高对比开关经 `HermesA11y` ThemeExtension 下发（`HermesA11y.highContrastOf`），
+  组件层据此调整：浅透明度语义底（§3.6 的 10%/18% 等）经 `hermesTintAlpha()`
+  ×1.8（封顶 0.6）；纯色块上的文字（如 `HermesBadge`）用
+  `hermesContrastForeground()` 取黑/白中对比度更高者；骨架屏呼吸块底色透明度
+  同步提升、边框升级 borderStrong 1.5px；`HermesProgressBar` 轨道底色升级
+  borderStrong。浅色模式投影保留（边框已承担层级，投影仅作深度修饰）。
 
 外观偏好（明暗模式 / 主题配色 / 高对比）由 `AppearanceStore` 持久化（见 §8）。
 
@@ -256,7 +262,8 @@ chip 表达。
 统一的空/错/加载组件（`hermes_states.dart`）：
 
 - **空态**（`HermesEmptyState`）：64px 线性图标 text-4 + title 标题 + callout 描述 +
-  可选 Primary 按钮，垂直居中。
+  可选 Primary 按钮，垂直居中。图标尺寸/颜色可经 `iconSize`/`iconColor` 覆写，
+  自定义行动区（如 starter prompt chips）经 `actions` 参数追加在内置按钮之后。
 - **错误态**（`HermesErrorState`）：error 图标 + 标题 + 描述 + 重试（Secondary）+
   可选替代操作。
 - **加载态**（`HermesLoadingState`）：骨架屏优先于 spinner —— surface 底上叠加 6%

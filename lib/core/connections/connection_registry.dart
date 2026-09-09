@@ -175,9 +175,14 @@ class ConnectionRuntime {
       onStateChanged?.call(this);
       if (reclaim) onReconnected?.call(this);
     } catch (e) {
-      phase = RuntimePhase.disconnected;
+      final authenticationFailure =
+          e is GatewayException && e.code == gatewayAuthenticationFailedCode;
+      phase = authenticationFailure
+          ? RuntimePhase.exhausted
+          : RuntimePhase.reconnecting;
       error = '$e';
       onStateChanged?.call(this);
+      if (!authenticationFailure) _scheduleReconnect();
       rethrow;
     }
   }

@@ -22,6 +22,7 @@ import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
 import '../../widgets/chat_enter_to_send.dart';
 import '../mobile/hermes_adaptive_menu.dart';
+import '../chat_content_column.dart';
 
 // =====================================================================
 // Data models
@@ -476,7 +477,10 @@ class _HermesComposerState extends State<HermesComposer> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(8, 4, 8, keyboardInset > 0 ? 6 : 10),
+        padding: EdgeInsets.fromLTRB(
+          ChatContentColumn.gutter, 4, ChatContentColumn.gutter,
+          keyboardInset > 0 ? 6 : 10,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1071,7 +1075,9 @@ class _SelectorIconButton extends StatelessWidget {
           child: Center(
             child: Material(
               color: selected
-                  ? colors.primary.withValues(alpha: 0.14)
+                  ? colors.primary.withValues(
+                      alpha: hermesTintAlpha(context, 0.14),
+                    )
                   : Colors.transparent,
               shape: CircleBorder(
                 side: selected
@@ -1556,10 +1562,10 @@ class _AttachmentsRow extends StatelessWidget {
                                 width: 58,
                                 height: 68,
                                 decoration: BoxDecoration(
-                                  color: _fileColor(
-                                    att,
-                                    palette.accent,
-                                  ).withValues(alpha: .14),
+                                  color: _fileColor(att, palette.accent)
+                                      .withValues(
+                                        alpha: hermesTintAlpha(context, .14),
+                                      ),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Column(

@@ -218,8 +218,10 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       );
     }
     final tasks = store.filteredTasks;
-    return MobilePageScaffold(
+    return HermesPageScaffold(
       title: context.l10n.taskTitle,
+      titleMode: HermesPageTitleMode.large,
+      maxContentWidth: HermesLayout.workspace,
       body: Column(
         children: [
           Padding(
@@ -545,9 +547,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                 if (_taskProgress(task) case final progress?) ...[
                   const SizedBox(height: 9),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(
-                      HermesRadius.smallCard,
-                    ),
+                    borderRadius: BorderRadius.circular(HermesRadius.smallCard),
                     child: LinearProgressIndicator(
                       minHeight: 7,
                       value: progress,
@@ -823,9 +823,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
               children: [
                 Text(
                   context.l10n.taskOrchestration,
-                  style: HermesType.title.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: HermesType.title.copyWith(fontWeight: FontWeight.bold),
                 ),
                 DropdownButtonFormField<String>(
                   dropdownColor: hermesDropdownColor(context),

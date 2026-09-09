@@ -2,6 +2,51 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/performance_metrics.dart';
 
 void main() {
+  test(
+    'frame diagnostics respect pipeline stages and display refresh rate',
+    () {
+      final metrics = ClientPerformanceMetrics.instance;
+      final before = metrics.slowFrames;
+      metrics.recordFrame(
+        buildMicros: 10000,
+        rasterMicros: 10000,
+        refreshRate: 60,
+      );
+      expect(metrics.slowFrames, before);
+      metrics.recordFrame(
+        buildMicros: 9000,
+        rasterMicros: 1000,
+        refreshRate: 120,
+      );
+      expect(metrics.slowFrames, before + 1);
+      metrics.recordFrame(
+        buildMicros: 1000,
+        rasterMicros: 9000,
+        refreshRate: 120,
+      );
+      expect(metrics.slowFrames, before + 2);
+      metrics.recordFrame(
+        buildMicros: 10000,
+        rasterMicros: 10000,
+        refreshRate: double.nan,
+      );
+      expect(metrics.slowFrames, before + 2);
+      expect(metrics.frameBudgetMicros, closeTo(16666.67, .01));
+    },
+  );
+
+  test('frame percentiles retain only the most recent bounded samples', () {
+    final samples = FrameDurationWindow(capacity: 100);
+    expect(samples.percentile(.95), 0);
+    for (var i = 1; i <= 200; i++) {
+      samples.add(i);
+    }
+    expect(samples.length, 100);
+    expect(samples.percentile(.95), 195);
+    expect(samples.percentile(.99), 199);
+    expect(samples.percentile(1), 200);
+  });
+
   test('client performance snapshot exposes bounded diagnostic groups', () {
     final metrics = ClientPerformanceMetrics.instance;
     final before = metrics.rpcCompleted;

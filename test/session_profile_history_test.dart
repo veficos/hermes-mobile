@@ -1007,7 +1007,13 @@ void main() {
     });
 
     await store.resumeSession('expert-session', profile: 'experts');
-    await store.loadOlderMessages();
+    var captures = 0;
+    final before = chat.messages.map((message) => message.id).toList();
+    await store.loadOlderMessages(beforeApply: () {
+      captures++;
+      expect(chat.messages.map((message) => message.id), before);
+    });
+    expect(captures, 1);
 
     expect(api.calls.last.$1, '/api/v1/sessions/expert-session/messages');
     expect(api.calls.last.$2, {
@@ -1016,5 +1022,7 @@ void main() {
       'profile': 'experts',
     });
     expect(chat.messages.first.fullText, 'older expert history');
+    await store.loadOlderMessages(beforeApply: () => captures++);
+    expect(captures, 1);
   });
 }

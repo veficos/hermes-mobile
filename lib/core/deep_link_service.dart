@@ -2,6 +2,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:collection';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
@@ -125,17 +126,19 @@ DeepLinkAction resolveDeepLink(HermesDeepLink link) {
     return _parseMcp(link.params);
   }
 
-  final identifier =
-      (link.params['repo'] ?? link.params['identifier'] ?? link.name).trim();
+  final installIdentifier =
+      (link.params['repo'] ?? link.params['identifier'] ?? '').trim();
   if (link.kind == 'plugin' &&
       link.name == 'install' &&
-      identifier.isNotEmpty) {
+      installIdentifier.isNotEmpty) {
     return PluginInstallDeepLinkAction(
-      identifier: identifier,
+      identifier: installIdentifier,
       enable: _truthy(link.params['enable'], fallback: true),
       force: _truthy(link.params['force']),
     );
   }
+  final identifier =
+      (link.params['repo'] ?? link.params['identifier'] ?? link.name).trim();
   if ((link.kind == 'plugin-agent' || link.kind == 'plugin-desktop') &&
       identifier.isNotEmpty) {
     return PluginInstallDeepLinkAction(
@@ -216,16 +219,18 @@ class DeepLinkService {
 
   final AppLinks _appLinks;
   StreamSubscription<Uri>? _subscription;
-  HermesDeepLink? _pending;
+  final Queue<HermesDeepLink> _pending = Queue();
+  String? _lastAcceptedUri;
+  DateTime? _lastAcceptedAt;
   ValueChanged<HermesDeepLink>? _handler;
   late final Future<void> initialized;
 
   set handler(ValueChanged<HermesDeepLink>? value) {
     _handler = value;
-    final pending = _pending;
-    if (value != null && pending != null) {
-      _pending = null;
-      value(pending);
+    if (value != null) {
+      while (_pending.isNotEmpty) {
+        value(_pending.removeFirst());
+      }
     }
   }
 
@@ -240,11 +245,20 @@ class DeepLinkService {
   }
 
   void _accept(Uri uri) {
+    final now = DateTime.now();
+    final identity = uri.toString();
+    if (_lastAcceptedUri == identity &&
+        _lastAcceptedAt != null &&
+        now.difference(_lastAcceptedAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastAcceptedUri = identity;
+    _lastAcceptedAt = now;
     final parsed = HermesDeepLink.parse(uri);
     if (parsed == null) return;
     final callback = _handler;
     if (callback == null) {
-      _pending = parsed;
+      _pending.addLast(parsed);
     } else {
       callback(parsed);
     }

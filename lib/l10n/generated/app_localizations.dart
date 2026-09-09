@@ -103,6 +103,18 @@ abstract class AppLocalizations {
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
   ];
 
+  /// No description provided for @chatTurnLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn'**
+  String get chatTurnLabel;
+
+  /// No description provided for @chatCurrentTurnLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Current turn · {label}'**
+  String chatCurrentTurnLabel(String label);
+
   /// No description provided for @commonCopyFailed.
   ///
   /// In en, this message translates to:
@@ -12946,6 +12958,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'File name'**
   String get filesFileName;
+
+  /// Shown when a new file, new folder, or rename name contains path separators or parent traversal.
+  ///
+  /// In en, this message translates to:
+  /// **'Names cannot contain /, \\ or ..'**
+  String get filesInvalidName;
 
   /// No description provided for @filesCreateFileFailed.
   ///

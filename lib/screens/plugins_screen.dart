@@ -15,6 +15,7 @@ import '../l10n/l10n.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/plugin_contribution_surface.dart' show pluginToneColor;
 import '../widgets/profile_scope_selector.dart';
 
@@ -273,22 +274,20 @@ class _PluginsScreenState extends State<PluginsScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.featurePlugins),
-        actions: [
-          IconButton(
-            tooltip: l10n.configCenterInstallPlugin,
-            onPressed: _busyName.isEmpty ? _install : null,
-            icon: const Icon(Icons.add),
-          ),
-          IconButton(
-            tooltip: l10n.commonRefresh,
-            onPressed: _busyName.isNotEmpty ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: l10n.featurePlugins,
+      actions: [
+        IconButton(
+          tooltip: l10n.configCenterInstallPlugin,
+          onPressed: _busyName.isEmpty ? _install : null,
+          icon: const Icon(Icons.add),
+        ),
+        IconButton(
+          tooltip: l10n.commonRefresh,
+          onPressed: _busyName.isNotEmpty ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: _buildBody(context),
     );
   }

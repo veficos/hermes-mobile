@@ -13,6 +13,7 @@ import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_composer.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 /// Phone-native counterpart of Desktop's floating composer. This route edits
 /// the exact same controller and attachment list as the docked composer, so
@@ -171,27 +172,25 @@ class _FocusComposerScreenState extends State<FocusComposerScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: context.l10n.commonClose,
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.keyboard_arrow_down),
-        ),
-        title: Text(context.l10n.chatEditMessageHint),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.previewTitle,
-            onPressed: () => setState(() => _preview = !_preview),
-            icon: Icon(_preview ? Icons.edit_outlined : Icons.preview_outlined),
-          ),
-          TextButton(
-            onPressed: widget.readOnly ? null : _send,
-            child: Text(context.l10n.commonSend),
-          ),
-          const SizedBox(width: 6),
-        ],
+    return MobilePageScaffold(
+      leading: IconButton(
+        tooltip: context.l10n.commonClose,
+        onPressed: () => Navigator.of(context).pop(),
+        icon: const Icon(Icons.keyboard_arrow_down),
       ),
+      title: context.l10n.chatEditMessageHint,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.previewTitle,
+          onPressed: () => setState(() => _preview = !_preview),
+          icon: Icon(_preview ? Icons.edit_outlined : Icons.preview_outlined),
+        ),
+        TextButton(
+          onPressed: widget.readOnly ? null : _send,
+          child: Text(context.l10n.commonSend),
+        ),
+        const SizedBox(width: 6),
+      ],
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

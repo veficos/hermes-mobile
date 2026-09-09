@@ -9,6 +9,7 @@
 library;
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -139,16 +140,16 @@ class NotificationsService {
   int _nextId = 1;
   final Map<String, int> _keyToId = {};
   final Set<String> _showingIds = {};
-  NotificationTarget? _pendingTarget;
+  final Queue<NotificationTarget> _pendingTargets = Queue();
   ValueChanged<NotificationTarget>? _onTapTarget;
   late final Future<void> initialized;
 
   set onTapTarget(ValueChanged<NotificationTarget>? callback) {
     _onTapTarget = callback;
-    final pending = _pendingTarget;
-    if (callback != null && pending != null) {
-      _pendingTarget = null;
-      callback(pending);
+    if (callback != null) {
+      while (_pendingTargets.isNotEmpty) {
+        callback(_pendingTargets.removeFirst());
+      }
     }
   }
 
@@ -310,7 +311,7 @@ class NotificationsService {
   void _dispatchTarget(NotificationTarget target) {
     final callback = _onTapTarget;
     if (callback == null) {
-      _pendingTarget = target;
+      _pendingTargets.addLast(target);
     } else {
       callback(target);
     }

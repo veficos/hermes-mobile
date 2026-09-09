@@ -2373,6 +2373,7 @@
   "filesDeleteFailed": "刪除失敗：{error}",
   "filesNewFile": "新增檔案",
   "filesFileName": "檔案名稱",
+  "filesInvalidName": "Names cannot contain /, \\ or ..",
   "filesCreateFileFailed": "無法建立檔案：{error}",
   "filesNewSessionPrompt": "請查看並處理以下檔案：\n{references}",
   "filesNewFolder": "新增資料夾",

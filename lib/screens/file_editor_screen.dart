@@ -37,10 +37,13 @@ class FileEditorScreen extends StatefulWidget {
   });
 
   @override
-  State<FileEditorScreen> createState() => _FileEditorScreenState();
+  State<FileEditorScreen> createState() => FileEditorScreenState();
 }
 
-class _FileEditorScreenState extends State<FileEditorScreen>
+/// Public so the tablet split view (FilesScreen) can hold a
+/// `GlobalKey<FileEditorScreenState>` and guard unsaved edits before swapping
+/// the embedded editor.
+class FileEditorScreenState extends State<FileEditorScreen>
     with ConnectionReloadMixin<FileEditorScreen> {
   final TextEditingController _ctrl = TextEditingController();
   final ScrollController _editorScroll = ScrollController();
@@ -82,12 +85,12 @@ class _FileEditorScreenState extends State<FileEditorScreen>
   }
 
   Future<void> _findInFile() async {
+    final controller = TextEditingController(text: _findQuery);
+    final replacement = TextEditingController();
     final result =
         await showDialog<({String query, String replacement, bool replaceAll})>(
           context: context,
           builder: (ctx) {
-            final controller = TextEditingController(text: _findQuery);
-            final replacement = TextEditingController();
             return AlertDialog(
               title: Text(context.l10n.fileEditorFindReplaceTitle),
               content: Column(
@@ -133,6 +136,14 @@ class _FileEditorScreenState extends State<FileEditorScreen>
             );
           },
         );
+    // Deferred: the dialog's exit transition can still be rebuilding these
+    // TextFields for a frame or two after showDialog's Future resolves —
+    // disposing synchronously here races that and throws "used after being
+    // disposed".
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+      replacement.dispose();
+    });
     if (!mounted || result == null || result.query.isEmpty) return;
     final query = result.query;
     if (result.replaceAll) {
@@ -353,6 +364,12 @@ class _FileEditorScreenState extends State<FileEditorScreen>
     );
     return result == true;
   }
+
+  /// Embedded (tablet split) mode has no route of its own, so the PopScope
+  /// below cannot guard it. The host split view calls this before swapping or
+  /// unmounting the editor; resolves true when it is safe to proceed (not
+  /// dirty, or the user chose to discard).
+  Future<bool> confirmDiscardIfDirty() => _confirmDiscard();
 
   Future<_ConflictChoice?> _showConflictDialog({
     required String onDisk,

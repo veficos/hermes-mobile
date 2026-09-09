@@ -289,6 +289,23 @@ void main() {
   });
 
   group('RequestSheet', () {
+    test('socket request inherits known profile only on its own connection', () {
+      final requests = RequestStore();
+      addTearDown(requests.dispose);
+      const owner = OwnerRoute(connectionId: ConnectionId('a'), profile: 'work');
+      requests.bindScopeResolver((_) => (route: owner, durableId: 'stored'));
+      requests.enqueue(PendingRequest(
+        kind: RequestKind.approval, requestId: 'r', sessionId: 'runtime',
+        ownerRoute: const OwnerRoute(connectionId: ConnectionId('a')),
+      ));
+      expect(requests.byId('r', ownerRoute: owner, sessionId: 'stored'), isNotNull);
+      requests.enqueue(PendingRequest(
+        kind: RequestKind.approval, requestId: 'other', sessionId: 'runtime',
+        ownerRoute: const OwnerRoute(connectionId: ConnectionId('b')),
+      ));
+      expect(requests.byId('other', ownerRoute: owner), isNull);
+      expect(requests.pendingRequests.last.durableSessionId, isNull);
+    });
     Future<
       ({
         Widget app,
@@ -301,6 +318,7 @@ void main() {
       required RequestStore requests,
       Locale locale = const Locale('zh'),
       TextScaler textScaler = TextScaler.noScaling,
+      bool embedded = false,
     }) async {
       SharedPreferences.setMockInitialValues({});
       final api = _FakeApi();
@@ -327,7 +345,8 @@ void main() {
             data: MediaQuery.of(context).copyWith(textScaler: textScaler),
             child: child!,
           ),
-          home: const Scaffold(body: RequestSheet()),
+          home: Scaffold(body: RequestSheet(embedded: embedded,
+              requestId: embedded ? 'inline-approval' : null)),
         ),
       );
       return (
@@ -396,6 +415,25 @@ void main() {
         TextDirection.rtl,
       );
       semantics.dispose();
+    });
+
+    testWidgets('inline approval resolves runtime scope and missing choices', (tester) async {
+      final requests = RequestStore();
+      addTearDown(requests.dispose);
+      final ctx = await buildApp(requests: requests, embedded: true);
+      requests.enqueue(PendingRequest(
+        kind: RequestKind.approval, requestId: 'inline-approval',
+        sessionId: 'runtime-current-session', command: 'echo approved',
+      ));
+      await tester.pumpWidget(ctx.app);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('允许一次'));
+      await tester.pumpAndSettle();
+      final call = ctx.gateway.calls.firstWhere((c) => c.$1 == 'approval.respond');
+      expect(call.$2['session_id'], 'runtime-current-session');
+      expect(call.$2['request_id'], 'inline-approval');
+      expect(call.$2['choice'], 'once');
+      expect(requests.pendingCount, 0);
     });
 
     testWidgets('respond targets the request own session id', (tester) async {

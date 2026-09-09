@@ -188,6 +188,50 @@ void main() {
     expect(refreshes, 0);
   });
 
+  testWidgets('pin success shows a success toast, not a red failure bar', (
+    tester,
+  ) async {
+    final store = _RecordingSessionStore();
+    addTearDown(store.dispose);
+    late BuildContext pageContext;
+    await tester.pumpWidget(
+      ChangeNotifierProvider<SessionStore>.value(
+        value: store,
+        child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                pageContext = context;
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    unawaited(
+      SessionRowActions.show(
+        pageContext,
+        session: SessionRow(id: 'session-pin', title: 'Pin me'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('置顶'));
+    // Let the sheet dismiss and the action run, but don't settle past the
+    // toast's 2400ms auto-dismiss timer.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(store.pinnedId, 'session-pin');
+    expect(find.text(AppLocalizationsZh().sessionActionPinned), findsOneWidget);
+  });
+
   testWidgets('rename permits clearing a stored title like desktop', (
     tester,
   ) async {

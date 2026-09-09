@@ -323,6 +323,13 @@ class _MessageBubbleBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          _buildContent(context, constraints.maxWidth),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, double availableWidth) {
     final theme = Theme.of(context);
     final palette = HermesPalette.of(context);
     final isUser = message.role == 'user';
@@ -357,9 +364,8 @@ class _MessageBubbleBody extends StatelessWidget {
 
     if (isUser) {
       // §6.5 用户气泡：bubbleUser 实底 + bubbleUserText 字，r-bubble 14
-      //（右下 4px 小角），最大宽 78%（手机）/720px（桌面），气泡间距 20。
-      final width = MediaQuery.sizeOf(context).width;
-      final maxWidth = width >= 840 ? 720.0 : width * 0.78;
+      //（右下 4px 小角），最大宽为当前内容列的 78%，气泡间距 20。
+      final maxWidth = availableWidth * .78;
       final versionBar = turnVersionTotal > 1
           ? _TurnVersionBar(
               total: turnVersionTotal,
@@ -519,12 +525,7 @@ class _MessageBubbleBody extends StatelessWidget {
     }
 
     // Assistant role header stays outside the content bubble. The bubble
-    // itself follows the prototype: surface + border, 90% on phones and a
-    // readable cap on larger layouts.
-    final narrow = MediaQuery.sizeOf(context).width < 600;
-    final assistantMaxWidth = narrow
-        ? MediaQuery.sizeOf(context).width * .9
-        : 720.0;
+    // uses the same content-column edges as tool and activity cards.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
@@ -532,10 +533,10 @@ class _MessageBubbleBody extends StatelessWidget {
         children: [
           if (showRoleHeader) const _RoleHeader(),
           Padding(
-            padding: EdgeInsets.only(left: narrow ? 0 : 40, top: 6),
+            padding: EdgeInsets.only(top: showRoleHeader ? 6 : 0),
             child: Container(
               key: const ValueKey('assistant-message-bubble'),
-              constraints: BoxConstraints(maxWidth: assistantMaxWidth),
+              width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: palette.surface,

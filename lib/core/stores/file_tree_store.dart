@@ -588,15 +588,19 @@ class FileTreeStore extends ChangeNotifier {
     final api = _requireApi();
     final generation = _generation;
     final wasCut = _clipboardIsCut;
+    // Capture the destination once: re-reading `_cwd` per item would scatter
+    // a multi-file paste across directories if the user navigates while the
+    // loop is in flight (the generation guard only fires after an await).
+    final targetDir = _cwd;
     if (wasCut) {
       for (final path in paths) {
-        await api.fsMove(path, _cwd);
+        await api.fsMove(path, targetDir);
         if (!_isCurrent(api, generation)) return;
       }
       _clipboardPaths = null;
       _clipboardIsCut = false;
     } else {
-      await api.fsCopy(paths, _cwd);
+      await api.fsCopy(paths, targetDir);
       if (!_isCurrent(api, generation)) return;
     }
     _selection.clear();

@@ -76,6 +76,7 @@ class _GitScreenState extends State<GitScreen>
   int _initGeneration = 0;
   int _loadGeneration = 0;
   int _logGeneration = 0;
+  int _diffGeneration = 0;
   int _worktreeGeneration = 0;
   int _mutationGeneration = 0;
 
@@ -142,6 +143,7 @@ class _GitScreenState extends State<GitScreen>
     _worktreeGeneration++;
     _loadGeneration++;
     _logGeneration++;
+    _diffGeneration++;
     final api = _api;
     if (mounted) setState(() => _busy = false);
     if (api == null) {
@@ -154,6 +156,7 @@ class _GitScreenState extends State<GitScreen>
         _files = [];
         _branches = [];
         _logCommits = [];
+        _logTotal = 0;
       });
       return;
     }
@@ -186,6 +189,9 @@ class _GitScreenState extends State<GitScreen>
     final api = _api;
     if (api == null || _path.isEmpty) return;
     final path = _path;
+    // The selection is cleared below, so any in-flight diff write-back for it
+    // must not land afterwards.
+    _diffGeneration++;
     setState(() {
       _loading = true;
       _error = null;
@@ -286,8 +292,13 @@ class _GitScreenState extends State<GitScreen>
           path == _path) {
         setState(() {
           _logLoading = false;
-          _logCommits = [];
-          _logTotal = 0;
+          // A failed "load more" (append) keeps the commits already on
+          // screen; only a first/refresh load falls back to empty so
+          // revisiting the Commits tab retries from scratch.
+          if (!append) {
+            _logCommits = [];
+            _logTotal = 0;
+          }
         });
         showHermesErrorSnackBar(
           context,
@@ -371,7 +382,13 @@ class _GitScreenState extends State<GitScreen>
         ownerPath == _path) {
       _mutationGeneration++;
       _worktreeGeneration++;
-      setState(() => _path = picked);
+      setState(() {
+        _path = picked;
+        // The commit log belongs to the previous repository; clearing it
+        // forces the Commits tab to reload (it only auto-loads when empty).
+        _logCommits = [];
+        _logTotal = 0;
+      });
       await _load();
     }
   }
@@ -434,6 +451,12 @@ class _GitScreenState extends State<GitScreen>
     try {
       await api.gitBranchSwitch(path, selected);
       if (!mounted || !_ownsMutation(api, path, generation)) return;
+      // The commit log belongs to the previous branch; clearing it forces
+      // the Commits tab to reload (it only auto-loads when empty).
+      setState(() {
+        _logCommits = [];
+        _logTotal = 0;
+      });
       await _load();
     } catch (e) {
       if (mounted && _ownsMutation(api, path, generation)) {
@@ -530,12 +553,15 @@ class _GitScreenState extends State<GitScreen>
     final api = _api;
     if (api == null) return;
     final path = _path;
-    final generation = _loadGeneration;
     final staged = f['staged'] == true;
 
     final isTablet = MediaQuery.of(context).size.width >= 840;
     if (isTablet) {
-      // Tablet (spec §178): load diff inline for the right panel.
+      // Tablet (spec §178): load diff inline for the right panel. A dedicated
+      // generation guards the write-back: `_loadGeneration` only changes on a
+      // full reload, so without it a slow earlier diff would overwrite the
+      // result of a newer selection.
+      final generation = ++_diffGeneration;
       setState(() {
         _selectedFile = f;
         _selectedDiff = '';
@@ -544,7 +570,7 @@ class _GitScreenState extends State<GitScreen>
       try {
         final diff = await _readDiff(api, path, file, staged: staged);
         if (mounted &&
-            generation == _loadGeneration &&
+            generation == _diffGeneration &&
             identical(api, _api) &&
             path == _path) {
           setState(() {
@@ -554,7 +580,7 @@ class _GitScreenState extends State<GitScreen>
         }
       } catch (e) {
         if (mounted &&
-            generation == _loadGeneration &&
+            generation == _diffGeneration &&
             identical(api, _api) &&
             path == _path) {
           setState(() {
@@ -567,6 +593,7 @@ class _GitScreenState extends State<GitScreen>
     }
 
     // Phone: bottom sheet diff viewer.
+    final generation = _loadGeneration;
     String diff = '';
     try {
       diff = await _readDiff(api, path, file, staged: staged);
@@ -683,7 +710,9 @@ class _GitScreenState extends State<GitScreen>
       return buffer.toString();
     } on ApiException catch (error) {
       if (error.statusCode != 404) rethrow;
-      return api.gitFileDiff(_path, file);
+      // Use the captured parameter, not the `_path` field: the user may have
+      // switched repositories while this request was in flight.
+      return api.gitFileDiff(path, file);
     }
   }
 
@@ -725,9 +754,7 @@ class _GitScreenState extends State<GitScreen>
                         context.l10n.gitStashFallback)
                     .toString(),
               ),
-              subtitle: Text(
-                (stash['oid'] ?? stash['index'] ?? '').toString(),
-              ),
+              subtitle: Text((stash['oid'] ?? stash['index'] ?? '').toString()),
             ),
         ],
       ),
@@ -1773,7 +1800,9 @@ class _GitScreenState extends State<GitScreen>
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: HermesSemantic.purple.withValues(alpha: 0.1),
+                      color: HermesSemantic.purple.withValues(
+                        alpha: hermesTintAlpha(context, 0.1),
+                      ),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Icon(
@@ -1932,7 +1961,9 @@ class _GitScreenState extends State<GitScreen>
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: HermesSemantic.purple.withValues(alpha: 0.1),
+                      color: HermesSemantic.purple.withValues(
+                        alpha: hermesTintAlpha(context, 0.1),
+                      ),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -2163,7 +2194,9 @@ class _GitScreenState extends State<GitScreen>
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: HermesSemantic.green.withValues(alpha: 0.12),
+                            color: HermesSemantic.green.withValues(
+                              alpha: hermesTintAlpha(context, 0.12),
+                            ),
                             borderRadius: BorderRadius.circular(
                               HermesRadius.capsule,
                             ),
@@ -2360,7 +2393,7 @@ class _GitScreenState extends State<GitScreen>
         width: 26,
         height: 26,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.14),
+          color: color.withValues(alpha: hermesTintAlpha(context, 0.14)),
           borderRadius: BorderRadius.circular(6),
         ),
         alignment: Alignment.center,

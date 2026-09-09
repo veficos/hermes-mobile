@@ -70,6 +70,11 @@ String _dirBaseName(String path) {
   return parts.isEmpty ? path : parts.last;
 }
 
+/// A file/folder name must be a single path segment: reject separators and
+/// parent traversal so a typed name cannot escape the current directory.
+bool _isValidEntryName(String name) =>
+    !name.contains('/') && !name.contains('\\') && !name.contains('..');
+
 class _FilesScreenState extends State<FilesScreen>
     with ConnectionReloadMixin<FilesScreen> {
   static const _largeDownloadBytes = 32 * 1024 * 1024;
@@ -78,6 +83,19 @@ class _FilesScreenState extends State<FilesScreen>
   final TextEditingController _searchCtrl = TextEditingController();
   var _downloading = false;
   int _downloadGeneration = 0;
+
+  /// Tablet split: the embedded editor has no route of its own, so the split
+  /// view guards unsaved edits itself before swapping or unmounting it.
+  final GlobalKey<FileEditorScreenState> _editorKey = GlobalKey();
+
+  /// Asks the embedded tablet editor (if any) before dropping unsaved edits.
+  /// Resolves true when there is no editor, it is clean, or the user chose
+  /// to discard.
+  Future<bool> _confirmEmbeddedEditorDiscard() async {
+    final editor = _editorKey.currentState;
+    if (editor == null) return true;
+    return editor.confirmDiscardIfDirty();
+  }
 
   @override
   void initState() {
@@ -121,19 +139,22 @@ class _FilesScreenState extends State<FilesScreen>
   }
 
   Future<void> _open(FsEntry entry) async {
+    // Capture context-derived objects before the discard-confirmation await.
+    final isTablet = MediaQuery.sizeOf(context).width >= 840;
+    final connection = context.read<ConnectionStore>();
+    final api = connection.api;
+    if (!await _confirmEmbeddedEditorDiscard()) return;
     if (entry.isDirectory) {
       await _store.navigateTo(entry.path, promoteRoot: _store.cwd.isEmpty);
       return;
     }
     // Tablet keeps the split-view embedded preview (right pane in
     // _buildTablet) rather than pushing the full-screen pane workspace.
-    final isTablet = MediaQuery.sizeOf(context).width >= 840;
     if (isTablet) {
       _store.selectPreview(entry);
       return;
     }
-    final connection = context.read<ConnectionStore>();
-    final api = connection.api;
+    if (!mounted || !identical(connection.api, api)) return;
     final owner =
         widget.owner ?? OwnerRoute(connectionId: connection.activeConnectionId);
     try {
@@ -589,6 +610,16 @@ class _FilesScreenState extends State<FilesScreen>
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     if (name == null || name.isEmpty) return;
+    if (!_isValidEntryName(name)) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.filesInvalidName,
+          kind: HermesToastKind.error,
+        );
+      }
+      return;
+    }
     try {
       await _store.createFile(name);
     } catch (e) {
@@ -684,6 +715,16 @@ class _FilesScreenState extends State<FilesScreen>
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     if (newName == null || newName.isEmpty || newName == entry.name) return;
+    if (!_isValidEntryName(newName)) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.filesInvalidName,
+          kind: HermesToastKind.error,
+        );
+      }
+      return;
+    }
     try {
       await _store.renameEntry(entry, newName);
     } catch (e) {
@@ -747,6 +788,16 @@ class _FilesScreenState extends State<FilesScreen>
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     if (name == null || name.isEmpty) return;
+    if (!_isValidEntryName(name)) {
+      if (mounted) {
+        showHermesToast(
+          context,
+          message: context.l10n.filesInvalidName,
+          kind: HermesToastKind.error,
+        );
+      }
+      return;
+    }
     try {
       await _store.createDirectory(name);
     } catch (e) {
@@ -775,9 +826,10 @@ class _FilesScreenState extends State<FilesScreen>
           final climb = _listModeCanClimb(store);
           return PopScope(
             canPop: !climb,
-            onPopInvokedWithResult: (didPop, _) {
+            onPopInvokedWithResult: (didPop, _) async {
               if (didPop) return;
-              if (_listModeCanClimb(store)) store.goUp();
+              if (!_listModeCanClimb(store)) return;
+              if (await _confirmEmbeddedEditorDiscard()) store.goUp();
             },
             child: MobilePageScaffold(
               title: widget.pickMode
@@ -1018,7 +1070,7 @@ class _FilesScreenState extends State<FilesScreen>
                   description: context.l10n.filesSelectPreviewDescription,
                 )
               : FileEditorScreen(
-                  key: ValueKey(selected.path),
+                  key: _editorKey,
                   path: selected.path,
                   name: selected.name,
                   profile: widget.owner?.profile,
@@ -1051,7 +1103,8 @@ class _FilesScreenState extends State<FilesScreen>
           return TextButton(
             onPressed: isLast
                 ? null
-                : () {
+                : () async {
+                    if (!await _confirmEmbeddedEditorDiscard()) return;
                     if (seg.path.isEmpty) {
                       store.listDriveRoots();
                     } else {

@@ -26,6 +26,7 @@ import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/profile_scope_selector.dart';
 import 'mcp_config_editor_screen.dart';
 import 'mcp_logs_screen.dart';
@@ -1167,38 +1168,36 @@ class _McpScreenState extends State<McpScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.mcpTitle),
-        actions: [
-          if (_oauthFlowId != null)
-            IconButton(
-              tooltip: context.l10n.commonCancel,
-              onPressed: _oauthCancelled ? null : _cancelAuthentication,
-              icon: const Icon(Icons.stop_circle_outlined),
-            ),
+    return MobilePageScaffold(
+      title: context.l10n.mcpTitle,
+      actions: [
+        if (_oauthFlowId != null)
           IconButton(
-            tooltip: context.l10n.mcpEditConfiguration,
-            onPressed: _busyName.isEmpty ? _editMcpDocument : null,
-            icon: const Icon(Icons.data_object),
+            tooltip: context.l10n.commonCancel,
+            onPressed: _oauthCancelled ? null : _cancelAuthentication,
+            icon: const Icon(Icons.stop_circle_outlined),
           ),
-          IconButton(
-            tooltip: context.l10n.mcpViewLogs,
-            onPressed: () => _viewLogs(),
-            icon: const Icon(Icons.article_outlined),
-          ),
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _busyName.isNotEmpty ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: context.l10n.mcpAddServer,
-            onPressed: _busyName.isEmpty ? _createServer : null,
-            icon: const Icon(Icons.add),
-          ),
-        ],
-      ),
+        IconButton(
+          tooltip: context.l10n.mcpEditConfiguration,
+          onPressed: _busyName.isEmpty ? _editMcpDocument : null,
+          icon: const Icon(Icons.data_object),
+        ),
+        IconButton(
+          tooltip: context.l10n.mcpViewLogs,
+          onPressed: () => _viewLogs(),
+          icon: const Icon(Icons.article_outlined),
+        ),
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _busyName.isNotEmpty ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+        IconButton(
+          tooltip: context.l10n.mcpAddServer,
+          onPressed: _busyName.isEmpty ? _createServer : null,
+          icon: const Icon(Icons.add),
+        ),
+      ],
       body: Column(
         children: [
           if (widget.fixedProfile == null) const ProfileScopeDropdown(),

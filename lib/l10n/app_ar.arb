@@ -2395,6 +2395,7 @@
   "filesDeleteFailed": "فشل الحذف: {error}",
   "filesNewFile": "ملف جديد",
   "filesFileName": "اسم الملف",
+  "filesInvalidName": "Names cannot contain /, \\ or ..",
   "filesCreateFileFailed": "تعذر إنشاء الملف: {error}",
   "filesNewSessionPrompt": "راجع وعالج هذه الملفات:\n{references}",
   "filesNewFolder": "مجلد جديد",

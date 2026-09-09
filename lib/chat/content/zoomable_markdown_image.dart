@@ -21,6 +21,8 @@ Widget hermesMarkdownImageBuilder(MarkdownImageConfig config) {
   return _ZoomableInlineImage(
     uri: config.uri,
     semanticLabel: config.alt ?? config.title,
+    width: config.width,
+    height: config.height,
   );
 }
 
@@ -28,8 +30,15 @@ class _ZoomableInlineImage extends StatelessWidget {
   static const _inlineDecodeMaxDimension = 1600;
   final Uri uri;
   final String? semanticLabel;
+  final double? width;
+  final double? height;
 
-  const _ZoomableInlineImage({required this.uri, this.semanticLabel});
+  const _ZoomableInlineImage({
+    required this.uri,
+    this.semanticLabel,
+    this.width,
+    this.height,
+  });
 
   ImageProvider? _provider() {
     if (uri.scheme == 'data') {
@@ -80,17 +89,37 @@ class _ZoomableInlineImage extends StatelessWidget {
         onLongPress: () => _showActions(context),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 360),
-            child: Image(
-              image: inlineProvider,
-              fit: BoxFit.contain,
-              semanticLabel: semanticLabel,
-              errorBuilder: (_, _, _) => Padding(
-                padding: const EdgeInsets.all(12),
-                child: SelectableText(uri.toString()),
-              ),
-            ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              bool valid(double? value) =>
+                  value != null && value.isFinite && value > 0;
+              final available = constraints.maxWidth.isFinite
+                  ? constraints.maxWidth
+                  : MediaQuery.sizeOf(context).width;
+              final requestedWidth = valid(width) ? width! : available;
+              final boxWidth = requestedWidth.clamp(0.0, available);
+              final requestedHeight = valid(height)
+                  ? height! * (boxWidth / requestedWidth)
+                  : 240.0;
+              // Reserve the same footprint for loading, success and failure.
+              // Unknown dimensions use a contained preview; fullscreen keeps
+              // the original image and aspect ratio.
+              return SizedBox(
+                width: boxWidth,
+                height: requestedHeight.clamp(1.0, 360.0),
+                child: Image(
+                  image: inlineProvider,
+                  fit: BoxFit.contain,
+                  semanticLabel: semanticLabel,
+                  errorBuilder: (_, _, _) => SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: SelectableText(uri.toString()),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),

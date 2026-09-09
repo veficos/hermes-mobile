@@ -82,8 +82,10 @@ class _MoreScreenState extends State<MoreScreen> {
         ? (dark ? HermesSemanticDark.green : HermesSemantic.green)
         : (dark ? HermesSemanticDark.gray : HermesSemantic.gray);
 
-    return MobilePageScaffold(
+    return HermesPageScaffold(
       title: l10n.navMore,
+      titleMode: HermesPageTitleMode.large,
+      maxContentWidth: HermesLayout.content,
       actions: [
         IconButton(
           tooltip: _searching ? l10n.moreCloseSearch : l10n.moreSearchDirectory,
@@ -226,7 +228,9 @@ class _PluginPaneLaunchers extends StatelessWidget {
                     showHermesErrorSnackBar(
                       context,
                       error,
-                      fallback: context.l10n.workspaceOpenPluginFailed('$error'),
+                      fallback: context.l10n.workspaceOpenPluginFailed(
+                        '$error',
+                      ),
                     );
                   }
                 }

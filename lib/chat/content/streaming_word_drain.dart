@@ -1,18 +1,29 @@
 /// Pure helpers for revealing streamed assistant text at a word cadence.
 ///
-/// Splits only at whitespace-to-non-whitespace boundaries, so every returned
+/// Splits at word boundaries and individual CJK characters, so every returned
 /// prefix is an exact prefix of the source and joining the parts never changes
 /// the response. This mirrors Hermex's `StreamingWordDrain`.
 abstract final class StreamingWordDrain {
+  static bool _isCjk(int rune) =>
+      (rune >= 0x3400 && rune <= 0x9FFF) ||
+      (rune >= 0x20000 && rune <= 0x3134F) ||
+      (rune >= 0x3040 && rune <= 0x30FF) ||
+      (rune >= 0xAC00 && rune <= 0xD7AF);
+  static final _whitespace = RegExp(r'^\s$', unicode: true);
   static int unitCount(String text) {
     if (text.isEmpty) return 0;
     var count = 1;
     var sawNonWhitespace = false;
     var previousWasWhitespace = false;
+    var previousWasCjk = false;
     for (final rune in text.runes) {
       final current = String.fromCharCode(rune);
-      final isWhitespace = RegExp(r'^\s$', unicode: true).hasMatch(current);
-      if (previousWasWhitespace && !isWhitespace && sawNonWhitespace) count++;
+      final isWhitespace = _whitespace.hasMatch(current);
+      if (!isWhitespace && sawNonWhitespace &&
+          (previousWasWhitespace || previousWasCjk || _isCjk(rune))) {
+        count++;
+      }
+      previousWasCjk = _isCjk(rune);
       if (!isWhitespace) sawNonWhitespace = true;
       previousWasWhitespace = isWhitespace;
     }
@@ -25,17 +36,20 @@ abstract final class StreamingWordDrain {
     var unitsSeen = 0;
     var sawNonWhitespace = false;
     var previousWasWhitespace = false;
+    var previousWasCjk = false;
     var offset = 0;
     for (final rune in text.runes) {
       final current = String.fromCharCode(rune);
-      final isWhitespace = RegExp(r'^\s$', unicode: true).hasMatch(current);
+      final isWhitespace = _whitespace.hasMatch(current);
       if (unitsSeen == 0) {
         unitsSeen = 1;
-      } else if (previousWasWhitespace && !isWhitespace && sawNonWhitespace) {
+      } else if (!isWhitespace && sawNonWhitespace &&
+          (previousWasWhitespace || previousWasCjk || _isCjk(rune))) {
         unitsSeen++;
         if (unitsSeen > unitCount) return offset;
       }
       if (!isWhitespace) sawNonWhitespace = true;
+      previousWasCjk = _isCjk(rune);
       previousWasWhitespace = isWhitespace;
       offset += rune > 0xFFFF ? 2 : 1;
     }

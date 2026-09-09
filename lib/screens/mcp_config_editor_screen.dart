@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/mcp_import.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 /// Full-screen JSON editor for one MCP server or the complete mcp.json file.
 class McpConfigEditorScreen extends StatefulWidget {
@@ -142,18 +143,16 @@ class _McpServerEditorScreenState extends State<McpServerEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.mcpAddServer),
-        actions: [
-          TextButton(
-            key: const ValueKey('mcp-server-save'),
-            onPressed: _save,
-            child: Text(context.l10n.commonAdd),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.mcpAddServer,
+      actions: [
+        TextButton(
+          key: const ValueKey('mcp-server-save'),
+          onPressed: _save,
+          child: Text(context.l10n.commonAdd),
+        ),
+        const SizedBox(width: 4),
+      ],
       body: SafeArea(
         top: false,
         child: ListView(

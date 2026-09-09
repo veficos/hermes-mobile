@@ -457,9 +457,14 @@ class HermesNoticeBar extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          // §3.6：语义色底 10%(light)/18%(dark)。
-          color: c.withValues(alpha: isDark ? 0.18 : 0.10),
-          border: Border.all(color: c.withValues(alpha: 0.15)),
+          // §3.6：语义色底 10%(light)/18%(dark)；高对比经 hermesTintAlpha
+          // 提升，0.15 描边同步加强（§3.7）。
+          color: c.withValues(
+            alpha: hermesTintAlpha(context, isDark ? 0.18 : 0.10),
+          ),
+          border: Border.all(
+            color: c.withValues(alpha: hermesTintAlpha(context, 0.15)),
+          ),
           borderRadius: BorderRadius.circular(HermesRadius.card),
         ),
         child: Row(

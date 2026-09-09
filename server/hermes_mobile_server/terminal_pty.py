@@ -310,9 +310,12 @@ class PtyManager:
             )
             if session is not None:
                 last_queue = session.output
-                await session.output.put(
-                    {"event": "error", "id": session_id, "message": str(exc)}
-                )
+                try:
+                    session.output.put_nowait(
+                        {"event": "error", "id": session_id, "message": str(exc)}
+                    )
+                except asyncio.QueueFull:
+                    pass
         finally:
             self._sessions.pop(session_id, None)
             orphan = self._orphans.pop(session_id, None)
@@ -320,14 +323,24 @@ class PtyManager:
                 orphan.handle.cancel()
                 last_queue = orphan.session.output
             if last_queue is not None:
-                await last_queue.put(
-                    {
-                        "event": "exit",
-                        "id": session_id,
-                        "code": exit_code,
-                        "signal": None,
-                    }
-                )
+                exit_frame = {
+                    "event": "exit",
+                    "id": session_id,
+                    "code": exit_code,
+                    "signal": None,
+                }
+                try:
+                    last_queue.put_nowait(exit_frame)
+                except asyncio.QueueFull:
+                    # Preserve terminal completion over stale buffered output.
+                    try:
+                        last_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                    try:
+                        last_queue.put_nowait(exit_frame)
+                    except asyncio.QueueFull:
+                        pass
 
     @staticmethod
     def _safe_cwd(value: str | None) -> str:

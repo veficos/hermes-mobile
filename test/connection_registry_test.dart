@@ -162,6 +162,35 @@ void main() {
     expect(registry.runtime(const ConnectionId('a')), same(a));
   });
 
+  test('an initial transient connection failure schedules a retry', () async {
+    final gateway = _Gateway('remote')..connectError = StateError('offline');
+    final runtime = _runtime('remote', gateway);
+    addTearDown(runtime.dispose);
+
+    await expectLater(runtime.connect(), throwsStateError);
+    expect(runtime.phase, RuntimePhase.reconnecting);
+    gateway.connectError = null;
+
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    expect(runtime.phase, RuntimePhase.connected);
+    expect(gateway.connectCount, 2);
+  });
+
+  test('an authentication failure is terminal and is not retried', () async {
+    final gateway = _Gateway('remote')
+      ..connectError = GatewayException(
+        gatewayAuthenticationFailedCode,
+        'localized auth failure',
+      );
+    final runtime = _runtime('remote', gateway);
+    addTearDown(runtime.dispose);
+
+    await expectLater(runtime.connect(), throwsA(isA<GatewayException>()));
+    expect(runtime.phase, RuntimePhase.exhausted);
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    expect(gateway.connectCount, 1);
+  });
+
   test('failed candidate connection preserves the active runtime', () async {
     final gatewayA = _Gateway('a')..connected = true;
     final gatewayB = _Gateway('b')..connectError = StateError('offline');

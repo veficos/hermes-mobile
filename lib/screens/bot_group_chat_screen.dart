@@ -11,6 +11,7 @@ import '../core/stores/request_store.dart';
 import '../l10n/l10n.dart';
 import '../widgets/bot_avatar.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 /// Full-screen Bot Group chat. Replaces the old height-capped modal dialog
 /// so there's room for a real message list, an @mention autocomplete strip
@@ -152,24 +153,22 @@ class _BotGroupChatScreenState extends State<BotGroupChatScreen> {
             .whereType<String>()
             .toList();
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(widget.group.name),
-            actions: [
-              if (busy)
-                IconButton(
-                  tooltip: context.l10n.commonStop,
-                  onPressed: () => store.stopGroup(widget.group),
-                  icon: const Icon(Icons.stop_circle_outlined),
-                ),
-              if (widget.onEdit != null)
-                IconButton(
-                  tooltip: context.l10n.agentEditGroup,
-                  onPressed: widget.onEdit,
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-            ],
-          ),
+        return MobilePageScaffold(
+          title: widget.group.name,
+          actions: [
+            if (busy)
+              IconButton(
+                tooltip: context.l10n.commonStop,
+                onPressed: () => store.stopGroup(widget.group),
+                icon: const Icon(Icons.stop_circle_outlined),
+              ),
+            if (widget.onEdit != null)
+              IconButton(
+                tooltip: context.l10n.agentEditGroup,
+                onPressed: widget.onEdit,
+                icon: const Icon(Icons.edit_outlined),
+              ),
+          ],
           body: Column(
             children: [
               if (speaker != null)

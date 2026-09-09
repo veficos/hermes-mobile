@@ -9,6 +9,14 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get chatTurnLabel => '回合';
+
+  @override
+  String chatCurrentTurnLabel(String label) {
+    return '本回合 · $label';
+  }
+
+  @override
   String get commonCopyFailed => '无法复制到剪贴板';
 
   @override
@@ -7319,6 +7327,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get filesFileName => '文件名';
+
+  @override
+  String get filesInvalidName => '名称不能包含 /、\\ 或 ..';
 
   @override
   String filesCreateFileFailed(String error) {
@@ -18655,6 +18666,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get filesFileName => '檔案名稱';
+
+  @override
+  String get filesInvalidName => 'Names cannot contain /, \\ or ..';
 
   @override
   String filesCreateFileFailed(String error) {

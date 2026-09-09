@@ -1,4 +1,30 @@
 import 'package:flutter/scheduler.dart';
+import 'dart:ui' show PlatformDispatcher;
+
+/// A bounded rolling window; sorting is deferred until diagnostics are read.
+class FrameDurationWindow {
+  FrameDurationWindow({this.capacity = 600}) : assert(capacity > 0);
+  final int capacity;
+  final List<int> _samples = [];
+  int _next = 0;
+  int get length => _samples.length;
+
+  void add(int micros) {
+    if (_samples.length < capacity) {
+      _samples.add(micros);
+    } else {
+      _samples[_next] = micros;
+    }
+    _next = (_next + 1) % capacity;
+  }
+
+  int percentile(double fraction) {
+    assert(fraction > 0 && fraction <= 1);
+    if (_samples.isEmpty) return 0;
+    final sorted = List<int>.of(_samples)..sort();
+    return sorted[(sorted.length * fraction).ceil() - 1];
+  }
+}
 
 /// Lightweight in-process client performance counters. Values are cheap to
 /// update on hot paths and can be exported to diagnostics without a logging
@@ -58,6 +84,29 @@ class ClientPerformanceMetrics {
   int slowFrames = 0;
   int maxBuildMicros = 0;
   int maxRasterMicros = 0;
+  final buildDurations = FrameDurationWindow();
+  final rasterDurations = FrameDurationWindow();
+  double frameBudgetMicros = 1000000 / 60;
+
+  /// UI and raster are pipelined: their sum is not a dropped-frame count.
+  /// This measures frames with at least one stage exceeding the budget.
+  void recordFrame({
+    required int buildMicros,
+    required int rasterMicros,
+    required double refreshRate,
+  }) {
+    final rate = refreshRate.isFinite && refreshRate > 0 ? refreshRate : 60.0;
+    frameBudgetMicros = 1000000 / rate;
+    frames++;
+    if (buildMicros > frameBudgetMicros || rasterMicros > frameBudgetMicros) {
+      slowFrames++;
+    }
+    if (buildMicros > maxBuildMicros) maxBuildMicros = buildMicros;
+    if (rasterMicros > maxRasterMicros) maxRasterMicros = rasterMicros;
+    buildDurations.add(buildMicros);
+    rasterDurations.add(rasterMicros);
+  }
+
   Duration totalRpcLatency = Duration.zero;
   Duration totalListRefreshLatency = Duration.zero;
 
@@ -66,6 +115,11 @@ class ClientPerformanceMetrics {
     'slow_frames': slowFrames,
     'max_build_micros': maxBuildMicros,
     'max_raster_micros': maxRasterMicros,
+    'frame_budget_micros': frameBudgetMicros,
+    'build_p95_micros': buildDurations.percentile(.95),
+    'build_p99_micros': buildDurations.percentile(.99),
+    'raster_p95_micros': rasterDurations.percentile(.95),
+    'raster_p99_micros': rasterDurations.percentile(.99),
     'gateway_received_bytes': gatewayReceivedBytes,
     'gateway_sent_bytes': gatewaySentBytes,
     'http_response_bytes': httpResponseBytes,
@@ -160,6 +214,12 @@ class ClientPerformanceMetrics {
       'slow_frames': slowFrames,
       'max_build_ms': maxBuildMicros / 1000,
       'max_raster_ms': maxRasterMicros / 1000,
+      'frame_budget_ms': frameBudgetMicros / 1000,
+      'frame_sample_count': buildDurations.length,
+      'build_p95_ms': buildDurations.percentile(.95) / 1000,
+      'build_p99_ms': buildDurations.percentile(.99) / 1000,
+      'raster_p95_ms': rasterDurations.percentile(.95) / 1000,
+      'raster_p99_ms': rasterDurations.percentile(.99) / 1000,
     },
   };
 }
@@ -176,13 +236,20 @@ class ClientFrameMetricsBinding {
 
   static void _record(List<FrameTiming> timings) {
     final metrics = ClientPerformanceMetrics.instance;
+    // Timings are engine-wide. Use the strictest active display budget when
+    // multiple views exist, rather than assuming every device runs at 60 Hz.
+    final views = PlatformDispatcher.instance.views;
+    var refreshRate = 0.0;
+    for (final view in views) {
+      final rate = view.display.refreshRate;
+      if (rate.isFinite && rate > refreshRate) refreshRate = rate;
+    }
     for (final timing in timings) {
-      final build = timing.buildDuration.inMicroseconds;
-      final raster = timing.rasterDuration.inMicroseconds;
-      metrics.frames++;
-      if (build + raster > 16667) metrics.slowFrames++;
-      if (build > metrics.maxBuildMicros) metrics.maxBuildMicros = build;
-      if (raster > metrics.maxRasterMicros) metrics.maxRasterMicros = raster;
+      metrics.recordFrame(
+        buildMicros: timing.buildDuration.inMicroseconds,
+        rasterMicros: timing.rasterDuration.inMicroseconds,
+        refreshRate: refreshRate,
+      );
     }
   }
 }

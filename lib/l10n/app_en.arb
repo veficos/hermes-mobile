@@ -1,5 +1,8 @@
 {
   "@@locale": "en",
+  "chatTurnLabel": "Turn",
+  "chatCurrentTurnLabel": "Current turn · {label}",
+  "@chatCurrentTurnLabel": {"placeholders": {"label": {"type": "String"}}},
   "commonCopyFailed": "Could not copy to the clipboard",
   "commonClipboardReadFailed": "Could not read the clipboard",
   "petGenerateReferenceFailed": "Could not add the reference image: {error}",
@@ -3427,6 +3430,8 @@
   "@filesDeleteFailed": {"placeholders":{"error":{"type":"String"}}},
   "filesNewFile": "New file",
   "filesFileName": "File name",
+  "filesInvalidName": "Names cannot contain /, \\ or ..",
+  "@filesInvalidName": {"description": "Shown when a new file, new folder, or rename name contains path separators or parent traversal."},
   "filesCreateFileFailed": "Could not create file: {error}",
   "@filesCreateFileFailed": {"placeholders":{"error":{"type":"String"}}},
   "filesNewSessionPrompt": "Review and process these files:\n{references}",

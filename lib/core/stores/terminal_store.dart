@@ -889,7 +889,9 @@ class TerminalStore extends ChangeNotifier {
       if (_disposed) return;
       try {
         await _connectClient();
+        if (_disposed) return;
         for (final session in List<TerminalSession>.from(_sessions)) {
+          if (_disposed) return;
           if (session.exited) continue;
           _recoveringSessionIds.add(session.id);
           _failedRecoverySessionIds.remove(session.id);
@@ -903,19 +905,22 @@ class TerminalStore extends ChangeNotifier {
           }
           try {
             await _startRuntime(session.id, reattachId: previousRuntime);
+            if (_disposed) return;
             terminal?.write(
               '\r\n${runtimeL10n.terminalConnectionRestored}\r\n',
             );
           } catch (_) {
+            if (_disposed) return;
             _failedRecoverySessionIds.add(session.id);
             terminal?.write(
               '\r\n${runtimeL10n.terminalConnectionRestoreFailed}\r\n',
             );
           } finally {
             _recoveringSessionIds.remove(session.id);
-            notifyListeners();
+            if (!_disposed) notifyListeners();
           }
         }
+        if (_disposed) return;
         _reconnectNotice = runtimeL10n.terminalReconnected;
         _reconnecting = false;
         notifyListeners();

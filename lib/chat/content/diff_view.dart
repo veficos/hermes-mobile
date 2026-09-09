@@ -81,6 +81,7 @@ class _FileDiffViewState extends State<FileDiffView> {
       constraints: BoxConstraints(maxHeight: maxHeight),
       color: palette.codeBg,
       child: ListView.builder(
+        primary: false,
         itemCount: lines.length,
         itemBuilder: (context, index) {
           final line = lines[index];

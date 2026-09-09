@@ -143,17 +143,21 @@ class TerminalGatewayClient {
     try {
       final frame = jsonDecode(raw.toString()) as Map<String, dynamic>;
       final requestId = frame['request_id'];
-      if (requestId is int && _pending.containsKey(requestId)) {
-        final completer = _pending[requestId]!;
-        if (frame['event'] == 'error') {
-          completer.completeError(
-            StateError(
-              frame['message']?.toString() ?? runtimeL10n.terminalGenericError,
-            ),
-          );
-        } else {
-          completer.complete(frame);
+      if (requestId is int) {
+        final completer = _pending[requestId];
+        if (completer != null) {
+          if (frame['event'] == 'error') {
+            completer.completeError(
+              StateError(
+                frame['message']?.toString() ??
+                    runtimeL10n.terminalGenericError,
+              ),
+            );
+          } else {
+            completer.complete(frame);
+          }
         }
+        // Unknown request ids are late/duplicate responses, never events.
         return;
       }
       _events.add(

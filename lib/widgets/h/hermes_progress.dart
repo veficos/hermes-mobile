@@ -25,7 +25,10 @@ class HermesProgressBar extends StatelessWidget {
         height: 3,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: palette.border,
+          // 高对比：轨道底色升级 borderStrong，与主题边框加强一致。
+          color: HermesA11y.highContrastOf(context)
+              ? palette.borderStrong
+              : palette.border,
           borderRadius: BorderRadius.circular(HermesRadius.capsule),
         ),
         child: FractionallySizedBox(

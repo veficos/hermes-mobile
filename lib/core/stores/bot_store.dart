@@ -418,6 +418,7 @@ class BotStore extends ChangeNotifier {
   final Map<String, int> _deletedRooms = {};
   StreamSubscription<RoutedGatewayEvent>? _events;
   Timer? _syncTimer;
+  bool _pendingAllowEmpty = false;
   Timer? _rosterTimer;
   Timer? _connectionRefreshTimer;
   String _connectionSignature = '';
@@ -2613,11 +2614,16 @@ class BotStore extends ChangeNotifier {
       );
 
   void _scheduleServerSync({bool allowEmpty = false}) {
+    // Merge semantics: any allowEmpty:true inside the debounce window must
+    // survive — a later allowEmpty:false call (which cancels and rebuilds the
+    // timer) must not swallow a pending clear-sync.
+    _pendingAllowEmpty = _pendingAllowEmpty || allowEmpty;
     _syncTimer?.cancel();
-    _syncTimer = Timer(
-      const Duration(milliseconds: 500),
-      () => unawaited(_syncServerState(allowEmpty: allowEmpty)),
-    );
+    _syncTimer = Timer(const Duration(milliseconds: 500), () {
+      final merged = _pendingAllowEmpty;
+      _pendingAllowEmpty = false;
+      unawaited(_syncServerState(allowEmpty: merged));
+    });
   }
 
   Map<String, dynamic> _serverSnapshot() {
@@ -2694,6 +2700,10 @@ class BotStore extends ChangeNotifier {
   @visibleForTesting
   Future<void> debugSyncServerState({bool allowEmpty = false}) =>
       _syncServerState(allowEmpty: allowEmpty);
+
+  @visibleForTesting
+  void debugScheduleServerSync({bool allowEmpty = false}) =>
+      _scheduleServerSync(allowEmpty: allowEmpty);
 
   String _truncate(String value, int maxChars) =>
       value.length > maxChars ? value.substring(0, maxChars) : value;

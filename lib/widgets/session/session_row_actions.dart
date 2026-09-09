@@ -47,6 +47,12 @@ class SessionRowActions extends StatelessWidget {
   final bool isStarred;
   final bool supportsSharing;
 
+  /// Page context captured by [show] before the sheet opens. Actions run
+  /// after the sheet route has been popped, so they need a context that both
+  /// outlives the sheet and still sees the root Overlay (toasts),
+  /// ScaffoldMessenger (snackbars) and Navigator.
+  final BuildContext? hostContext;
+
   const SessionRowActions({
     super.key,
     required this.session,
@@ -55,6 +61,7 @@ class SessionRowActions extends StatelessWidget {
     this.isArchived = false,
     this.isStarred = false,
     this.supportsSharing = true,
+    this.hostContext,
   });
 
   static Future<void> show(
@@ -88,6 +95,7 @@ class SessionRowActions extends StatelessWidget {
         isArchived: isArchived,
         isStarred: isStarred,
         supportsSharing: resolvedSupportsSharing,
+        hostContext: context,
       ),
     );
   }
@@ -95,7 +103,11 @@ class SessionRowActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final actionContext = Navigator.of(context).context;
+    // `Navigator.of(context).context` sits *above* the Navigator's Overlay,
+    // so `Overlay.of` throws from it and every success toast fell into the
+    // catch path as a red error snackbar. Prefer the host page context
+    // captured by `show`, which sees Overlay/ScaffoldMessenger/Navigator.
+    final actionContext = hostContext ?? Navigator.of(context).context;
     final isDark = theme.brightness == Brightness.dark;
     final surface = isDark
         ? HermesBackground.darkSecondary
@@ -564,13 +576,14 @@ class SessionRowActions extends StatelessWidget {
       messageCount: session.messageCount ?? 0,
     );
     if (!context.mounted) return;
-    // Toast before popping the sheet: the overlay outlives this route.
+    // The tile already popped the sheet route before running this action;
+    // popping again here would pop the host page. The toast goes to the
+    // host page's overlay, which outlives the sheet.
     showHermesToast(
       context,
       message: context.l10n.sessionMarkedUnread,
       kind: HermesToastKind.success,
     );
-    Navigator.maybePop(context);
   }
 
   Future<void> _moveToProject(BuildContext context) async {

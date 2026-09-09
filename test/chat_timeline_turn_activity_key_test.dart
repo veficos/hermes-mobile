@@ -61,6 +61,8 @@ void main() {
   testWidgets(
     'every TurnActivityCard in the transcript carries a non-null key',
     (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 3000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       final connection = ConnectionStore()..api = _FakeApi();
       final chat = ChatStore();
       final session = SessionStore(
@@ -151,6 +153,24 @@ void main() {
       }
       // The two cards must be independently identifiable, not sharing a key.
       expect(cards.first.key, isNot(cards.last.key));
+
+      // Exercise the sliver update, rather than merely checking descendant
+      // keys: existing rows must move to their new indices as whole elements.
+      final firstCardKey = cards.first.key!;
+      final beforeElement = tester.element(find.byKey(firstCardKey));
+      chat.appendOlderHistory([
+        ChatMessage(id: 'u0', role: 'user', parts: [ChatPart.text('更早的问题')]),
+        ChatMessage(
+          id: 'a0',
+          role: 'assistant',
+          parts: [ChatPart.text('earlier answer'), _tool('t0')],
+        ),
+      ], hasMore: false, deferTrim: true);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(tester.element(find.byKey(firstCardKey)), same(beforeElement));
+      expect(find.text('2 个工具'), findsOneWidget);
+      expect(find.text('5 个工具'), findsOneWidget);
     },
   );
 }

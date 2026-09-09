@@ -2,6 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/chat/content/streaming_word_drain.dart';
 
 void main() {
+  test('Chinese without spaces drains character by character', () {
+    expect(StreamingWordDrain.unitCount('逐字显示'), 4);
+    expect(StreamingWordDrain.splitOffset('逐字显示', 1), 1);
+  });
   test('reveals a burst one word unit at a time', () {
     const source = 'alpha beta gamma delta';
     expect(StreamingWordDrain.unitCount(source), 4);

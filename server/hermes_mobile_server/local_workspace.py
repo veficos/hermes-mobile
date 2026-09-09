@@ -416,6 +416,7 @@ def write_stream(value: str, chunks: Any, *, overwrite: bool = False, max_bytes:
     if path.exists() and not overwrite:
         raise WorkspaceError(f"destination already exists: {path}")
     total = 0
+    temp: Path | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_name(f".{path.name}.uploading")
@@ -427,7 +428,8 @@ def write_stream(value: str, chunks: Any, *, overwrite: bool = False, max_bytes:
                 output.write(chunk)
     except (OSError, WorkspaceError):
         try:
-            temp.unlink(missing_ok=True)
+            if temp is not None:
+                temp.unlink(missing_ok=True)
         except OSError:
             pass
         raise
@@ -555,7 +557,9 @@ def _git(repo_value: str, args: list[str]) -> str:
 def git_diff(repo: str, file: str, *, staged: bool = False, oid: str | None = None) -> dict[str, str]:
     args = ["diff"]
     if oid:
-        args.extend([f"{oid}^", oid, "--"])
+        # `show --root` works for both root and non-root commits and preserves
+        # the route's per-file contract.
+        args = ["show", "--format=", "--root", oid, "--", file]
     else:
         if staged:
             args.append("--cached")

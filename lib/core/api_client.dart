@@ -7,6 +7,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -84,7 +85,32 @@ class BinaryFileException implements Exception {
 /// binary signal, and bytes that fail strict (non-lenient) UTF-8 decoding
 /// are not valid text either.
 bool looksLikeBinary(List<int> bytes) {
-  final sample = bytes.length > 8192 ? bytes.sublist(0, 8192) : bytes;
+  var sampleEnd = min(bytes.length, 8192);
+  if (sampleEnd < bytes.length) {
+    // Do not cut a UTF-8 sequence at the sampling boundary. Back up over
+    // continuation bytes and, when the boundary follows only part of a
+    // multi-byte code point, exclude its lead byte as well.
+    var lead = sampleEnd - 1;
+    while (lead >= 0 && (bytes[lead] & 0xc0) == 0x80) {
+      lead--;
+    }
+    if (lead >= 0) {
+      final first = bytes[lead];
+      final expected = first < 0x80
+          ? 1
+          : (first & 0xe0) == 0xc0
+          ? 2
+          : (first & 0xf0) == 0xe0
+          ? 3
+          : (first & 0xf8) == 0xf0
+          ? 4
+          : 1;
+      if (sampleEnd - lead < expected) sampleEnd = lead;
+    }
+  }
+  final sample = bytes.length == sampleEnd
+      ? bytes
+      : bytes.sublist(0, sampleEnd);
   if (sample.contains(0)) return true;
   try {
     utf8.decode(sample, allowMalformed: false);
@@ -2549,7 +2575,9 @@ class ApiClient {
     final dataUrl = map['data_url']?.toString() ?? '';
     final comma = dataUrl.indexOf(',');
     if (comma < 0 || !dataUrl.substring(0, comma).contains(';base64')) {
-      return '';
+      throw const FormatException(
+        'File read response contained neither text nor a base64 data URL',
+      );
     }
     final bytes = base64Decode(dataUrl.substring(comma + 1));
     if (looksLikeBinary(bytes)) {

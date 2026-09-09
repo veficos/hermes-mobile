@@ -1,5 +1,214 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/hermes_tokens.dart';
+
+enum HermesPageTitleMode { compact, large }
+
+/// Modern adaptive page shell used by all feature screens.  It owns the
+/// platform safe areas, content width, optional large-title collapse and the
+/// keyboard-safe bottom action region.
+class HermesPageScaffold extends StatelessWidget {
+  const HermesPageScaffold({
+    super.key,
+    required this.title,
+    required this.body,
+    this.subtitle,
+    this.actions,
+    this.leading,
+    this.bottomNavigationBar,
+    this.floatingActionButton,
+    this.backgroundColor,
+    this.titleMode = HermesPageTitleMode.compact,
+    this.maxContentWidth,
+    this.bodyPadding = EdgeInsets.zero,
+    this.scrollable = false,
+    this.bottomAction,
+    this.header,
+    this.showAppBar = true,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget body;
+  final List<Widget>? actions;
+  final Widget? leading;
+  final Widget? bottomNavigationBar;
+  final Widget? floatingActionButton;
+  final Color? backgroundColor;
+  final HermesPageTitleMode titleMode;
+  final double? maxContentWidth;
+  final EdgeInsetsGeometry bodyPadding;
+  final bool scrollable;
+  final Widget? bottomAction;
+  final Widget? header;
+  final bool showAppBar;
+
+  Widget _constrain(Widget child) => Center(
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxContentWidth ?? double.infinity),
+      child: child,
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    final useLargeTitle =
+        showAppBar &&
+        titleMode == HermesPageTitleMode.large &&
+        MediaQuery.sizeOf(context).width < HermesBreakpoints.navigation;
+
+    Widget content;
+    if (useLargeTitle && !scrollable) {
+      content = NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) => [
+          SliverAppBar.large(
+            leading: leading,
+            title: Text(title),
+            actions: actions,
+            pinned: true,
+            forceElevated: innerBoxIsScrolled,
+            backgroundColor: backgroundColor ?? palette.bg,
+            surfaceTintColor: Colors.transparent,
+          ),
+          if (subtitle?.isNotEmpty == true)
+            SliverToBoxAdapter(
+              child: _constrain(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                  child: Text(
+                    subtitle!,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: palette.text3),
+                  ),
+                ),
+              ),
+            ),
+          if (header != null) SliverToBoxAdapter(child: _constrain(header!)),
+        ],
+        body: _constrain(Padding(padding: bodyPadding, child: body)),
+      );
+    } else if (useLargeTitle) {
+      content = CustomScrollView(
+        slivers: [
+          SliverAppBar.large(
+            leading: leading,
+            title: Text(title),
+            actions: actions,
+            pinned: true,
+            backgroundColor: backgroundColor ?? palette.bg,
+            surfaceTintColor: Colors.transparent,
+          ),
+          if (subtitle?.isNotEmpty == true)
+            SliverToBoxAdapter(
+              child: _constrain(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                  child: Text(
+                    subtitle!,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: palette.text3),
+                  ),
+                ),
+              ),
+            ),
+          if (header != null) SliverToBoxAdapter(child: _constrain(header!)),
+          SliverPadding(
+            padding: bodyPadding,
+            sliver: SliverToBoxAdapter(child: _constrain(body)),
+          ),
+        ],
+      );
+    } else {
+      final padded = Padding(padding: bodyPadding, child: body);
+      content = scrollable
+          ? SingleChildScrollView(child: _constrain(padded))
+          : _constrain(padded);
+      if (header != null) {
+        content = Column(
+          children: [
+            header!,
+            Expanded(child: content),
+          ],
+        );
+      }
+    }
+
+    final bottom = bottomAction == null
+        ? bottomNavigationBar
+        : _HermesBottomAction(below: bottomNavigationBar, child: bottomAction!);
+
+    return Scaffold(
+      backgroundColor: backgroundColor ?? palette.bg,
+      appBar: !showAppBar || useLargeTitle
+          ? null
+          : AppBar(
+              leading: leading,
+              titleSpacing: 16,
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (subtitle?.isNotEmpty == true)
+                    Text(
+                      subtitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelSmall?.copyWith(color: palette.text3),
+                    ),
+                ],
+              ),
+              actions: actions,
+            ),
+      body: SafeArea(top: !useLargeTitle, child: content),
+      floatingActionButton: floatingActionButton,
+      bottomNavigationBar: bottom,
+    );
+  }
+}
+
+class _HermesBottomAction extends StatelessWidget {
+  const _HermesBottomAction({required this.child, required this.below});
+
+  final Widget child;
+  final Widget? below;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedPadding(
+          duration: HermesMotion.fast,
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.surface,
+              border: Border(top: BorderSide(color: palette.border)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+        ?below,
+      ],
+    );
+  }
+}
+
 /// Shared phone page shell: safe areas, consistent title bar and scrolling.
 class MobilePageScaffold extends StatelessWidget {
   final String title;
@@ -29,35 +238,20 @@ class MobilePageScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = scrollable
-        ? SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            child: body,
-          )
-        : body;
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      appBar: showAppBar
-          ? AppBar(
-              leading: leading,
-              titleSpacing: 14,
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title),
-                  if (subtitle != null)
-                    Text(
-                      subtitle!,
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                ],
-              ),
-              actions: actions,
-            )
-          : null,
-      body: SafeArea(child: content),
+    return HermesPageScaffold(
+      title: title,
+      subtitle: subtitle,
+      actions: actions,
+      leading: leading,
+      body: body,
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: bottomNavigationBar,
+      backgroundColor: backgroundColor,
+      showAppBar: showAppBar,
+      scrollable: scrollable,
+      bodyPadding: scrollable
+          ? const EdgeInsets.fromLTRB(16, 8, 16, 24)
+          : EdgeInsets.zero,
     );
   }
 }

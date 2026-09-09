@@ -49,7 +49,11 @@ class HermesBadge extends StatelessWidget {
         child: Text(
           label,
           style: HermesType.caption.copyWith(
-            color: Colors.white,
+            // 高对比：白字在部分语义底（如深色红 #F26D6D）上不足 3:1，
+            // 改用黑/白中对比度更高者（§3.7）。
+            color: HermesA11y.highContrastOf(context)
+                ? hermesContrastForeground(resolved)
+                : Colors.white,
             fontWeight: FontWeight.w600,
             height: 1,
           ),

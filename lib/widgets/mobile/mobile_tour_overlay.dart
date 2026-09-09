@@ -85,52 +85,56 @@ class _TourCard extends StatelessWidget {
   final MobileTourStep step;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.all(16),
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(HermesRadius.sheet),
-      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 18)],
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          step.title.isEmpty ? step.selector : step.title,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        if (step.text.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(step.text),
-        ],
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Text('${store.activeTourIndex + 1}/${store.activeTourCount}'),
-            const Spacer(),
-            TextButton(
-              onPressed: store.stopTour,
-              child: Text(context.l10n.commonClose),
-            ),
-            IconButton(
-              onPressed: store.activeTourIndex == 0
-                  ? null
-                  : () => store.advanceTour(-1),
-              icon: const Icon(Icons.chevron_left),
-            ),
-            IconButton(
-              onPressed: store.activeTourIndex + 1 >= store.activeTourCount
-                  ? null
-                  : () => store.advanceTour(1),
-              icon: const Icon(Icons.chevron_right),
-            ),
+  Widget build(BuildContext context) {
+    final palette = HermesPalette.of(context);
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(HermesRadius.card),
+        border: Border.all(color: palette.border),
+        boxShadow: hermesShadow(context, HermesShadowTier.md),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            step.title.isEmpty ? step.selector : step.title,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          if (step.text.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(step.text),
           ],
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Text('${store.activeTourIndex + 1}/${store.activeTourCount}'),
+              const Spacer(),
+              TextButton(
+                onPressed: store.stopTour,
+                child: Text(context.l10n.commonClose),
+              ),
+              IconButton(
+                onPressed: store.activeTourIndex == 0
+                    ? null
+                    : () => store.advanceTour(-1),
+                icon: const Icon(Icons.chevron_left),
+              ),
+              IconButton(
+                onPressed: store.activeTourIndex + 1 >= store.activeTourCount
+                    ? null
+                    : () => store.advanceTour(1),
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SpotlightPainter extends CustomPainter {

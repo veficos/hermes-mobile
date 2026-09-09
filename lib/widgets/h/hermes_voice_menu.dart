@@ -27,6 +27,13 @@ class HermesVoiceMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: voice,
+      builder: (context, _) => _buildMenu(context),
+    );
+  }
+
+  Widget _buildMenu(BuildContext context) {
     final wake = voice.wakeWord;
     // Three visually distinct states (desktop's wake-indicator overlay
     // parity, condensed into this one icon since mobile has no persistent

@@ -34,6 +34,26 @@ ApiClient _client(
 void main() {
   setUp(() => RuntimeL10n.use(AppLocalizationsEn()));
 
+  test('binary sniff keeps valid UTF-8 when the sample ends mid-codepoint', () {
+    final bytes = <int>[...List<int>.filled(8191, 0x61), ...utf8.encode('中')];
+    expect(looksLikeBinary(bytes), isFalse);
+    expect(looksLikeBinary([0x61, 0x00, 0x62]), isTrue);
+    expect(looksLikeBinary([0xff, 0xfe]), isTrue);
+  });
+
+  test(
+    'fsReadText rejects a malformed response instead of returning empty',
+    () async {
+      final client = _client((_) async => _json({'unexpected': true}));
+      addTearDown(client.close);
+
+      await expectLater(
+        client.fsReadText('/workspace/important.txt'),
+        throwsA(isA<FormatException>()),
+      );
+    },
+  );
+
   test(
     'direct sessions use dashboard paging, bulk delete and patch pin',
     () async {

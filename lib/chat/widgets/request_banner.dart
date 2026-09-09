@@ -45,7 +45,7 @@ Widget buildChatRequestBanner(
     child: Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       decoration: BoxDecoration(
-        color: warning.withValues(alpha: 0.10),
+        color: warning.withValues(alpha: hermesTintAlpha(context, 0.10)),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: warning.withValues(alpha: 0.4)),
       ),

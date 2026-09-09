@@ -12,6 +12,7 @@ import '../l10n/l10n.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/profile_scope_selector.dart';
 
 /// Toolsets, mirroring the desktop's Capabilities page (toolsets tab).
@@ -177,17 +178,15 @@ class _ToolsScreenState extends State<ToolsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.toolsTitle),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.toolsTitle,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: Column(
         children: [
           const ProfileScopeDropdown(),

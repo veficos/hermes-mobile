@@ -171,6 +171,46 @@ abstract final class HermesSemanticDark {
 Color hermesSemantic(BuildContext context, Color light, Color dark) =>
     Theme.of(context).brightness == Brightness.dark ? dark : light;
 
+/// ── High contrast（design-system.md §3.7）──────────────────────────────────
+/// `buildHermesTheme(highContrast:)` 把本扩展注册进 ThemeData，组件经
+/// [HermesA11y.highContrastOf] 读取应用级高对比开关——区别于系统
+/// `MediaQuery.highContrast`，本开关由 AppearanceStore 持久化、不依赖 OS。
+class HermesA11y extends ThemeExtension<HermesA11y> {
+  final bool highContrast;
+
+  const HermesA11y({this.highContrast = false});
+
+  static bool highContrastOf(BuildContext context) =>
+      Theme.of(context).extension<HermesA11y>()?.highContrast ?? false;
+
+  @override
+  HermesA11y copyWith({bool? highContrast}) =>
+      HermesA11y(highContrast: highContrast ?? this.highContrast);
+
+  @override
+  HermesA11y lerp(HermesA11y? other, double t) =>
+      t < 0.5 ? this : (other ?? this);
+}
+
+/// 语义色/accent 浅透明度底（10%/18% 等，§3.6）的高对比解析：高对比下
+/// 透明度 ×1.8（封顶 0.6），避免浅 tint 在纯黑/纯白文字与加粗边框环境里
+/// 被冲淡到不可辨识。普通模式原样返回。
+double hermesTintAlpha(BuildContext context, double alpha) {
+  if (!HermesA11y.highContrastOf(context)) return alpha;
+  final boosted = alpha * 1.8;
+  return boosted > 0.6 ? 0.6 : boosted;
+}
+
+/// 给定底色上对比度更高的纯黑/纯白前景（WCAG 相对亮度比较）。
+/// 高对比模式下徽标、状态点等纯色块文字使用——如深色语义红上的白字
+/// 对比度不足 3:1，换黑字可达 7:1。
+Color hermesContrastForeground(Color background) {
+  final l = background.computeLuminance();
+  final blackContrast = (l + 0.05) / 0.05;
+  final whiteContrast = 1.05 / (l + 0.05);
+  return blackContrast >= whiteContrast ? Colors.black : Colors.white;
+}
+
 /// ── 主题调色板（design-system.md §3.1，一套主题 × 一种亮度的完整色板）──────
 ///
 /// 作为 [ThemeExtension] 注册到 ThemeData，组件通过 `HermesPalette.of(context)`

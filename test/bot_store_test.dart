@@ -862,4 +862,40 @@ void main() {
     );
     expect(connection.calls, isEmpty);
   });
+
+  test(
+    'a debounced sync keeps allowEmpty when a later default call re-arms it',
+    () async {
+      final connection = _FakeConnection();
+      var configureCalls = 0;
+      connection.handlers['profiles.list'] = (_) => {'profiles': const []};
+      connection.handlers['profiles.configure'] = (_) {
+        configureCalls += 1;
+        return {
+          'applied': {'ui_meta': true},
+        };
+      };
+      connection.registry.add(
+        ConnectionRuntime(
+          id: const ConnectionId('remote'),
+          settings: const ConnectionSettings(),
+          api: _UploadApi(),
+          gateway: GatewayClient(serverBaseUrl: 'http://invalid', apiKey: 'x'),
+        ),
+        makeActive: true,
+      );
+      // No groups: _syncServerState early-returns unless allowEmpty is true.
+      final store = BotStore(connection);
+      addTearDown(store.dispose);
+
+      store.debugScheduleServerSync(allowEmpty: true);
+      // A trailing default call re-arms the debounce timer; with last-call-wins
+      // semantics this would swallow the pending clear-sync and
+      // profiles.configure would never fire.
+      store.debugScheduleServerSync();
+      await _waitUntil(() => configureCalls > 0);
+
+      expect(configureCalls, 1);
+    },
+  );
 }

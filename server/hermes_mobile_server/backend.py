@@ -148,6 +148,9 @@ class BackendManager:
         self.last_stdout_tail: list[str] = []
         #: Subscribers for gateway broadcast events (task completion, …).
         self._event_listeners: list[Callable[[dict], Awaitable[None]]] = []
+        self._event_listener_tails: dict[
+            Callable[[dict], Awaitable[None]], asyncio.Task
+        ] = {}
         self._lifecycle_listeners: list[Callable[[], None]] = []
         self._backend_epoch = 0
         # These must be instance-owned: class-level mutable connection state
@@ -176,11 +179,29 @@ class BackendManager:
                 logger.exception("backend lifecycle listener failed")
 
     async def _emit_event(self, event: dict) -> None:
-        for listener in list(self._event_listeners):
+        async def invoke(
+            listener: Callable[[dict], Awaitable[None]],
+            previous: asyncio.Task | None,
+        ) -> None:
+            if previous is not None:
+                try:
+                    await previous
+                except (asyncio.CancelledError, Exception):
+                    pass
             try:
                 await listener(event)
             except Exception:  # noqa: BLE001
                 logger.exception("gateway event listener failed")
+
+        # Event listeners may perform slow external I/O (notably push
+        # delivery). Never block the sole gateway RPC reader on them: RPC
+        # responses must continue to be demultiplexed while notifications are
+        # retried in the background.
+        for listener in list(self._event_listeners):
+            task = asyncio.create_task(
+                invoke(listener, self._event_listener_tails.get(listener))
+            )
+            self._event_listener_tails[listener] = task
 
     # ------------------------------------------------------------------ env
     def _build_env(self) -> dict[str, str]:
@@ -387,6 +408,12 @@ class BackendManager:
 
     async def stop(self) -> None:
         self._backend_epoch += 1
+        listener_tasks = list(self._event_listener_tails.values())
+        self._event_listener_tails.clear()
+        for task in listener_tasks:
+            task.cancel()
+        if listener_tasks:
+            await asyncio.gather(*listener_tasks, return_exceptions=True)
         reader = self._gw_reader
         self._gw_reader = None
         if reader is not None:

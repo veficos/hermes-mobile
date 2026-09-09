@@ -221,6 +221,95 @@ void main() {
     expect(store.boardData?.tasks.single.id, 'new');
     expect(store.error, isNull);
   });
+
+  test('a failed move keeps a concurrently refreshed board', () async {
+    final client = _PatchFailsAfterRefreshClient();
+    final api = KanbanApi(client);
+    final store = KanbanStore(api)
+      ..boardData = KanbanBoard.fromJson({
+        'columns': [
+          {
+            'name': 'todo',
+            'tasks': [
+              {'id': 't1', 'title': 'original', 'status': 'todo'},
+            ],
+          },
+        ],
+      });
+    addTearDown(store.dispose);
+
+    final moving = store.moveTask('t1', 'done');
+    final assertion = expectLater(moving, throwsStateError);
+    // The optimistic snapshot is visible while the patch is in flight.
+    expect(store.boardData?.tasks.single.status, 'done');
+
+    // A load() succeeds inside the optimistic window and carries fresher
+    // truth than the pre-move snapshot.
+    await store.load();
+    expect(store.boardData?.tasks.single.title, 'refreshed');
+
+    client.patchGate.complete();
+    await assertion;
+
+    // The rollback must not clobber the refreshed board.
+    expect(store.boardData?.tasks.single.title, 'refreshed');
+    expect(store.error, contains('patch failed'));
+  });
+
+  test('dispose during an in-flight load never notifies listeners', () async {
+    final client = _DelayedBoardClient('late');
+    final store = KanbanStore(KanbanApi(client));
+
+    final loading = store.load();
+    store.dispose();
+    client.gate.complete();
+
+    // ChangeNotifier throws when notified after dispose — a clean await here
+    // proves the in-flight completion was silenced.
+    await loading;
+    expect(store.boardData, isNull);
+  });
+}
+
+class _PatchFailsAfterRefreshClient extends ApiClient {
+  _PatchFailsAfterRefreshClient()
+    : super(baseUrl: 'http://contract.invalid', apiKey: 'test');
+
+  final patchGate = Completer<void>();
+
+  @override
+  Future<dynamic> patch(
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+  }) async {
+    await patchGate.future;
+    throw StateError('patch failed');
+  }
+
+  @override
+  Future<dynamic> get(
+    String path, {
+    Map<String, String>? query,
+    Duration? timeout,
+  }) async {
+    if (path == '/api/v1/kanban/board') {
+      return {
+        'columns': [
+          {
+            'name': 'todo',
+            'tasks': [
+              {'id': 't1', 'title': 'refreshed', 'status': 'todo'},
+            ],
+          },
+        ],
+      };
+    }
+    if (path == '/api/v1/kanban/boards') {
+      return {'current': '', 'boards': const []};
+    }
+    return <String, dynamic>{};
+  }
 }
 
 class _DelayedPatchClient extends ApiClient {

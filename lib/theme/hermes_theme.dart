@@ -71,23 +71,23 @@ ThemeData buildHermesTheme({
     brightness: brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: palette.bg,
-    extensions: [palette],
+    extensions: [
+      palette,
+      HermesA11y(highContrast: highContrast),
+    ],
   );
 
   return base.copyWith(
     appBarTheme: AppBarTheme(
-      backgroundColor: palette.surface,
+      backgroundColor: palette.bg,
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
-      toolbarHeight: 52,
-      shape: Border(
-        bottom: BorderSide(color: border, width: borderWidth),
-      ),
+      toolbarHeight: 56,
       titleTextStyle: base.textTheme.titleLarge?.copyWith(
         color: textPrimary,
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: FontWeight.w700,
         height: 1.2,
       ),
@@ -110,16 +110,14 @@ ThemeData buildHermesTheme({
       elevation: 0,
     ),
     navigationBarTheme: NavigationBarThemeData(
-      height: 66,
+      height: 68,
       elevation: 0,
       backgroundColor: palette.surface,
       indicatorColor: palette.accentBg,
-      indicatorShape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      indicatorShape: const StadiumBorder(),
       iconTheme: WidgetStateProperty.resolveWith(
         (states) => IconThemeData(
-          size: 20,
+          size: 22,
           color: states.contains(WidgetState.selected)
               ? palette.accent
               : palette.text3,
@@ -257,9 +255,8 @@ ThemeData buildHermesTheme({
         backgroundColor: accentColor,
         foregroundColor: scheme.onPrimary,
         textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(HermesRadius.smallCard),
-        ),
+        minimumSize: const Size(44, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       ),
     ),
@@ -267,17 +264,36 @@ ThemeData buildHermesTheme({
       style: OutlinedButton.styleFrom(
         foregroundColor: textPrimary,
         side: BorderSide(color: border, width: borderWidth),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(HermesRadius.smallCard),
-        ),
+        minimumSize: const Size(44, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: accentColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(HermesRadius.smallCard),
+        minimumSize: const Size(44, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
+        iconSize: const WidgetStatePropertyAll(20),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
+      ),
+    ),
+    chipTheme: base.chipTheme.copyWith(
+      backgroundColor: palette.surface,
+      selectedColor: palette.accentBg,
+      side: BorderSide(color: border, width: borderWidth),
+      shape: const StadiumBorder(),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      labelStyle: TextStyle(color: textSecondary, fontSize: 12),
+      secondaryLabelStyle: TextStyle(
+        color: accentColor,
+        fontWeight: FontWeight.w700,
       ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: accentColor),
@@ -301,6 +317,8 @@ ThemeData buildHermesTheme({
     listTileTheme: ListTileThemeData(
       iconColor: palette.text3,
       textColor: textPrimary,
+      minTileHeight: 52,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14),
     ),
     textTheme: base.textTheme
         .copyWith(

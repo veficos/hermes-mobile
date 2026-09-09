@@ -9,6 +9,14 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get chatTurnLabel => 'Turn';
+
+  @override
+  String chatCurrentTurnLabel(String label) {
+    return 'Current turn · $label';
+  }
+
+  @override
   String get commonCopyFailed => 'Could not copy to the clipboard';
 
   @override
@@ -7579,6 +7587,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get filesFileName => 'File name';
+
+  @override
+  String get filesInvalidName => 'Names cannot contain /, \\ or ..';
 
   @override
   String filesCreateFileFailed(String error) {

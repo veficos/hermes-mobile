@@ -7,9 +7,14 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+// file_selector exposes its test seam through this platform interface.
+// ignore: depend_on_referenced_packages
+import 'package:file_selector_platform_interface/file_selector_platform_interface.dart';
 import 'package:hermes_mobile/core/api_client.dart';
 import 'package:hermes_mobile/core/gateway.dart';
 import 'package:hermes_mobile/core/models.dart';
@@ -23,10 +28,24 @@ import 'package:hermes_mobile/core/stores/voice_store.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/chat_screen.dart';
 import 'package:hermes_mobile/widgets/h/hermes_composer.dart';
+import 'package:hermes_mobile/widgets/mobile/hermes_adaptive_menu.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ---------------------------------------------------------------- fakes
+
+class _TestFileSelector extends FileSelectorPlatform {
+  _TestFileSelector(this.files);
+
+  final List<XFile> files;
+
+  @override
+  Future<List<XFile>> openFiles({
+    List<XTypeGroup>? acceptedTypeGroups,
+    String? initialDirectory,
+    String? confirmButtonText,
+  }) async => files;
+}
 
 class _FakeGateway extends GatewayClient {
   _FakeGateway()
@@ -170,11 +189,11 @@ class _ChatRig {
       ChangeNotifierProvider<ConnectionStore>.value(value: connection),
       ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
         create: (_) => SessionTabStore(),
-        update: (_, connection, tabs) =>
-            (tabs ?? SessionTabStore())..attachRoutedEvents(
-              connection.routedEvents,
-              owners: connection.sessionOwners,
-            ),
+        update: (_, connection, tabs) => (tabs ?? SessionTabStore())
+          ..attachRoutedEvents(
+            connection.routedEvents,
+            owners: connection.sessionOwners,
+          ),
       ),
       ChangeNotifierProvider.value(value: session),
       ChangeNotifierProvider.value(value: chat),
@@ -463,6 +482,154 @@ void main() {
         expect(rig.session.queueCount, 0);
 
         rig.releasePrompts();
+        rig.connection.dispose();
+      },
+    );
+  });
+
+  group('in-flight composer draft preservation', () {
+    TextField composerField(WidgetTester tester) =>
+        tester.widget<TextField>(find.byKey(const ValueKey('composer-input')));
+
+    testWidgets(
+      'draft typed while a send is in flight survives the success-path clear',
+      (tester) async {
+        final rig = _ChatRig();
+        await tester.pumpWidget(rig.app());
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const ValueKey('composer-input')),
+          'first turn',
+        );
+        await tester.pump();
+        await tester.tap(find.byIcon(Icons.arrow_upward));
+        await tester.pump();
+        await tester.pump();
+        expect(rig.gateway.textsFor('prompt.submit'), ['first turn']);
+
+        // The composer stays editable while prompt.submit is gated: the user
+        // starts the next message before the first turn is accepted.
+        await tester.enterText(
+          find.byKey(const ValueKey('composer-input')),
+          'next draft',
+        );
+        await tester.pump();
+
+        rig.releasePrompts();
+        await tester.pump();
+        await tester.pump();
+        await tester.pump();
+
+        // The post-submit clear must not wipe the draft typed mid-flight.
+        expect(composerField(tester).controller!.text, 'next draft');
+        rig.connection.dispose();
+      },
+    );
+
+    testWidgets(
+      'draft typed while a send is in flight survives the failure-path '
+      'restore',
+      (tester) async {
+        final rig = _ChatRig();
+        await tester.pumpWidget(rig.app());
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const ValueKey('composer-input')),
+          'doomed turn',
+        );
+        await tester.pump();
+        await tester.tap(find.byIcon(Icons.arrow_upward));
+        await tester.pump();
+        await tester.pump();
+        expect(rig.gateway.textsFor('prompt.submit'), ['doomed turn']);
+
+        await tester.enterText(
+          find.byKey(const ValueKey('composer-input')),
+          'replacement draft',
+        );
+        await tester.pump();
+
+        rig.gateway.promptGates.first.completeError(StateError('boom'));
+        await tester.pump();
+        await tester.pump();
+        await tester.pump();
+
+        // The failed submission must not be restored over the newer draft.
+        expect(composerField(tester).controller!.text, 'replacement draft');
+        rig.connection.dispose();
+      },
+    );
+  });
+
+  group('local slash command with staged attachment', () {
+    testWidgets(
+      'no ghost failed bubble is staged and the attachment tray is kept',
+      (tester) async {
+        const recordChannel = MethodChannel('com.llfbandit.record/messages');
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          recordChannel,
+          (_) async => null,
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            recordChannel,
+            null,
+          ),
+        );
+        final tmp = File(
+          '${Directory.systemTemp.path}/hm_slash_attachment_test.txt',
+        )..writeAsStringSync('hello attachment');
+        addTearDown(() {
+          if (tmp.existsSync()) tmp.deleteSync();
+        });
+        final originalSelector = FileSelectorPlatform.instance;
+        addTearDown(() => FileSelectorPlatform.instance = originalSelector);
+
+        final rig = _ChatRig();
+        await tester.pumpWidget(rig.app());
+        await tester.pumpAndSettle();
+        // Stage a file attachment through the composer footer attach menu.
+        if (find.byTooltip('添加文件').evaluate().isEmpty) {
+          await tester.tap(find.byTooltip('展开工具'));
+          await tester.pumpAndSettle();
+        }
+        final attachMenu = tester.widget<HermesAdaptiveMenuButton<String>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is HermesAdaptiveMenuButton<String> &&
+                widget.tooltip == '添加文件',
+          ),
+        );
+        FileSelectorPlatform.instance = _TestFileSelector([XFile(tmp.path)]);
+        await tester.runAsync(() async {
+          attachMenu.onSelected?.call('file');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await tester.pumpAndSettle();
+        expect(find.text('hm_slash_attachment_test.txt'), findsOneWidget);
+
+        // A locally-handled slash command never uploads or sends the
+        // attachment.
+        await tester.enterText(
+          find.byKey(const ValueKey('composer-input')),
+          '/help',
+        );
+        await tester.pump();
+        await tester.tap(find.byIcon(Icons.arrow_upward));
+        await tester.pump();
+        await tester.pump();
+
+        // No ghost "failed upload" bubble was staged for the local command…
+        expect(
+          rig.chat.messages.where((m) => m.attachmentUploadState != null),
+          isEmpty,
+        );
+        expect(rig.gateway.textsFor('prompt.submit'), isEmpty);
+        // …and the staged attachment stays in the tray for the next send.
+        expect(find.text('hm_slash_attachment_test.txt'), findsOneWidget);
+
         rig.connection.dispose();
       },
     );

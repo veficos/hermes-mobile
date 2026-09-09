@@ -12,6 +12,125 @@ ChatMessage _message(int index, {bool heavy = false}) => ChatMessage(
 );
 
 void main() {
+  test('deferred trim never discards the message being read', () {
+    final chat = ChatStore();
+    addTearDown(chat.dispose);
+    chat.loadHistory([
+      for (var i = 100; i < 800; i++) _message(i, heavy: true),
+    ], hasMore: true);
+    chat.appendOlderHistory([
+      for (var i = 0; i < 100; i++) _message(i, heavy: true),
+    ], hasMore: false, deferTrim: true);
+    chat.trimTranscriptWindowIfNeeded(preserveMessageId: 'm650');
+    expect(chat.messages.any((message) => message.id == 'm650'), isTrue);
+    expect(chat.hasNewerTranscriptWindow, isTrue);
+    expect(chat.messages.last.id, 'm650');
+  });
+
+  test('newer recovery advances one adjacent page and retains its anchor', () {
+    final chat = ChatStore();
+    addTearDown(chat.dispose);
+    chat.loadHistory([
+      for (var i = 100; i < 800; i++) _message(i, heavy: true),
+    ], hasMore: true);
+    chat.appendOlderHistory([
+      for (var i = 0; i < 100; i++) _message(i, heavy: true),
+    ], hasMore: false);
+    final anchor = chat.messages.last.id;
+    final last = int.parse(anchor.substring(1));
+    chat.restoreNewerTranscriptWindow(pageSize: 50, preserveMessageId: anchor);
+    expect(chat.messages.any((m) => m.id == anchor), isTrue);
+    expect(chat.messages.last.id, 'm${last + 50}');
+    expect(chat.hasNewerTranscriptWindow, isTrue);
+    expect(chat.messages.map((m) => m.id).toSet().length, chat.messages.length);
+  });
+
+  test('ID-less pages use absolute raw positions including hidden rows', () {
+    final chat = ChatStore();
+    addTearDown(chat.dispose);
+    final newest = chat.fromSessionMessages([
+      {'role': 'user', 'content': 'newer'},
+    ], startOffset: 3);
+    final older = chat.fromSessionMessages([
+      {'role': 'user', 'content': 'first'},
+      {'role': 'system', 'content': 'hidden', 'display_kind': 'hidden'},
+      {'role': 'user', 'content': 'third'},
+    ]);
+    chat.loadHistory(newest, hasMore: true);
+    chat.appendOlderHistory(older, hasMore: false);
+    expect(chat.messages.map((m) => m.id), ['h-0', 'h-2', 'h-3']);
+    expect(chat.messages.map((m) => m.fullText), ['first', 'third', 'newer']);
+  });
+
+  test('older cached pages remain reachable after restoring the newer end', () {
+    final chat = ChatStore();
+    addTearDown(chat.dispose);
+    chat.loadHistory([
+      for (var i = 100; i < 500; i++) _message(i, heavy: true),
+    ], hasMore: true);
+    chat.appendOlderHistory([
+      for (var i = 0; i < 100; i++) _message(i, heavy: true),
+    ], hasMore: false);
+    for (var round = 0; round < 3; round++) {
+      chat.restoreNewerTranscriptWindow();
+      expect(chat.messages.last.id, 'm499');
+      var pages = 0;
+      while (chat.restoreOlderTranscriptWindow(deferTrim: true)) {
+        expect(++pages, lessThan(20));
+      }
+      expect(chat.messages.map((m) => m.id), [
+        for (var i = 0; i < 500; i++) 'm$i',
+      ]);
+      expect(chat.hasMoreHistory, isFalse);
+      chat.trimTranscriptWindowIfNeeded();
+    }
+    chat.clearView();
+    expect(chat.hasNewerTranscriptWindow, isFalse);
+    expect(chat.restoreOlderTranscriptWindow(), isFalse);
+  });
+
+  test('overlapping pages preserve unique IDs and the older boundary', () {
+    final chat = ChatStore();
+    addTearDown(chat.dispose);
+    chat.loadHistory([
+      for (var i = 100; i < 500; i++) _message(i, heavy: true),
+    ], hasMore: true);
+    chat.appendOlderHistory(
+      [
+        for (var i = 0; i < 200; i++) _message(i, heavy: true),
+        _message(0, heavy: true),
+      ],
+      hasMore: false,
+      deferTrim: true,
+    );
+    expect(chat.messages.length, 500);
+    expect(chat.messages.map((m) => m.id).toSet().length, 500);
+    chat.trimTranscriptWindowIfNeeded();
+    expect(chat.hasNewerTranscriptWindow, isTrue);
+    expect(chat.hasMoreHistory, isFalse);
+    chat.appendOlderHistory([_message(499)], hasMore: false);
+    expect(chat.messages.first.id, 'm0');
+    chat.restoreNewerTranscriptWindow();
+    expect(chat.messages.map((m) => m.id).toSet().length, chat.messages.length);
+  });
+
+  test('viewport snapshots do not mutate underneath an old timeline', () {
+    final chat = ChatStore();
+    addTearDown(chat.dispose);
+    chat.loadHistory([_message(2), _message(3)], hasMore: true);
+    final before = chat.transcriptStructure;
+    expect(identical(before, chat.transcriptStructure), isTrue);
+    chat.appendOlderHistory([_message(0), _message(1)], hasMore: false);
+    expect(before.map((message) => message.id), ['m2', 'm3']);
+    expect(chat.transcriptStructure.map((message) => message.id), [
+      'm0',
+      'm1',
+      'm2',
+      'm3',
+    ]);
+    expect(() => before.clear(), throwsUnsupportedError);
+  });
+
   test('prepending older history preserves it and windows the newer tail', () {
     final chat = ChatStore();
     addTearDown(chat.dispose);
@@ -49,20 +168,26 @@ void main() {
       final chat = ChatStore();
       addTearDown(chat.dispose);
       chat.loadHistory([
-        for (var index = 100; index < 500; index++) _message(index, heavy: true),
+        for (var index = 100; index < 500; index++)
+          _message(index, heavy: true),
       ], hasMore: true);
 
       chat.appendOlderHistory(
-        [for (var index = 0; index < 200; index++) _message(index, heavy: true)],
+        [
+          for (var index = 0; index < 200; index++)
+            _message(index, heavy: true),
+        ],
         hasMore: false,
         deferTrim: true,
       );
 
-      // Nothing trimmed yet: all 600 messages are still live.
-      expect(chat.messages.length, 600);
+      // Overlapping page IDs are deduplicated; no unique message is trimmed.
+      expect(chat.messages.length, 500);
       expect(chat.hasNewerTranscriptWindow, isFalse);
 
+      final revisionBeforeTrim = chat.transcriptStructureRevision;
       chat.trimTranscriptWindowIfNeeded();
+      expect(chat.transcriptStructureRevision, greaterThan(revisionBeforeTrim));
 
       // Now it matches the non-deferred behavior from the test above.
       expect(chat.messages.length, lessThan(600));

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
 import 'package:hermes_mobile/core/connections/connection_registry.dart';
 import 'package:hermes_mobile/core/gateway.dart';
+import 'package:hermes_mobile/core/chat_message.dart';
 import 'package:hermes_mobile/core/models.dart';
 import 'package:hermes_mobile/core/stores/billing_store.dart';
 import 'package:hermes_mobile/core/stores/chat_store.dart';
@@ -52,6 +53,31 @@ class _BillingConnection extends ConnectionStore {
 }
 
 void main() {
+  test(
+    'same-length history replacement invalidates a composed streaming view',
+    () async {
+      final events = StreamController<GatewayEvent>();
+      final chat = ChatStore()..attachEvents(events.stream);
+      addTearDown(chat.dispose);
+      addTearDown(events.close);
+      chat.loadHistory([
+        ChatMessage(id: 'u', role: 'user', parts: [ChatPart.text('old')]),
+      ], hasMore: false);
+      events.add(GatewayEvent(type: 'message.start', payload: const {}));
+      events.add(
+        GatewayEvent(type: 'message.delta', payload: const {'text': 'answer'}),
+      );
+      await Future<void>.delayed(Duration.zero);
+      final before = chat.messages;
+      chat.replaceMessageReactions('u', const [], rowId: 42);
+      expect(chat.messages.first.rowId, 42);
+      expect(before.first.rowId, isNull);
+      chat.clearView();
+      expect(chat.transcriptStructure, isEmpty);
+      expect(chat.messages, isEmpty);
+    },
+  );
+
   test('composer surface revision ignores streaming token deltas', () async {
     final events = StreamController<GatewayEvent>();
     final chat = ChatStore()..attachEvents(events.stream);

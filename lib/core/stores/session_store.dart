@@ -509,7 +509,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
       final owner = runtimeId == null
           ? _owner
           : connection.sessionOwners.byRuntime(runtimeId) ??
-                (runtimeId == _runtimeId ? _owner : null);
+                (runtimeId == _runtimeId || runtimeId == _durableId
+                    ? _owner
+                    : null);
       return (route: owner?.route, durableId: owner?.durableId);
     });
     chat.addListener(_onChatTranscriptChanged);
@@ -743,7 +745,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     requests.rotateDurableScope(previous, next, owner.route);
     // The send-queue bucket is keyed by durable id too — fold it over so a
     // queue drain in flight under the old id keeps tracking this session.
-    _migrateQueueKey(_queueKey(owner.route, previous), _queueKey(owner.route, next));
+    _migrateQueueKey(
+      _queueKey(owner.route, previous),
+      _queueKey(owner.route, next),
+    );
     if (persistLastSession) unawaited(_saveLastSession(next));
   }
 
@@ -1359,6 +1364,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   // `prompt.submit` path).
   final Map<String, String> _queueKeyRenames = {};
   int _queueMutationRevision = 0;
+  // Monotonic suffix for queued-message ids: a same-millisecond remove+add
+  // makes `length`-based suffixes collide.
+  int _queueIdCounter = 0;
 
   /// Follow `_queueKeyRenames` until reaching a key that hasn't been renamed.
   String _resolveQueueKey(String key) {
@@ -1449,7 +1457,7 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   }) async {
     if (text.trim().isEmpty) return;
     final qm = QueuedMessage(
-      id: 'q-${DateTime.now().millisecondsSinceEpoch}-${_sendQueue.length}',
+      id: 'q-${DateTime.now().millisecondsSinceEpoch}-${_queueIdCounter++}',
       text: text,
       createdAt: DateTime.now(),
       ownerKey:
@@ -2266,7 +2274,11 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         ),
       );
       chat.loadHistory(
-        chat.fromSessionMessages(msgs, sessionModel: _info?.model),
+        chat.fromSessionMessages(
+          msgs,
+          sessionModel: _info?.model,
+          startOffset: firstOffset,
+        ),
         hasMore: firstOffset > 0,
       );
       final running = resultBusyOf(_info);
@@ -2298,7 +2310,11 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
             .toList();
         _historyStartOffset = (cached['offset'] as num?)?.toInt() ?? 0;
         chat.loadHistory(
-          chat.fromSessionMessages(msgs, sessionModel: _info?.model),
+          chat.fromSessionMessages(
+            msgs,
+            sessionModel: _info?.model,
+            startOffset: _historyStartOffset,
+          ),
           hasMore: cached['hasMore'] == true,
         );
         final running = resultBusyOf(_info);
@@ -2342,12 +2358,20 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   ///
   /// [deferTrim] passes through to [ChatStore.appendOlderHistory] — see its
   /// doc for why the scroll-to-top caller needs this.
-  Future<void> loadOlderMessages({bool deferTrim = false}) async {
+  Future<void> loadOlderMessages({
+    bool deferTrim = false,
+    void Function()? beforeApply,
+  }) async {
     final id = _durableId;
     if (id == null) return;
     final api = _apiForStored(id);
     final generation = _generation;
     if (chat.loadingHistory || !chat.hasMoreHistory) return;
+    if (chat.hasOlderTranscriptWindow) {
+      beforeApply?.call();
+      chat.restoreOlderTranscriptWindow(deferTrim: deferTrim);
+      return;
+    }
     if (_historyStartOffset <= 0) {
       chat.appendOlderHistory(const [], hasMore: false, deferTrim: deferTrim);
       return;
@@ -2364,9 +2388,14 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         profile: _profile,
       );
       if (generation != _generation) return;
+      beforeApply?.call();
       _historyStartOffset = next;
       chat.appendOlderHistory(
-        chat.fromSessionMessages(msgs, sessionModel: _info?.model),
+        chat.fromSessionMessages(
+          msgs,
+          sessionModel: _info?.model,
+          startOffset: next,
+        ),
         hasMore: next > 0,
         deferTrim: deferTrim,
       );
@@ -3497,6 +3526,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   static const _sessionProfileCountsKey = 'hm_session_profile_counts';
 
   final Map<String, Timer> _draftSaveTimers = {};
+  // Per-session draft-save epoch. flushDraftNow bumps it so a still in-flight
+  // debounced save (older text) cannot land its remember-step after the flush.
+  final Map<String, int> _draftSaveEpochs = {};
   // Suppress stale draft restore for 30s after send (signature-aware).
   final Map<String, _DraftSuppression> _draftRestoreSuppress = {};
   // Signatures of payloads we already persisted to server. Used to avoid
@@ -3558,6 +3590,8 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
     }
     final route = _routeForStored(sid);
     final draftApi = _apiForStored(sid);
+    final epoch = (_draftSaveEpochs[sid] ?? 0) + 1;
+    _draftSaveEpochs[sid] = epoch;
     _draftSaveTimers[sid] = Timer(
       const Duration(milliseconds: _draftSaveDelayMs),
       () {
@@ -3571,7 +3605,11 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
                 profile: route.profile,
               )
               .then((d) {
-                _rememberDraftPayloadState(sid, normText, normFiles);
+                // A flushDraftNow (or a newer debounced save) bumped the epoch
+                // while this request was in flight — its payload is stale.
+                if (_draftSaveEpochs[sid] == epoch) {
+                  _rememberDraftPayloadState(sid, normText, normFiles);
+                }
               })
               .catchError((error) {
                 developer.log(
@@ -3595,6 +3633,10 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
   }) async {
     if (sid.isEmpty) return;
     _draftSaveTimers.remove(sid)?.cancel();
+    // Invalidate any in-flight debounced save: its stale payload must not be
+    // remembered after this flush lands.
+    final epoch = (_draftSaveEpochs[sid] ?? 0) + 1;
+    _draftSaveEpochs[sid] = epoch;
     final normText = currentText;
     final normFiles = _canonicalizeDraftFiles(currentFiles);
     if (normText.isNotEmpty || normFiles.isNotEmpty) {
@@ -3612,7 +3654,9 @@ class SessionStore extends ChangeNotifier implements ComposerStatusRpc {
         files: normFiles,
         profile: route.profile,
       );
-      _rememberDraftPayloadState(sid, normText, normFiles);
+      if (_draftSaveEpochs[sid] == epoch) {
+        _rememberDraftPayloadState(sid, normText, normFiles);
+      }
     } catch (_) {}
   }
 

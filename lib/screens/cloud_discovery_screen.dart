@@ -5,6 +5,7 @@ import '../core/cloud_discovery.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/web_preview.dart' show webViewSupported;
 
 const _cloudUnsupportedErrorCode = 'cloud-discovery-unsupported';
@@ -97,17 +98,15 @@ class _CloudDiscoveryScreenState extends State<CloudDiscoveryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Hermes Cloud'),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.cloudDiscoverAgain,
-            onPressed: _controller == null ? null : _discover,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: 'Hermes Cloud',
+      actions: [
+        IconButton(
+          tooltip: context.l10n.cloudDiscoverAgain,
+          onPressed: _controller == null ? null : _discover,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: _controller == null
           ? HermesErrorState(
               description: _error == _cloudUnsupportedErrorCode

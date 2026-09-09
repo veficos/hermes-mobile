@@ -238,38 +238,36 @@ class _HistoryScreenState extends State<HistoryScreen>
     final rows = _rows;
     final width = MediaQuery.sizeOf(context).width;
     final content = _buildBody(context, rows);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.historyTitle),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.historyManageSessions,
-            onPressed: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const SessionsScreen()));
-            },
-            icon: const Icon(Icons.tune),
+    return MobilePageScaffold(
+      title: context.l10n.historyTitle,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.historyManageSessions,
+          onPressed: () {
+            Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SessionsScreen()));
+          },
+          icon: const Icon(Icons.tune),
+        ),
+        IconButton(
+          tooltip: _showArchived
+              ? context.l10n.historyHideArchived
+              : context.l10n.historyShowArchived,
+          onPressed: () {
+            setState(() => _showArchived = !_showArchived);
+            _load();
+          },
+          icon: Icon(
+            _showArchived ? Icons.inventory_2 : Icons.inventory_2_outlined,
           ),
-          IconButton(
-            tooltip: _showArchived
-                ? context.l10n.historyHideArchived
-                : context.l10n.historyShowArchived,
-            onPressed: () {
-              setState(() => _showArchived = !_showArchived);
-              _load();
-            },
-            icon: Icon(
-              _showArchived ? Icons.inventory_2 : Icons.inventory_2_outlined,
-            ),
-          ),
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+        ),
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _loading ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: width >= 1200
           ? Row(
               children: [
@@ -924,7 +922,6 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
     return '${local.month}/${local.day}';
   }
-
 }
 
 class _HistoryGroup {

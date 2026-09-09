@@ -21,6 +21,9 @@ class KanbanStore extends ChangeNotifier {
   Timer? _reconnect;
   int _loadGeneration = 0;
   int _eventGeneration = 0;
+  bool _disposed = false;
+  int _reconnectAttempts = 0;
+  static const _maxReconnectAttempts = 5;
   void Function(String board, Map<String, dynamic> event)? onEvent;
   final Map<String, int> _boardCursors = {};
   final Map<String, KanbanTaskDetail> _details = {};
@@ -59,6 +62,7 @@ class KanbanStore extends ChangeNotifier {
     _poll?.cancel();
     _loadGeneration++;
     _eventGeneration++;
+    _reconnectAttempts = 0;
     _events?.cancel();
     _socket?.sink.close();
     _api = api;
@@ -164,6 +168,7 @@ class KanbanStore extends ChangeNotifier {
     }
     final api = _api;
     if (api != null) {
+      _reconnectAttempts = 0;
       unawaited(start());
       unawaited(_connectEvents(api));
     }
@@ -171,6 +176,7 @@ class KanbanStore extends ChangeNotifier {
 
   void connectEvents(Uri uri) {
     final generation = ++_eventGeneration;
+    _reconnectAttempts = 0;
     _reconnect?.cancel();
     _socket?.sink.close();
     _events?.cancel();
@@ -180,9 +186,14 @@ class KanbanStore extends ChangeNotifier {
   void _openEvents(Uri uri, int generation) {
     final channel = connectWs(uri);
     _socket = channel;
+    // Swallow the channel's handshake-failure future: without a listener it
+    // surfaces as an unhandled zone error. The stream onError below reports
+    // the same failure and schedules the reconnect (mirrors gateway.dart).
+    unawaited(channel.ready.catchError((_) {}));
     _events = channel.stream.listen(
       (raw) {
         if (generation != _eventGeneration) return;
+        _reconnectAttempts = 0;
         if (raw is! String) return;
         try {
           final frame = KanbanEventFrame.fromJson(
@@ -198,8 +209,17 @@ class KanbanStore extends ChangeNotifier {
           }
         } catch (_) {}
       },
-      onError: (_) {
-        if (generation == _eventGeneration) _scheduleReconnect();
+      onError: (Object e) {
+        if (generation != _eventGeneration) return;
+        // A pre-upgrade 401/403 rejection means the credential is invalid —
+        // retrying forever cannot help, so stop instead of storming.
+        if (e is WsHandshakeRejected &&
+            (e.statusCode == 401 || e.statusCode == 403)) {
+          error = runtimeL10n.commonAuthenticationFailed;
+          notifyListeners();
+          return;
+        }
+        _scheduleReconnect();
       },
       onDone: () {
         if (generation == _eventGeneration) _scheduleReconnect();
@@ -209,11 +229,22 @@ class KanbanStore extends ChangeNotifier {
 
   void _scheduleReconnect() {
     final api = _api;
-    if (!_foreground || api == null || _reconnect?.isActive == true) {
+    if (_disposed ||
+        !_foreground ||
+        api == null ||
+        _reconnect?.isActive == true) {
       return;
     }
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      error = runtimeL10n.backendDisconnected;
+      notifyListeners();
+      return;
+    }
+    // Exponential backoff: 3s → 6s → 12s → 24s, capped at 30s.
+    final seconds = (3 << _reconnectAttempts).clamp(3, 30);
+    _reconnectAttempts++;
     _reconnect = Timer(
-      const Duration(seconds: 3),
+      Duration(seconds: seconds),
       () => unawaited(_connectEvents(api)),
     );
   }
@@ -332,8 +363,9 @@ class KanbanStore extends ChangeNotifier {
       throw StateError(runtimeL10n.backendDisconnected);
     }
     final old = boardData;
+    KanbanBoard? optimistic;
     if (old != null) {
-      boardData = KanbanBoard(
+      optimistic = KanbanBoard(
         columns: [
           for (final c in old.columns)
             KanbanColumn(c.name, [
@@ -345,6 +377,7 @@ class KanbanStore extends ChangeNotifier {
         assignees: old.assignees,
         latestEventId: old.latestEventId,
       );
+      boardData = optimistic;
       notifyListeners();
     }
     try {
@@ -354,7 +387,10 @@ class KanbanStore extends ChangeNotifier {
       if (!identical(ownerApi, _api) || boardSlug != ownerApi.boardSlug) {
         return;
       }
-      boardData = old;
+      // Roll back only when boardData is still the optimistic snapshot — a
+      // load() that succeeded during the patch window carries fresher truth
+      // and must not be clobbered.
+      if (identical(boardData, optimistic)) boardData = old;
       error = '$e';
       notifyListeners();
       rethrow;
@@ -392,6 +428,11 @@ class KanbanStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    // Bump both generations so any in-flight load()/event-stream completion
+    // sees a stale generation and never notifies a destroyed store.
+    _loadGeneration++;
+    _eventGeneration++;
     _poll?.cancel();
     _reconnect?.cancel();
     _events?.cancel();

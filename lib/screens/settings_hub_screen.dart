@@ -181,8 +181,9 @@ class _SettingsHubScreenState extends State<SettingsHubScreen> {
 
   Widget _buildCompact(BuildContext context) {
     final sections = _sections(context);
-    return MobilePageScaffold(
+    return HermesPageScaffold(
       title: context.l10n.featureSettings,
+      maxContentWidth: HermesLayout.contentNarrow,
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),

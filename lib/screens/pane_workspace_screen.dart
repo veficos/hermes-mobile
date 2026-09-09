@@ -29,6 +29,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/plugin_contribution_views.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
@@ -73,86 +74,84 @@ class PaneWorkspaceScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.watch<PaneWorkspaceStore>();
     final l10n = context.l10n;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.workspaceTitle),
-        actions: [
-          HermesAdaptiveMenuButton<WorkspacePaneKind>(
-            tooltip: l10n.workspaceAddPaneTooltip,
-            icon: const Icon(Icons.add_box_outlined),
-            onSelected: (kind) => _openCorePane(context, store, kind),
+    return MobilePageScaffold(
+      title: l10n.workspaceTitle,
+      actions: [
+        HermesAdaptiveMenuButton<WorkspacePaneKind>(
+          tooltip: l10n.workspaceAddPaneTooltip,
+          icon: const Icon(Icons.add_box_outlined),
+          onSelected: (kind) => _openCorePane(context, store, kind),
+          itemBuilder: (context) => [
+            _corePaneMenuItem(
+              WorkspacePaneKind.terminal,
+              Icons.terminal_outlined,
+              l10n.workspacePaneTerminal,
+            ),
+            _corePaneMenuItem(
+              WorkspacePaneKind.files,
+              Icons.folder_outlined,
+              l10n.workspacePaneFiles,
+            ),
+            _corePaneMenuItem(
+              WorkspacePaneKind.review,
+              Icons.rate_review_outlined,
+              l10n.workspacePaneReview,
+            ),
+            _corePaneMenuItem(
+              WorkspacePaneKind.logs,
+              Icons.article_outlined,
+              l10n.workspacePaneLogs,
+            ),
+            _corePaneMenuItem(
+              WorkspacePaneKind.preview,
+              Icons.preview_outlined,
+              l10n.workspacePanePreview,
+            ),
+          ],
+        ),
+        if (!store.isEmpty)
+          HermesAdaptiveMenuButton<WorkspaceLayoutPreset>(
+            tooltip: l10n.workspaceApplyLayoutTooltip,
+            icon: const Icon(Icons.dashboard_customize_outlined),
+            onSelected: store.applyLayoutPreset,
             itemBuilder: (context) => [
-              _corePaneMenuItem(
-                WorkspacePaneKind.terminal,
-                Icons.terminal_outlined,
-                l10n.workspacePaneTerminal,
+              PopupMenuItem(
+                value: WorkspaceLayoutPreset.defaultLayout,
+                child: Text(l10n.workspaceLayoutDefault),
               ),
-              _corePaneMenuItem(
-                WorkspacePaneKind.files,
-                Icons.folder_outlined,
-                l10n.workspacePaneFiles,
+              PopupMenuItem(
+                value: WorkspaceLayoutPreset.focus,
+                child: Text(l10n.workspaceLayoutFocus),
               ),
-              _corePaneMenuItem(
-                WorkspacePaneKind.review,
-                Icons.rate_review_outlined,
-                l10n.workspacePaneReview,
+              PopupMenuItem(
+                value: WorkspaceLayoutPreset.balanced,
+                child: Text(l10n.workspaceLayoutBalanced),
               ),
-              _corePaneMenuItem(
-                WorkspacePaneKind.logs,
-                Icons.article_outlined,
-                l10n.workspacePaneLogs,
+              PopupMenuItem(
+                value: WorkspaceLayoutPreset.mainWide,
+                child: Text(l10n.workspaceLayoutMainWide),
               ),
-              _corePaneMenuItem(
-                WorkspacePaneKind.preview,
-                Icons.preview_outlined,
-                l10n.workspacePanePreview,
+              PopupMenuItem(
+                value: WorkspaceLayoutPreset.toolsWide,
+                child: Text(l10n.workspaceLayoutToolsWide),
+              ),
+              PopupMenuItem(
+                value: WorkspaceLayoutPreset.terminalDeck,
+                child: Text(l10n.workspaceLayoutTerminalDeck),
+              ),
+              PopupMenuItem(
+                value: WorkspaceLayoutPreset.quad,
+                child: Text(l10n.workspaceLayoutQuad),
               ),
             ],
           ),
-          if (!store.isEmpty)
-            HermesAdaptiveMenuButton<WorkspaceLayoutPreset>(
-              tooltip: l10n.workspaceApplyLayoutTooltip,
-              icon: const Icon(Icons.dashboard_customize_outlined),
-              onSelected: store.applyLayoutPreset,
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: WorkspaceLayoutPreset.defaultLayout,
-                  child: Text(l10n.workspaceLayoutDefault),
-                ),
-                PopupMenuItem(
-                  value: WorkspaceLayoutPreset.focus,
-                  child: Text(l10n.workspaceLayoutFocus),
-                ),
-                PopupMenuItem(
-                  value: WorkspaceLayoutPreset.balanced,
-                  child: Text(l10n.workspaceLayoutBalanced),
-                ),
-                PopupMenuItem(
-                  value: WorkspaceLayoutPreset.mainWide,
-                  child: Text(l10n.workspaceLayoutMainWide),
-                ),
-                PopupMenuItem(
-                  value: WorkspaceLayoutPreset.toolsWide,
-                  child: Text(l10n.workspaceLayoutToolsWide),
-                ),
-                PopupMenuItem(
-                  value: WorkspaceLayoutPreset.terminalDeck,
-                  child: Text(l10n.workspaceLayoutTerminalDeck),
-                ),
-                PopupMenuItem(
-                  value: WorkspaceLayoutPreset.quad,
-                  child: Text(l10n.workspaceLayoutQuad),
-                ),
-              ],
-            ),
-          if (!store.isEmpty)
-            IconButton(
-              tooltip: l10n.workspaceCloseAllTooltip,
-              onPressed: () => _confirmClear(context, store),
-              icon: const Icon(Icons.close_fullscreen_outlined),
-            ),
-        ],
-      ),
+        if (!store.isEmpty)
+          IconButton(
+            tooltip: l10n.workspaceCloseAllTooltip,
+            onPressed: () => _confirmClear(context, store),
+            icon: const Icon(Icons.close_fullscreen_outlined),
+          ),
+      ],
       body: !store.loaded
           ? const Center(child: CircularProgressIndicator())
           : store.tree == null
@@ -300,20 +299,11 @@ class _EmptyWorkspace extends StatelessWidget {
   const _EmptyWorkspace();
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.view_quilt_outlined, size: 42),
-          const SizedBox(height: 12),
-          Text(context.l10n.workspaceEmptyTitle),
-          const SizedBox(height: 6),
-          Text(context.l10n.workspaceEmptyDescription),
-        ],
-      ),
-    ),
+  Widget build(BuildContext context) => HermesEmptyState(
+    icon: Icons.view_quilt_outlined,
+    iconSize: 42,
+    title: context.l10n.workspaceEmptyTitle,
+    description: context.l10n.workspaceEmptyDescription,
   );
 }
 
@@ -712,7 +702,11 @@ class _PaneTab extends StatelessWidget {
         ],
       ),
     );
-    controller.dispose();
+    // Deferred: the dialog's exit transition can still be rebuilding this
+    // TextField for a frame or two after showDialog's Future resolves —
+    // disposing synchronously here races that and throws "used after being
+    // disposed".
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (title != null && title.trim().isNotEmpty) onRename(title);
   }
 

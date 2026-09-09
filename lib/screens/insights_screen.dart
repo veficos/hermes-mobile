@@ -349,7 +349,9 @@ class _InsightsScreenState extends State<InsightsScreen>
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: HermesSemantic.blue.withValues(alpha: 0.1),
+          color: HermesSemantic.blue.withValues(
+            alpha: hermesTintAlpha(context, 0.1),
+          ),
           borderRadius: BorderRadius.circular(HermesRadius.capsule),
         ),
         child: Row(

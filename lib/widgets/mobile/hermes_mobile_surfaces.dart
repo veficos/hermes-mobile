@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/hermes_tokens.dart';
 import '../h/hermes_glass.dart';
 import '../h/hermes_status.dart';
+import 'hermes_adaptive_ui.dart';
 
 /// Shared mobile surfaces copied from the interactive prototype. Feature
 /// screens keep their existing stores and callbacks while sharing one visual
@@ -89,27 +90,7 @@ class HermesMobileGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
-    return Container(
-      margin: margin,
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(HermesMobileMetrics.groupRadius),
-        border: Border.all(color: palette.border),
-        boxShadow: hermesShadow(context),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            children[i],
-            if (i < children.length - 1)
-              Divider(height: 1, thickness: 1, color: palette.border),
-          ],
-        ],
-      ),
-    );
+    return HermesGroupedList(margin: margin, children: children);
   }
 }
 
@@ -139,85 +120,18 @@ class HermesMobileRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = HermesPalette.of(context);
-    final resolvedTone = tone ?? palette.accent;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: HermesMobileMetrics.rowHorizontal,
-            vertical: HermesMobileMetrics.rowVertical,
-          ),
-          child: Row(
-            children: [
-              SizedBox.square(
-                dimension: 31,
-                child:
-                    iconWidget ??
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: resolvedTone.withValues(alpha: .16),
-                        borderRadius: BorderRadius.circular(
-                          HermesMobileMetrics.iconRadius,
-                        ),
-                      ),
-                      child: Icon(icon, size: 16, color: resolvedTone),
-                    ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: palette.text,
-                              fontSize: 14.5,
-                              height: 1.25,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (titleTrailing != null) ...[
-                          const SizedBox(width: 5),
-                          titleTrailing!,
-                        ],
-                      ],
-                    ),
-                    if (subtitleWidget != null ||
-                        subtitle?.isNotEmpty == true) ...[
-                      const SizedBox(height: 2),
-                      subtitleWidget ??
-                          Text(
-                            subtitle!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: palette.text3,
-                              fontSize: 12,
-                              height: 1.25,
-                            ),
-                          ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              trailing ??
-                  Icon(Icons.chevron_right, size: 18, color: palette.text4),
-            ],
-          ),
-        ),
-      ),
+    return HermesListRow(
+      icon: icon,
+      leading: iconWidget == null
+          ? null
+          : SizedBox.square(dimension: 34, child: iconWidget),
+      title: title,
+      subtitle: subtitle,
+      subtitleWidget: subtitleWidget,
+      trailing: trailing,
+      titleTrailing: titleTrailing,
+      tone: tone,
+      onTap: onTap,
     );
   }
 }

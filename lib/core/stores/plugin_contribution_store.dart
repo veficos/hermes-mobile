@@ -376,6 +376,7 @@ class PluginContributionStore extends ChangeNotifier {
   Map<String, Map<String, dynamic>> viewData = const {};
 
   bool _loading = false;
+  bool _disposed = false;
   ConnectionId? _loadedConnection;
   ConnectionId? _loadingConnection;
   int _loadGeneration = 0;
@@ -770,6 +771,7 @@ class PluginContributionStore extends ChangeNotifier {
       if (!_safeAutomaticAction(item.badgeAction!)) continue;
       try {
         final result = await _dispatch(item.badgeAction!, item);
+        if (_disposed) return;
         if (!contributions.any(
               (entry) =>
                   entry.namespacedId == item.namespacedId &&
@@ -1001,6 +1003,7 @@ class PluginContributionStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     for (final timer in _pollers.values) {
       timer.cancel();
     }

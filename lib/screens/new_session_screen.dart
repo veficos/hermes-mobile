@@ -284,8 +284,8 @@ class _NewSessionScreenState extends State<NewSessionScreen>
         ? 720.0
         : double.infinity;
     final desktop = width >= 840;
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.sessionNew)),
+    return MobilePageScaffold(
+      title: context.l10n.sessionNew,
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: panelWidth),

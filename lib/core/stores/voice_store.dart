@@ -125,6 +125,11 @@ class VoiceStore extends ChangeNotifier {
 
   WakeDetection? takeWakeDetection() => _wakeWord?.takeDetection();
 
+  void dismissWakeDetection() {
+    _wakeWord?.takeDetection();
+    unawaited(_wakeWord?.resumeAfterVoice());
+  }
+
   static const _autoSpeakKey = 'hm_voice_auto_speak';
 
   Future<void> _loadPreferences() async {
@@ -455,9 +460,14 @@ class VoiceStore extends ChangeNotifier {
       subscription = _player.onComplete.listen((_) {
         if (!completed.isCompleted) completed.complete();
       });
-      await _player.play(Uint8List.fromList(bytes));
-      await completed.future.timeout(const Duration(minutes: 5));
-      await subscription.cancel();
+      try {
+        await _player.play(Uint8List.fromList(bytes));
+        await completed.future.timeout(const Duration(minutes: 5));
+      } finally {
+        // Cancel in finally (mirrors `_playBytes`): a timeout or play error
+        // must not leak the onComplete listener.
+        await subscription.cancel();
+      }
     } catch (e) {
       if (operation == _generation) {
         _voiceError = runtimeL10n.voiceSpeechFailed('$e');

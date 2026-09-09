@@ -209,11 +209,13 @@ class GatewayClient {
       await connecting.future.timeout(const Duration(seconds: 20));
     } on TimeoutException {
       // F12: a timed-out connect must not leave a half-open channel behind.
+      final timedOutChannel = _channel;
       _handleSocketClosed(
         'connect timed out',
         byClient: true,
-        socket: _channel,
+        socket: timedOutChannel,
       );
+      await timedOutChannel?.sink.close().catchError((_) {});
       rethrow;
     } finally {
       if (identical(_connecting, connecting)) _connecting = null;
@@ -361,7 +363,10 @@ class GatewayClient {
       metrics.rpcFailed++;
       metrics.rpcTimedOut++;
       _pending.remove(id);
-      _invalidateSocket(channel, 'request timed out');
+      // A request deadline is not proof that the shared transport is dead.
+      // Keep unrelated RPCs and the event stream alive; a late response for
+      // this id is safely discarded by _onFrame. Transport failures still
+      // invalidate the socket through onError/onDone.
       throw GatewayException(
         -2,
         'timeout waiting for "$method" response',
@@ -381,6 +386,7 @@ class GatewayClient {
   Future<void> disconnect() async {
     // F13: a client-initiated disconnect must not emit onDisconnect.
     final channel = _channel;
+    final subscription = _sub;
     final connecting = _connecting;
     if (connecting != null && !connecting.isCompleted) {
       connecting.completeError(
@@ -388,7 +394,7 @@ class GatewayClient {
       );
     }
     _handleSocketClosed('disconnected by client', byClient: true);
-    await _sub?.cancel();
+    await subscription?.cancel();
     await channel?.sink.close();
     _channel = null;
   }

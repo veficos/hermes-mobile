@@ -190,12 +190,18 @@ class _HermesSubagentCardState extends State<HermesSubagentCard> {
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        // §3.6：语义色底 10%(light)/18%(dark)。
+        // §3.6：语义色底 10%(light)/18%(dark)；高对比经 hermesTintAlpha
+        // 提升，0.36 描边同步加强（§3.7）。
         color: color.withValues(
-          alpha: theme.brightness == Brightness.dark ? .18 : .10,
+          alpha: hermesTintAlpha(
+            context,
+            theme.brightness == Brightness.dark ? .18 : .10,
+          ),
         ),
         borderRadius: BorderRadius.circular(HermesRadius.card),
-        border: Border.all(color: color.withValues(alpha: .36)),
+        border: Border.all(
+          color: color.withValues(alpha: hermesTintAlpha(context, .36)),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,7 +249,10 @@ class _HermesSubagentCardState extends State<HermesSubagentCard> {
             ),
           ),
           if (_expanded) ...[
-            Divider(height: 1, color: color.withValues(alpha: .25)),
+            Divider(
+              height: 1,
+              color: color.withValues(alpha: hermesTintAlpha(context, .25)),
+            ),
             Padding(
               padding: const EdgeInsets.all(10),
               child: Column(
@@ -302,7 +311,9 @@ class _HermesSubagentCardState extends State<HermesSubagentCard> {
     final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? .18 : .10),
+        color: color.withValues(
+          alpha: hermesTintAlpha(context, isDark ? .18 : .10),
+        ),
         borderRadius: BorderRadius.circular(HermesRadius.capsule),
       ),
       child: Row(

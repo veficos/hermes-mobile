@@ -165,19 +165,16 @@ class _WebhooksScreenState extends State<WebhooksScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: widget.embedded
-          ? null
-          : AppBar(
-              title: Text(context.l10n.featureWebhooks),
-              actions: [
-                IconButton(
-                  tooltip: context.l10n.commonRefresh,
-                  onPressed: _busy ? null : _load,
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
-            ),
+    return MobilePageScaffold(
+      title: context.l10n.featureWebhooks,
+      showAppBar: !widget.embedded,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _busy ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       floatingActionButton: FloatingActionButton(
         heroTag: 'new-webhook',
         onPressed: _create,

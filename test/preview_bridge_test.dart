@@ -35,6 +35,20 @@ void main() {
       expect(framed, contains(jsonEncode('脚本错误')));
       expect(framed, isNot(contains('var token=x";alert')));
     });
+
+    test('hidden intents require a recent trusted user gesture', () {
+      final framed = withPreviewBridge(
+        '<p>x</p>',
+        'token-123',
+        scriptErrorLabel: 'Script error',
+        unhandledPromiseRejectionLabel: 'Unhandled promise rejection: ',
+      );
+      // Page scripts (timers, remote subresources, synthetic events) must
+      // not be able to inject hidden session messages: send() is gated on a
+      // recent isTrusted gesture.
+      expect(framed, contains('event.isTrusted'));
+      expect(framed, contains('lastTrustedGesture'));
+    });
   });
 
   group('preview bridge messages', () {

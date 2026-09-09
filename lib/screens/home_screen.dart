@@ -20,6 +20,7 @@ import '../widgets/h/hermes_status.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
+import '../widgets/mobile/hermes_adaptive_ui.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 import '../widgets/session/session_card.dart';
 import '../widgets/session/session_list_meta.dart';
@@ -34,6 +35,89 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _QuickToolsEditorPage extends StatefulWidget {
+  const _QuickToolsEditorPage({required this.initial, required this.defaults});
+
+  final List<String> initial;
+  final List<String> defaults;
+
+  @override
+  State<_QuickToolsEditorPage> createState() => _QuickToolsEditorPageState();
+}
+
+class _QuickToolsEditorPageState extends State<_QuickToolsEditorPage> {
+  late List<String> _draft = List.of(widget.initial);
+
+  @override
+  Widget build(BuildContext context) {
+    return HermesPageScaffold(
+      title: context.l10n.homeEditQuickTools,
+      subtitle: context.l10n.homeQuickToolsDescription,
+      titleMode: HermesPageTitleMode.large,
+      maxContentWidth: HermesLayout.contentNarrow,
+      bodyPadding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      body: ReorderableListView.builder(
+        buildDefaultDragHandles: false,
+        itemCount: _draft.length,
+        onReorderItem: (oldIndex, newIndex) {
+          setState(() {
+            final item = _draft.removeAt(oldIndex);
+            _draft.insert(newIndex, item);
+          });
+        },
+        itemBuilder: (context, index) {
+          final entry = hermesFeaturesById[_draft[index]]!;
+          return Padding(
+            key: ValueKey('quick-tool-editor-${entry.id}'),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: HermesGroupedList(
+              children: [
+                HermesListRow(
+                  icon: entry.icon,
+                  title: entry.title(context.l10n),
+                  subtitle: index == 4
+                      ? context.l10n.homeLastVisibleTool
+                      : entry.subtitle(context.l10n),
+                  showDisclosure: false,
+                  trailing: ReorderableDragStartListener(
+                    index: index,
+                    child: Semantics(
+                      label: context.l10n.homeDragToReorder,
+                      button: true,
+                      child: const SizedBox.square(
+                        dimension: 44,
+                        child: Icon(Icons.drag_handle_rounded),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+      bottomAction: Row(
+        children: [
+          TextButton(
+            onPressed: () => setState(() => _draft = List.of(widget.defaults)),
+            child: Text(context.l10n.homeRestoreDefaults),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(context.l10n.commonCancel),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(_draft),
+            child: Text(context.l10n.commonSave),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HomeScreenState extends State<HomeScreen> {
@@ -64,71 +148,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _editToolOrder() async {
-    var draft = List<String>.of(_toolOrder);
-    final saved = await showDialog<List<String>>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(context.l10n.homeEditQuickTools),
-          content: SizedBox(
-            width: 420,
-            height: 420,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  context.l10n.homeQuickToolsDescription,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ReorderableListView.builder(
-                    buildDefaultDragHandles: false,
-                    itemCount: draft.length,
-                    onReorderItem: (oldIndex, newIndex) {
-                      setDialogState(() {
-                        final item = draft.removeAt(oldIndex);
-                        draft.insert(newIndex, item);
-                      });
-                    },
-                    itemBuilder: (context, index) {
-                      final tool = hermesFeaturesById[draft[index]]!;
-                      return ListTile(
-                        key: ValueKey('quick-tool-editor-${tool.id}'),
-                        leading: Icon(tool.icon),
-                        title: Text(tool.title(context.l10n)),
-                        subtitle: index == 4
-                            ? Text(context.l10n.homeLastVisibleTool)
-                            : null,
-                        trailing: ReorderableDragStartListener(
-                          index: index,
-                          child: Tooltip(
-                            message: context.l10n.homeDragToReorder,
-                            child: const Icon(Icons.drag_handle),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () =>
-                  setDialogState(() => draft = List.of(_defaultToolOrder)),
-              child: Text(context.l10n.homeRestoreDefaults),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(context.l10n.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(draft),
-              child: Text(context.l10n.commonSave),
-            ),
-          ],
+    final saved = await Navigator.of(context).push<List<String>>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _QuickToolsEditorPage(
+          initial: _toolOrder,
+          defaults: _defaultToolOrder,
         ),
       ),
     );
@@ -315,8 +340,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ? HermesLayout.workspace
         : (width >= HermesBreakpoints.phone ? HermesLayout.content : width);
 
-    return MobilePageScaffold(
+    return HermesPageScaffold(
       title: 'Hermes',
+      // Wide layouts already expose the app-shell rail/top chrome. Keeping
+      // Home's own compact bar there duplicates navigation and consumes the
+      // first content row; retain it only for phone-sized surfaces.
+      showAppBar: width < HermesBreakpoints.navigation,
+      maxContentWidth: maxWidth,
       leading: IconButton(
         key: const ValueKey('home-settings-avatar'),
         tooltip: context.l10n.featureSettings,
@@ -387,60 +417,53 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(width: 6),
       ],
-      body: Center(
-        child: SizedBox(
-          width: maxWidth,
-          child: RefreshIndicator(
-            onRefresh: _load,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                HermesMobileMetrics.pagePadding,
-                HermesMobileMetrics.pagePadding,
-                HermesMobileMetrics.pagePadding,
-                32,
-              ),
-              children: [
-                _continueHero(
-                  running: running,
-                  runningRow: runningRow,
-                  model: model,
-                  profile: store.activeProfile ?? 'default',
-                ),
-                HermesSectionHeader(
-                  padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-                  title: context.l10n.homeQuickTools,
-                  trailing: IconButton(
-                    key: const ValueKey('edit-quick-tools'),
-                    tooltip: context.l10n.homeEditQuickTools,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _editToolOrder,
-                    icon: const Icon(Icons.edit_outlined, size: 16),
-                  ),
-                ),
-                _quickTools(),
-                HermesSectionHeader(
-                  padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-                  title: context.l10n.homeCurrentWork,
-                ),
-                _statusCards(running, model, attention),
-                HermesSectionHeader(
-                  padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-                  title: context.l10n.homeRecentSessions,
-                  trailing: TextButton.icon(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SessionListScreen(),
-                      ),
-                    ),
-                    iconAlignment: IconAlignment.end,
-                    icon: const Icon(Icons.arrow_forward, size: 16),
-                    label: Text(context.l10n.commonViewAll),
-                  ),
-                ),
-                _recentWork(visible, parents),
-              ],
-            ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            HermesMobileMetrics.pagePadding,
+            HermesMobileMetrics.pagePadding,
+            HermesMobileMetrics.pagePadding,
+            32,
           ),
+          children: [
+            _continueHero(
+              running: running,
+              runningRow: runningRow,
+              model: model,
+              profile: store.activeProfile ?? 'default',
+            ),
+            HermesSectionHeader(
+              padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+              title: context.l10n.homeQuickTools,
+              trailing: IconButton(
+                key: const ValueKey('edit-quick-tools'),
+                tooltip: context.l10n.homeEditQuickTools,
+                visualDensity: VisualDensity.compact,
+                onPressed: _editToolOrder,
+                icon: const Icon(Icons.tune_rounded, size: 18),
+              ),
+            ),
+            _quickTools(),
+            HermesSectionHeader(
+              padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+              title: context.l10n.homeCurrentWork,
+            ),
+            _statusCards(running, model, attention),
+            HermesSectionHeader(
+              padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+              title: context.l10n.homeRecentSessions,
+              trailing: TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SessionListScreen()),
+                ),
+                iconAlignment: IconAlignment.end,
+                icon: const Icon(Icons.arrow_forward, size: 16),
+                label: Text(context.l10n.commonViewAll),
+              ),
+            ),
+            _recentWork(visible, parents),
+          ],
         ),
       ),
     );
@@ -685,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisCount: compact ? 3 : 6,
           mainAxisSpacing: 9,
           crossAxisSpacing: 9,
-          mainAxisExtent: 105 + ((scale - 1).clamp(0, 1) * 45),
+          mainAxisExtent: 108 + ((scale - 1).clamp(0, 1) * 54),
         ),
         itemBuilder: (context, index) {
           if (index < 5) {
@@ -704,7 +727,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _moreTools(Iterable<String> ids) => HermesAdaptiveMenuButton<String>(
     tooltip: context.l10n.homeMoreTools,
     onSelected: (id) => hermesFeaturesById[id]?.open(context),
-    itemBuilder: (_) => [for (final id in ids) _moreItem(hermesFeaturesById[id]!)],
+    itemBuilder: (_) => [
+      for (final id in ids) _moreItem(hermesFeaturesById[id]!),
+    ],
     child: _ToolContent(
       icon: Icons.more_horiz,
       label: context.l10n.navMore,

@@ -190,6 +190,7 @@ class RequestResolution {
 class RequestStore extends ChangeNotifier {
   bool _persistRunning = false;
   bool _persistDirty = false;
+  bool _disposed = false;
   static const _storageKey = 'hm_pending_interactive_requests_v1';
   final List<PendingRequest> _queue = [];
   final Map<String, RequestResolution> _resolved = {};
@@ -479,9 +480,18 @@ class RequestStore extends ChangeNotifier {
   /// queueing a duplicate that could be answered twice.
   void enqueue(PendingRequest req) {
     final scope = _scopeResolver?.call(req.sessionId);
+    final eventRoute = req.ownerRoute;
+    final knownRoute = scope?.route;
+    final resolvedRoute = eventRoute != null &&
+            eventRoute.profile == null &&
+            knownRoute != null &&
+            eventRoute.connectionId == knownRoute.connectionId
+        ? knownRoute
+        : eventRoute ?? knownRoute;
     req = req.withScope(
-      ownerRoute: req.ownerRoute ?? scope?.route,
-      durableSessionId: req.durableSessionId ?? scope?.durableId,
+      ownerRoute: resolvedRoute,
+      durableSessionId: req.durableSessionId ??
+          (resolvedRoute == knownRoute ? scope?.durableId : null),
     );
     if (req.requestId.isNotEmpty) {
       final existing = _queue.indexWhere(
@@ -524,7 +534,7 @@ class RequestStore extends ChangeNotifier {
     } catch (_) {
       _queue.insert(0, req);
       _persist();
-      notifyListeners();
+      if (!_disposed) notifyListeners();
       rethrow;
     }
   }
@@ -560,11 +570,12 @@ class RequestStore extends ChangeNotifier {
     try {
       final rpcResult = await send(req);
       _recordResolution(req, {...rpcResult, ...resolution});
+      if (!_disposed) notifyListeners();
       return true;
     } catch (_) {
       _queue.insert(index.clamp(0, _queue.length), req);
       _persist();
-      notifyListeners();
+      if (!_disposed) notifyListeners();
       rethrow;
     }
   }
@@ -715,6 +726,7 @@ class RequestStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _sub?.cancel();
     super.dispose();
   }

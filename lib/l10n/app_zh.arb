@@ -1,5 +1,7 @@
 {
   "@@locale": "zh",
+  "chatTurnLabel": "回合",
+  "chatCurrentTurnLabel": "本回合 · {label}",
   "commonCopyFailed": "无法复制到剪贴板",
   "commonClipboardReadFailed": "无法读取剪贴板",
   "petGenerateReferenceFailed": "添加参考图片失败：{error}",
@@ -2320,7 +2322,7 @@
   "filesMovedCount": "已移动 {count} 项", "filesCopiedCount": "已复制 {count} 项",
   "filesPasteFailed": "粘贴失败：{error}", "filesConfirmDelete": "确认删除",
   "filesDeleteSelectedDescription": "删除选中的 {count} 项？此操作不可撤销。", "filesDeleteFailed": "删除失败：{error}",
-  "filesNewFile": "新建文件", "filesFileName": "文件名", "filesCreateFileFailed": "创建文件失败：{error}",
+  "filesNewFile": "新建文件", "filesFileName": "文件名", "filesInvalidName": "名称不能包含 /、\\ 或 ..", "filesCreateFileFailed": "创建文件失败：{error}",
   "filesNewSessionPrompt": "请查看并处理以下文件：\n{references}", "filesNewFolder": "新建文件夹", "filesNewName": "新名称",
   "filesRenameFailed": "重命名失败：{error}", "filesDeleteFolderDescription": "删除目录「{name}」及其所有内容？",
   "filesDeleteFileDescription": "删除文件「{name}」？", "filesFolderName": "文件夹名称", "filesCreateFolderFailed": "创建文件夹失败：{error}",

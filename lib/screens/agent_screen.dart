@@ -640,17 +640,15 @@ class _AgentScreenState extends State<AgentScreen>
   @override
   Widget build(BuildContext context) {
     final status = _status;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.featureAgent),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _busy ? null : _refreshAll,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+    return MobilePageScaffold(
+      title: context.l10n.featureAgent,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _busy ? null : _refreshAll,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: _buildBody(context, status),
     );
   }

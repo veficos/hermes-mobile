@@ -59,7 +59,10 @@ class HermesStatusChip extends StatelessWidget {
         height: 24,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: isDark ? 0.18 : 0.10),
+          // §3.6 语义色底 10%/18%；高对比经 hermesTintAlpha 提升（§3.7）。
+          color: color.withValues(
+            alpha: hermesTintAlpha(context, isDark ? 0.18 : 0.10),
+          ),
           borderRadius: BorderRadius.circular(HermesRadius.capsule),
         ),
         child: Row(

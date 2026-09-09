@@ -230,24 +230,21 @@ class _SessionsScreenState extends State<SessionsScreen> {
       ],
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          key: const ValueKey('sessions-back-button'),
-          tooltip: context.l10n.commonBack,
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back),
-        ),
-        title: Text(context.l10n.sessionManage),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.commonRefresh,
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
+    return MobilePageScaffold(
+      leading: IconButton(
+        key: const ValueKey('sessions-back-button'),
+        tooltip: context.l10n.commonBack,
+        onPressed: () => Navigator.of(context).maybePop(),
+        icon: const Icon(Icons.arrow_back),
       ),
+      title: context.l10n.sessionManage,
+      actions: [
+        IconButton(
+          tooltip: context.l10n.commonRefresh,
+          onPressed: _loading ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
       body: SafeArea(
         child: width >= 1200
             ? Row(

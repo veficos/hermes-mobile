@@ -9,6 +9,7 @@ import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
 import '../../widgets/web_preview.dart';
 import 'code_highlighter.dart';
+import 'text_chunks.dart';
 import 'mermaid_view.dart';
 
 /// A fenced code block promotes to an [HermesArtifactCard] when it is an
@@ -301,6 +302,15 @@ class HermesCodeBlock extends StatefulWidget {
 }
 
 class _HermesCodeBlockState extends State<HermesCodeBlock> {
+  String? _chunkSource;
+  List<String> _chunks = const [];
+
+  List<String> _codeChunks() {
+    if (_chunkSource == widget.code) return _chunks;
+    _chunkSource = widget.code;
+    return _chunks = boundedTextChunks(widget.code);
+  }
+
   bool _justCopied = false;
   TextSpan? _highlighted;
   bool? _highlightDark;
@@ -333,13 +343,31 @@ class _HermesCodeBlockState extends State<HermesCodeBlock> {
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final highlighted = _highlight(isDark);
-
-    final body = SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      child: SelectableText.rich(highlighted, style: HermesType.code),
-    );
+    // Very large code needs a bounded viewport even in the expanded viewer.
+    // Keep copying/export on the original source; only visible text chunks
+    // are laid out. Small code retains whole-document syntax highlighting.
+    final large = widget.code.length > _highlightCharThreshold;
+    final chunks = large ? _codeChunks() : const <String>[];
+    final body = large
+        ? SizedBox(
+            height: 360,
+            child: ListView.builder(
+              key: const ValueKey('large-code-viewport'),
+              primary: false,
+              padding: const EdgeInsets.all(12),
+              itemCount: chunks.length,
+              itemBuilder: (_, index) =>
+                  SelectableText(chunks[index], style: HermesType.code),
+            ),
+          )
+        : SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            child: SelectableText.rich(
+              _highlight(isDark),
+              style: HermesType.code,
+            ),
+          );
     if (!widget.framed) return body;
 
     return Container(

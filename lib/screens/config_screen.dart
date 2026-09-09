@@ -1623,8 +1623,12 @@ class _ConfigScreenState extends State<ConfigScreen>
                   ),
                   decoration: BoxDecoration(
                     color: isConfigured
-                        ? HermesSemantic.green.withValues(alpha: 0.1)
-                        : HermesSemantic.gray.withValues(alpha: 0.1),
+                        ? HermesSemantic.green.withValues(
+                            alpha: hermesTintAlpha(context, 0.1),
+                          )
+                        : HermesSemantic.gray.withValues(
+                            alpha: hermesTintAlpha(context, 0.1),
+                          ),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(

@@ -93,7 +93,7 @@ class ToolGroupCard extends StatelessWidget {
       chipLabel = context.l10n.statusCompleted;
     }
 
-    return _ExpandableToolGroup(
+    final toolGroup = _ExpandableToolGroup(
       groupKey: ValueKey(
         'timeline-tool-group-${tools.map((t) => t['tool_id'] ?? t['id'] ?? t['name']).join('-')}',
       ),
@@ -106,13 +106,24 @@ class ToolGroupCard extends StatelessWidget {
           ? () => dismiss.dismiss(groupId)
           : null,
       children: [
-        for (final interaction in interactions)
-          RequestSheet(
-            embedded: true,
-            requestId: interaction.interaction?['request_id']?.toString(),
-          ),
         for (final tool in tools)
           _ToolGroupRow(tool: tool, detailBuilder: detailBuilder),
+      ],
+    );
+    if (interactions.isEmpty) return toolGroup;
+    // Decisions must remain visible even when the tool details are collapsed.
+    // A request-only row is a form, not an empty tool group.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final interaction in interactions)
+          if (interaction.interaction?['request_id']?.toString().isNotEmpty == true)
+            RequestSheet(
+              key: ValueKey('inline-request-${interaction.interaction!['request_id']}'),
+              embedded: true,
+              requestId: interaction.interaction!['request_id'].toString(),
+            ),
+        if (tools.isNotEmpty) toolGroup,
       ],
     );
   }

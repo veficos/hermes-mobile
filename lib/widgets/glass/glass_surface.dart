@@ -60,6 +60,36 @@ class GlassSurface extends StatelessWidget {
       ),
       child: child,
     );
+    // A restrained specular wash gives the material a directional highlight
+    // without tinting or blurring the foreground content. Keep it disabled
+    // for opaque accessibility fallbacks where contrast must be predictable.
+    if (!opaque) {
+      content = Stack(
+        fit: StackFit.passthrough,
+        children: [
+          content,
+          IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: shape,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.centerRight,
+                  stops: const [0, .28, .58],
+                  colors: [
+                    (dark ? Colors.white : Colors.white).withValues(
+                      alpha: dark ? .055 : .20,
+                    ),
+                    Colors.transparent,
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     // Nested controls share their parent's sampled backdrop. This prevents
     // tool groups and nested sheets from stacking expensive blur passes.
     if (!opaque &&

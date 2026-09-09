@@ -8,6 +8,7 @@ import 'package:hermes_mobile/widgets/glass/glass_surface.dart';
 import 'package:hermes_mobile/widgets/glass/glass_button.dart';
 import 'package:hermes_mobile/widgets/adaptive_form_dialog.dart';
 import 'package:hermes_mobile/widgets/mobile/mobile_page_scaffold.dart';
+import 'package:hermes_mobile/widgets/glass/glass_environment.dart';
 
 void main() {
   test('Liquid theme publishes distinct popup and menu surfaces', () {
@@ -37,6 +38,34 @@ void main() {
         expect(dark.menuTheme.style!.backgroundColor!.resolve({})!.a, 1);
       }
     }
+  });
+
+  testWidgets('glass environment stays inert in Classic', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildHermesTheme(brightness: Brightness.light),
+        home: const GlassEnvironment(child: Text('Content')),
+      ),
+    );
+    expect(find.byType(DecoratedBox), findsNothing);
+    expect(find.text('Content'), findsOneWidget);
+  });
+
+  testWidgets('Liquid surface adds specular layer without extra blur', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildHermesTheme(
+          brightness: Brightness.dark,
+          visualStyle: HermesVisualStyle.liquid,
+        ),
+        home: const Scaffold(body: GlassSurface(child: Text('Readable'))),
+      ),
+    );
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byType(Stack), findsWidgets);
+    expect(find.text('Readable'), findsOneWidget);
   });
 
   testWidgets(

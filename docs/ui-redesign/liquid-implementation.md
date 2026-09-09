@@ -24,6 +24,11 @@ Apple Liquid Glass, not a claim of native iOS 26.6 SDK rendering.
   44px icon-button targets, selected states and reduced-animation timing.
 - Nested GlassSurface widgets reuse the ancestor backdrop instead of adding
   another blur pass. Content tint and clipping remain local.
+- GlassSurface adds a restrained directional specular wash only for translucent
+  states; opaque/high-contrast surfaces remain visually deterministic.
+- A repository audit confirms BackdropFilter is limited to shared navigation,
+  chat chrome and request surfaces; conversation content has no per-message
+  blur layers.
 
 ## Current verification
 

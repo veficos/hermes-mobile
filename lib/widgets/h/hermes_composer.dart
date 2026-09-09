@@ -1452,13 +1452,17 @@ class _AttachmentsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
     final chipBg = palette.codeBg;
     final chipBorder = palette.border;
     final chipText = palette.text3;
     BoxDecoration chipDecoration({bool card = false}) => BoxDecoration(
-      color: chipBg,
+      color: liquid ? chipBg.withValues(alpha: .78) : chipBg,
       border: Border.all(color: chipBorder),
       borderRadius: BorderRadius.circular(card ? 14 : 999),
+      boxShadow: liquid || Theme.of(context).brightness == Brightness.dark
+          ? const []
+          : hermesShadow(context),
     );
 
     return SingleChildScrollView(

@@ -10,6 +10,7 @@ import '../core/models.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
@@ -407,6 +408,7 @@ class _CredentialsScreenState extends State<CredentialsScreen>
   Widget _filterChip(String kind, String label) {
     final selected = _statusFilter == kind;
     final theme = Theme.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
     return FilterChip(
       selected: selected,
       onSelected: (_) => setState(() => _statusFilter = kind),
@@ -418,6 +420,13 @@ class _CredentialsScreenState extends State<CredentialsScreen>
               : theme.colorScheme.outlineVariant,
         ),
       ),
+      backgroundColor: liquid
+          ? HermesPalette.of(context).surface.withValues(alpha: .74)
+          : null,
+      selectedColor: liquid
+          ? theme.colorScheme.primary.withValues(alpha: .18)
+          : null,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
     );
   }
 

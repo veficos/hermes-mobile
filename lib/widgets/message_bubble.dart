@@ -545,15 +545,23 @@ class _MessageBubbleBody extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: palette.surface,
-                border: Border.all(color: palette.border),
+                color: HermesGlassTheme.of(context).enabled
+                    ? palette.surface.withValues(alpha: .96)
+                    : palette.surface,
+                border: Border.all(
+                  color: HermesGlassTheme.of(context).enabled
+                      ? palette.border.withValues(alpha: .82)
+                      : palette.border,
+                ),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(HermesRadius.bubble),
                   topRight: Radius.circular(HermesRadius.bubble),
                   bottomRight: Radius.circular(HermesRadius.bubble),
                   bottomLeft: Radius.circular(5),
                 ),
-                boxShadow: hermesShadow(context),
+                boxShadow: HermesGlassTheme.of(context).enabled
+                    ? const []
+                    : hermesShadow(context),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

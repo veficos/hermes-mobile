@@ -5,6 +5,41 @@ import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
 import 'package:hermes_mobile/widgets/mobile/mobile_page_scaffold.dart';
 
 void main() {
+  for (final brightness in Brightness.values) {
+    testWidgets('separate glass header clips scrolling body $brightness', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildHermesTheme(
+            brightness: brightness,
+            visualStyle: HermesVisualStyle.liquid,
+          ),
+          home: HermesPageScaffold(
+            title: 'Header',
+            titleMode: HermesPageTitleMode.large,
+            scrollBodyBehindHeader: true,
+            separateHeader: true,
+            body: ListView.builder(
+              itemCount: 60,
+              itemBuilder: (_, i) =>
+                  SizedBox(height: 64, child: Text('row $i')),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final header = tester.getRect(find.byType(AppBar));
+      final list = find.byType(ListView);
+      expect(tester.getRect(list).top, greaterThanOrEqualTo(header.bottom));
+      await tester.drag(list, const Offset(0, -400));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(list).top, greaterThanOrEqualTo(header.bottom));
+      expect(find.byType(NestedScrollView), findsNothing);
+      expect(find.byType(StretchingOverscrollIndicator), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final style in HermesVisualStyle.values) {
     testWidgets(
       'large title drag keeps refresh without viewport stretch $style',

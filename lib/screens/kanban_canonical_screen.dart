@@ -264,6 +264,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
         return KeyEventResult.ignored;
       },
       child: HermesPageScaffold(
+        separateHeader: HermesGlassTheme.of(context).enabled,
         title: context.l10n.taskTitle,
         titleMode: HermesPageTitleMode.large,
         maxContentWidth: HermesLayout.workspace,

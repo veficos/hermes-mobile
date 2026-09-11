@@ -143,6 +143,7 @@ class _MoreScreenState extends State<MoreScreen> {
       },
       child: HermesPageScaffold(
         title: l10n.navMore,
+        separateHeader: HermesGlassTheme.of(context).enabled,
         titleMode: HermesPageTitleMode.large,
         scrollBodyBehindHeader: true,
         maxContentWidth: HermesLayout.content,

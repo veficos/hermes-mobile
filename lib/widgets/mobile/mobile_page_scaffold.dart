@@ -33,6 +33,7 @@ class HermesPageScaffold extends StatelessWidget {
     this.showAppBar = true,
     this.extendBehindNavigation = false,
     this.scrollBodyBehindHeader = false,
+    this.separateHeader = false,
   });
 
   final String title;
@@ -59,6 +60,9 @@ class HermesPageScaffold extends StatelessWidget {
   /// For an existing primary scrollable body (not a box to wrap in a scroll view).
   /// Liquid coordinates its scroll with the pinned glass header.
   final bool scrollBodyBehindHeader;
+
+  /// Reserve a separate toolbar region; content never samples behind glass.
+  final bool separateHeader;
 
   Widget _constrain(Widget child) => Center(
     child: ConstrainedBox(
@@ -95,14 +99,17 @@ class HermesPageScaffold extends StatelessWidget {
           )
         : null;
     final useLargeTitle =
+        !separateHeader &&
         showAppBar &&
         titleMode == HermesPageTitleMode.large &&
         MediaQuery.sizeOf(context).width < HermesBreakpoints.navigation;
     // A scroll-owned header lets content actually pass behind the material.
     // Keep non-scrollable bodies out of this path: their constraints and
     // keyboard layout must remain owned by Scaffold.
-    final useScrollingHeader = liquid && showAppBar && scrollable;
-    final useNestedHeader = liquid && showAppBar && scrollBodyBehindHeader;
+    final useScrollingHeader =
+        !separateHeader && liquid && showAppBar && scrollable;
+    final useNestedHeader =
+        !separateHeader && liquid && showAppBar && scrollBodyBehindHeader;
 
     Widget content;
     if ((useLargeTitle && !scrollable) || useNestedHeader) {
@@ -300,7 +307,10 @@ class HermesPageScaffold extends StatelessWidget {
         child: ScrollConfiguration(
           behavior: ScrollConfiguration.of(context).copyWith(
             overscroll:
-                !(useLargeTitle || useNestedHeader || useScrollingHeader),
+                !(separateHeader ||
+                    useLargeTitle ||
+                    useNestedHeader ||
+                    useScrollingHeader),
           ),
           child: content,
         ),

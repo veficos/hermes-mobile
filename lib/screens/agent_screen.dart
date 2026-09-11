@@ -690,6 +690,7 @@ class _AgentScreenState extends State<AgentScreen>
     final status = _error == null ? _status : null;
     return HermesPageScaffold(
       title: context.l10n.agentBotsTitle,
+      separateHeader: HermesGlassTheme.of(context).enabled,
       titleMode: HermesPageTitleMode.large,
       scrollBodyBehindHeader: true,
       actions: [

@@ -9,6 +9,11 @@ class FrameDurationWindow {
   int _next = 0;
   int get length => _samples.length;
 
+  void clear() {
+    _samples.clear();
+    _next = 0;
+  }
+
   void add(int micros) {
     if (_samples.length < capacity) {
       _samples.add(micros);
@@ -87,6 +92,16 @@ class ClientPerformanceMetrics {
   final buildDurations = FrameDurationWindow();
   final rasterDurations = FrameDurationWindow();
   double frameBudgetMicros = 1000000 / 60;
+  int _windowStartFrames = 0;
+  int _windowStartSlowFrames = 0;
+
+  /// Start a new diagnostic interval without erasing lifetime counters.
+  void resetFrameWindow() {
+    buildDurations.clear();
+    rasterDurations.clear();
+    _windowStartFrames = frames;
+    _windowStartSlowFrames = slowFrames;
+  }
 
   /// UI and raster are pipelined: their sum is not a dropped-frame count.
   /// This measures frames with at least one stage exceeding the budget.
@@ -116,6 +131,10 @@ class ClientPerformanceMetrics {
     'max_build_micros': maxBuildMicros,
     'max_raster_micros': maxRasterMicros,
     'frame_budget_micros': frameBudgetMicros,
+    'frame_sample_count': buildDurations.length,
+    'slow_frame_ratio_lifetime': frames == 0 ? 0 : slowFrames / frames,
+    'build_p50_micros': buildDurations.percentile(.5),
+    'raster_p50_micros': rasterDurations.percentile(.5),
     'build_p95_micros': buildDurations.percentile(.95),
     'build_p99_micros': buildDurations.percentile(.99),
     'raster_p95_micros': rasterDurations.percentile(.95),
@@ -216,6 +235,21 @@ class ClientPerformanceMetrics {
       'max_raster_ms': maxRasterMicros / 1000,
       'frame_budget_ms': frameBudgetMicros / 1000,
       'frame_sample_count': buildDurations.length,
+      'frame_samples_available': buildDurations.length > 0,
+      'frame_sample_status': buildDurations.length > 0
+          ? 'available'
+          : 'unavailable_no_engine_samples',
+      'interval_slow_frame_ratio': frames == _windowStartFrames
+          ? null
+          : (slowFrames - _windowStartSlowFrames) /
+                (frames - _windowStartFrames),
+      'interval_frames': frames - _windowStartFrames,
+      'interval_slow_frames': slowFrames - _windowStartSlowFrames,
+      // Percentiles describe the rolling window; the ratio uses all frames
+      // since startup. Never silently mix their denominators in a report.
+      'slow_frame_ratio_lifetime': frames == 0 ? 0 : slowFrames / frames,
+      'build_p50_ms': buildDurations.percentile(.5) / 1000,
+      'raster_p50_ms': rasterDurations.percentile(.5) / 1000,
       'build_p95_ms': buildDurations.percentile(.95) / 1000,
       'build_p99_ms': buildDurations.percentile(.99) / 1000,
       'raster_p95_ms': rasterDurations.percentile(.95) / 1000,

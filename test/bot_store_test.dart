@@ -153,6 +153,128 @@ Future<void> _waitUntil(bool Function() condition) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test(
+    'cached avatar belongs to its runtime, not only connection ID',
+    () async {
+      final connection = _FakeConnection();
+      void addRuntime() => connection.registry.add(
+        ConnectionRuntime(
+          id: const ConnectionId('remote'),
+          settings: const ConnectionSettings(),
+          api: _UploadApi(),
+          gateway: GatewayClient(serverBaseUrl: 'http://invalid', apiKey: 'x'),
+        ),
+      );
+      addRuntime();
+      connection.handlers['profiles.list'] = (_) => {
+        'profiles': [
+          {'name': 'review', 'has_avatar': true},
+        ],
+      };
+      var pending = Completer<Map<String, dynamic>>();
+      connection.handlers['profiles.get_asset'] = (_) => pending.future;
+      final store = BotStore(connection);
+      addTearDown(store.dispose);
+      await store.refresh();
+      pending.complete({'found': true, 'data': 'data:image/png;base64,AQID'});
+      await Future<void>.delayed(Duration.zero);
+      expect(store.bots.single.metadata['image'], 'data:image/png;base64,AQID');
+      await connection.registry.remove(const ConnectionId('remote'));
+      addRuntime();
+      pending = Completer<Map<String, dynamic>>();
+      await store.refresh();
+      expect(store.bots.single.metadata['image'], isNull);
+      expect(
+        connection.calls
+            .where((call) => call.$1 == 'profiles.get_asset')
+            .length,
+        2,
+      );
+      pending.complete({'found': true, 'data': 'data:image/png;base64,BAUG'});
+      await Future<void>.delayed(Duration.zero);
+      expect(store.bots.single.metadata['image'], 'data:image/png;base64,BAUG');
+    },
+  );
+  for (final replaceRuntime in [false, true]) {
+    test(
+      'late avatar backfill ignores newer owner state replace=$replaceRuntime',
+      () async {
+        final connection = _FakeConnection();
+        connection.registry.add(
+          ConnectionRuntime(
+            id: const ConnectionId('remote'),
+            settings: const ConnectionSettings(),
+            api: _UploadApi(),
+            gateway: GatewayClient(
+              serverBaseUrl: 'http://invalid',
+              apiKey: 'x',
+            ),
+          ),
+          makeActive: true,
+        );
+        final avatar = Completer<Map<String, dynamic>>();
+        connection.handlers['profiles.list'] = (_) => {
+          'profiles': [
+            {'name': 'review', 'has_avatar': true},
+          ],
+        };
+        connection.handlers['profiles.get_asset'] = (_) => avatar.future;
+        connection.handlers['profiles.set_asset'] = (_) => {};
+        final store = BotStore(connection);
+        addTearDown(store.dispose);
+        await store.refresh();
+        final bot = store.bots.single;
+        final newAvatar = Completer<Map<String, dynamic>>();
+        if (replaceRuntime) {
+          await connection.registry.remove(const ConnectionId('remote'));
+          connection.registry.add(
+            ConnectionRuntime(
+              id: const ConnectionId('remote'),
+              settings: const ConnectionSettings(
+                serverUrl: 'http://new.invalid',
+              ),
+              api: _UploadApi(),
+              gateway: GatewayClient(
+                serverBaseUrl: 'http://new.invalid',
+                apiKey: 'x',
+              ),
+            ),
+          );
+          connection.handlers['profiles.get_asset'] = (_) => newAvatar.future;
+          await store.refresh();
+          expect(
+            connection.calls
+                .where((call) => call.$1 == 'profiles.get_asset')
+                .length,
+            2,
+          );
+        } else {
+          await store.clearBotAvatarImage(bot);
+        }
+        avatar.complete({'found': true, 'data': 'data:image/png;base64,AQID'});
+        await Future<void>.delayed(Duration.zero);
+        expect(store.bots.single.metadata['image'], isNull);
+        if (replaceRuntime) {
+          await store.refresh();
+          expect(
+            connection.calls
+                .where((call) => call.$1 == 'profiles.get_asset')
+                .length,
+            2,
+          );
+          newAvatar.complete({
+            'found': true,
+            'data': 'data:image/png;base64,BAUG',
+          });
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            store.bots.single.metadata['image'],
+            'data:image/png;base64,BAUG',
+          );
+        }
+      },
+    );
+  }
   final route = OwnerRoute(
     connectionId: const ConnectionId('remote'),
     profile: 'researcher',

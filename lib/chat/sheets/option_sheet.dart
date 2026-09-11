@@ -5,7 +5,9 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../../widgets/mobile/mobile_page_scaffold.dart';
+import '../../widgets/glass/glass_selection_row.dart';
 
 Future<T?> showChatOptionSheet<T extends String>(
   BuildContext context, {
@@ -43,6 +45,72 @@ Future<T?> showChatOptionSheet<T extends String>(
                   final (value, icon) = options[i];
                   final selected = value == current;
                   final colors = Theme.of(context).colorScheme;
+                  if (HermesGlassTheme.of(ctx).enabled) {
+                    return GlassSelectionRow(
+                      selected: selected,
+                      margin: EdgeInsets.zero,
+                      child: InkWell(
+                        onTap: () => Navigator.of(ctx).pop(value),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 56),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  icon,
+                                  color: selected
+                                      ? colors.onPrimaryContainer
+                                      : colors.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        value,
+                                        style: TextStyle(
+                                          color: selected
+                                              ? colors.onPrimaryContainer
+                                              : colors.onSurface,
+                                          fontWeight: selected
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                        ),
+                                      ),
+                                      if (selected && selectedLabel != null)
+                                        Text(
+                                          selectedLabel,
+                                          style: Theme.of(ctx)
+                                              .textTheme
+                                              .labelMedium
+                                              ?.copyWith(
+                                                color:
+                                                    colors.onPrimaryContainer,
+                                              ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                if (selected) ...[
+                                  const SizedBox(width: 12),
+                                  Icon(
+                                    Icons.check_circle,
+                                    color: colors.onPrimaryContainer,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
                   return Semantics(
                     selected: selected,
                     child: ListTile(

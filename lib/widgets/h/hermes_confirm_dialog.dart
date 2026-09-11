@@ -1,14 +1,13 @@
 /// showHermesConfirmDialog — 通用确认对话框（按钮规范 design-system.md
 /// §6.1）。
 ///
-/// 固定使用 AlertDialog：`showAdaptiveFormDialog`（adaptive_form_dialog.dart）
-/// 的约定是"编辑表单在窄屏走 bottom sheet，确认类弹窗继续用 AlertDialog"，
-/// 这里保持一致，不随宽度切换形态。
+/// 确认保持居中对话框形态；Liquid 使用共享玻璃材质，Classic 保持 AlertDialog。
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
+import '../glass/glass_alert_dialog.dart';
 import 'hermes_button.dart';
 
 /// 通用确认对话框：title + message + 取消/确认按钮，确认返回 true，取消或
@@ -23,7 +22,7 @@ Future<bool> showHermesConfirmDialog({
 }) async {
   final result = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => GlassAlertDialog(
       title: Text(title),
       content: Text(message),
       actions: [

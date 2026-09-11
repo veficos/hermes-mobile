@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../../l10n/l10n.dart';
+import '../../theme/hermes_glass_theme.dart';
 
 /// Touch/mouse-resizable GFM table. Drag the handle at a header's right edge.
 class ResizableMarkdownTableBuilder extends MarkdownElementBuilder {
@@ -108,7 +109,9 @@ class _ResizableTableState extends State<_ResizableTable> {
             TableRow(
               decoration: rowIndex == 0
                   ? BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh.withValues(
+                        alpha: HermesGlassTheme.of(context).enabled ? .42 : 1,
+                      ),
                     )
                   : null,
               children: [

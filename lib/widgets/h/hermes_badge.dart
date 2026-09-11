@@ -1,6 +1,6 @@
 /// HermesBadge —— 数字角标（design-system.md §6.15）。
 ///
-/// 审批、通知计数用：min 16px 圆/胶囊，error 底白字 px11；count > 99 显示
+/// 审批、通知计数用：min 16px 圆/胶囊，error 底对比文字 px11；count > 99 显示
 /// `99+`；[dot] 模式渲染为 8px 纯色圆点（无数字）。
 library;
 
@@ -49,11 +49,9 @@ class HermesBadge extends StatelessWidget {
         child: Text(
           label,
           style: HermesType.caption.copyWith(
-            // 高对比：白字在部分语义底（如深色红 #F26D6D）上不足 3:1，
-            // 改用黑/白中对比度更高者（§3.7）。
-            color: HermesA11y.highContrastOf(context)
-                ? hermesContrastForeground(resolved)
-                : Colors.white,
+            // Small count text needs contrast in every mode, not only when
+            // high contrast is explicitly enabled.
+            color: hermesContrastForeground(resolved),
             fontWeight: FontWeight.w600,
             height: 1,
           ),

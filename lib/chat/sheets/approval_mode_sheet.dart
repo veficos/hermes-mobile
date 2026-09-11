@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
+import '../../widgets/glass/glass_selection_row.dart';
 import '../../widgets/mobile/mobile_page_scaffold.dart';
 
 Future<String?> showChatApprovalModeSheet(
@@ -41,19 +42,27 @@ Future<String?> showChatApprovalModeSheet(
               ),
             ),
           ),
-          RadioGroup<String>(
-            groupValue: current,
-            onChanged: (value) => Navigator.pop(sheetContext, value),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final option in options)
-                  RadioListTile<String>(
-                    value: option,
-                    title: Text(labels[option] ?? option),
-                    subtitle: Text(descriptions[option] ?? ''),
-                  ),
-              ],
+          Flexible(
+            child: SingleChildScrollView(
+              child: RadioGroup<String>(
+                groupValue: current,
+                onChanged: (value) => Navigator.pop(sheetContext, value),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final option in options)
+                      GlassSelectionRow(
+                        selected: option == current,
+                        child: RadioListTile<String>(
+                          value: option,
+                          selected: option == current,
+                          title: Text(labels[option] ?? option),
+                          subtitle: Text(descriptions[option] ?? ''),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 8),

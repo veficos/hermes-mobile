@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
 import '../../screens/mcp_screen.dart';
+import '../h/hermes_glass.dart';
 
 /// Rich card for `setup_mcp` / `mcp_setup` tool calls.
 /// Extracted verbatim from `lib/widgets/message_bubble.dart` (formerly the
@@ -25,7 +26,8 @@ class McpSetupToolCard extends StatelessWidget {
     final failed = data['is_error'] == true || data['error'] != null;
     final running = data['running'] == true;
     final server = _server;
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

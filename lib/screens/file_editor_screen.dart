@@ -16,6 +16,10 @@ import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/glass/glass_alert_dialog.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
+import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../chat/content/code_highlighter.dart';
 
 enum _ConflictChoice { cancel, reload, overwrite }
@@ -46,10 +50,13 @@ class FileEditorScreen extends StatefulWidget {
 class FileEditorScreenState extends State<FileEditorScreen>
     with ConnectionReloadMixin<FileEditorScreen> {
   final TextEditingController _ctrl = TextEditingController();
+  final GlobalKey _sourceFieldKey = GlobalKey();
   final ScrollController _editorScroll = ScrollController();
   final ScrollController _gutterScroll = ScrollController();
   bool _loading = true;
   bool _saving = false;
+  bool _confirmingDiscard = false;
+  bool _allowExit = false;
   bool _isBinary = false;
   String? _error;
   String _original = '';
@@ -85,13 +92,17 @@ class FileEditorScreenState extends State<FileEditorScreen>
   }
 
   Future<void> _findInFile() async {
+    if (_saving || _loading || _isBinary || _confirmingDiscard) return;
+    final source = _ctrl.text;
+    final path = widget.path;
+    final generation = _loadGeneration;
     final controller = TextEditingController(text: _findQuery);
     final replacement = TextEditingController();
     final result =
         await showDialog<({String query, String replacement, bool replaceAll})>(
           context: context,
           builder: (ctx) {
-            return AlertDialog(
+            return GlassAlertDialog(
               title: Text(context.l10n.fileEditorFindReplaceTitle),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -144,7 +155,16 @@ class FileEditorScreenState extends State<FileEditorScreen>
       controller.dispose();
       replacement.dispose();
     });
-    if (!mounted || result == null || result.query.isEmpty) return;
+    if (!mounted ||
+        result == null ||
+        result.query.isEmpty ||
+        _saving ||
+        _loading ||
+        widget.path != path ||
+        _loadGeneration != generation ||
+        _ctrl.text != source) {
+      return;
+    }
     final query = result.query;
     if (result.replaceAll) {
       final count = _ctrl.text.split(query).length - 1;
@@ -183,13 +203,25 @@ class FileEditorScreenState extends State<FileEditorScreen>
       );
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_editorScroll.hasClients) return;
-      final line = '\n'.allMatches(_ctrl.text.substring(0, index)).length;
-      _editorScroll.animateTo(
-        (line * 22.0).clamp(0.0, _editorScroll.position.maxScrollExtent),
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-      );
+      if (!mounted ||
+          !_ctrl.selection.isValid ||
+          _ctrl.selection.baseOffset != index) {
+        return;
+      }
+      // EditableText owns wrapping, scaling and caret geometry. Do not
+      // estimate pixel offsets from logical line numbers.
+      void reveal(Element element) {
+        if (element is StatefulElement && element.state is EditableTextState) {
+          (element.state as EditableTextState).bringIntoView(
+            TextPosition(offset: index),
+          );
+          return;
+        }
+        element.visitChildren(reveal);
+      }
+
+      final field = _sourceFieldKey.currentContext;
+      if (field is Element) reveal(field);
     });
   }
 
@@ -343,26 +375,23 @@ class FileEditorScreenState extends State<FileEditorScreen>
   }
 
   Future<bool> _confirmDiscard() async {
+    if (_saving || _confirmingDiscard) return false;
     if (!_dirty) return true;
-    final l10n = context.l10n;
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.fileEditorDiscardQuestion),
-        content: Text(l10n.fileEditorDiscardDescription),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.fileEditorKeepEditing),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.fileEditorDiscard),
-          ),
-        ],
-      ),
-    );
-    return result == true;
+    _confirmingDiscard = true;
+    try {
+      final l10n = context.l10n;
+      final result = await showHermesConfirmDialog(
+        context: context,
+        title: l10n.fileEditorDiscardQuestion,
+        message: l10n.fileEditorDiscardDescription,
+        cancelLabel: l10n.fileEditorKeepEditing,
+        confirmLabel: l10n.fileEditorDiscard,
+        destructive: true,
+      );
+      return result == true;
+    } finally {
+      _confirmingDiscard = false;
+    }
   }
 
   /// Embedded (tablet split) mode has no route of its own, so the PopScope
@@ -433,14 +462,11 @@ class FileEditorScreenState extends State<FileEditorScreen>
 
         if (narrow) {
           return Dialog.fullscreen(
-            child: Scaffold(
-              appBar: AppBar(
-                title: Text(l10n.fileEditorConflictTitle),
-                leading: IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () =>
-                      Navigator.of(ctx).pop(_ConflictChoice.cancel),
-                ),
+            child: HermesPageScaffold(
+              title: l10n.fileEditorConflictTitle,
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.of(ctx).pop(_ConflictChoice.cancel),
               ),
               body: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -449,20 +475,21 @@ class FileEditorScreenState extends State<FileEditorScreen>
               bottomNavigationBar: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                  child: Row(
+                  child: OverflowBar(
+                    alignment: MainAxisAlignment.end,
+                    spacing: 8,
+                    overflowSpacing: 8,
                     children: [
                       TextButton(
                         onPressed: () =>
                             Navigator.of(ctx).pop(_ConflictChoice.cancel),
                         child: Text(l10n.commonCancel),
                       ),
-                      const Spacer(),
                       TextButton(
                         onPressed: () =>
                             Navigator.of(ctx).pop(_ConflictChoice.reload),
                         child: Text(l10n.commonReload),
                       ),
-                      const SizedBox(width: 8),
                       FilledButton(
                         onPressed: () =>
                             Navigator.of(ctx).pop(_ConflictChoice.overwrite),
@@ -476,7 +503,8 @@ class FileEditorScreenState extends State<FileEditorScreen>
           );
         }
 
-        return AlertDialog(
+        return GlassAlertDialog(
+          maxWidth: 688,
           title: Text(l10n.fileEditorConflictTitle),
           content: SizedBox(width: 640, height: 360, child: content),
           actions: [
@@ -536,7 +564,13 @@ class FileEditorScreenState extends State<FileEditorScreen>
   }
 
   Future<void> _save() async {
-    if (_isBinary) return;
+    if (_isBinary ||
+        _saving ||
+        _loading ||
+        _error != null ||
+        _confirmingDiscard) {
+      return;
+    }
     final api = _loadedApi;
     final path = _loadedPath;
     final generation = _mutationGeneration;
@@ -646,7 +680,9 @@ class FileEditorScreenState extends State<FileEditorScreen>
       ),
       if (!_isBinary)
         IconButton(
-          tooltip: _showDiff ? 'Edit file' : 'Show changes',
+          tooltip: _showDiff
+              ? l10n.fileEditorEditFile
+              : l10n.fileEditorShowChanges,
           onPressed: _loading || _error != null
               ? null
               : () => setState(() => _showDiff = !_showDiff),
@@ -656,13 +692,20 @@ class FileEditorScreenState extends State<FileEditorScreen>
         ),
       if (!_isBinary)
         IconButton(
-          onPressed: _saving ? null : _save,
+          onPressed: _saving || _loading || _error != null ? null : _save,
+          style: IconButton.styleFrom(
+            minimumSize: const Size(44, 44),
+            visualDensity: VisualDensity.standard,
+          ),
           tooltip: _saving ? l10n.fileEditorSaving : l10n.commonSave,
           icon: _saving
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+              ? Semantics(
+                  liveRegion: true,
+                  label: l10n.fileEditorSaving,
+                  child: const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 )
               : const Icon(Icons.save_outlined),
         ),
@@ -682,6 +725,23 @@ class FileEditorScreenState extends State<FileEditorScreen>
       },
       child: Focus(autofocus: widget.embedded, child: _buildBody(context)),
     );
+    final compactActions = <Widget>[
+      HermesAdaptiveMenuButton<int>(
+        key: const ValueKey('file-editor-actions'),
+        tooltip: l10n.commonMore,
+        icon: const Icon(Icons.more_horiz),
+        itemBuilder: (_) => [
+          for (var i = 0; i < actions.length - (_isBinary ? 0 : 1); i++)
+            PopupMenuItem(
+              value: i,
+              enabled: actions[i].onPressed != null,
+              child: Text(actions[i].tooltip!),
+            ),
+        ],
+        onSelected: (index) => actions[index].onPressed?.call(),
+      ),
+      if (!_isBinary) actions.last,
+    ];
 
     if (widget.embedded) {
       return Column(
@@ -718,34 +778,34 @@ class FileEditorScreenState extends State<FileEditorScreen>
     }
 
     return PopScope(
-      canPop: !_dirty,
+      canPop: _allowExit || (!_saving && !_dirty),
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         final navigator = Navigator.of(context);
         final discard = await _confirmDiscard();
         if (discard && mounted) {
-          navigator.pop();
+          setState(() => _allowExit = true);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) navigator.pop();
+          });
         }
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            titleText,
-            semanticsLabel: _dirty
-                ? l10n.fileEditorUnsavedTitle(widget.name)
-                : widget.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+      child: HermesPageScaffold(
+        title: titleText,
+        titleSemanticsLabel: _dirty
+            ? l10n.fileEditorUnsavedTitle(widget.name)
+            : widget.name,
+        actions: [
+          IconButton(
+            tooltip: context.l10n.commonSearch,
+            onPressed: _loading || _isBinary ? null : _findInFile,
+            icon: const Icon(Icons.search),
           ),
-          actions: [
-            IconButton(
-              tooltip: context.l10n.commonSearch,
-              onPressed: _loading || _isBinary ? null : _findInFile,
-              icon: const Icon(Icons.search),
-            ),
+          if (MediaQuery.sizeOf(context).width < 600)
+            ...compactActions
+          else
             ...actions,
-          ],
-        ),
+        ],
         body: body,
       ),
     );
@@ -798,34 +858,66 @@ class FileEditorScreenState extends State<FileEditorScreen>
       );
     }
     if (_showDiff) return _buildDiff(context);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final palette = HermesPalette.of(context);
     final codeStyle = HermesType.code.copyWith(
-      color: isDark ? HermesText.darkPrimary : HermesText.lightPrimary,
+      color: palette.text,
       height: 1.45,
+      inherit: false,
+      fontFamily: HermesFonts.mono.first,
+      textBaseline: TextBaseline.alphabetic,
+      letterSpacing: 0,
     );
-    final gutterStyle = HermesType.code.copyWith(
-      color: isDark ? HermesText.darkQuaternary : HermesText.lightQuaternary,
-      height: 1.45,
+    final gutterStyle = codeStyle.copyWith(color: palette.text2, height: 1.45);
+    final lineMetrics = TextPainter(
+      text: TextSpan(text: '0', style: codeStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final lineHeight = lineMetrics.preferredLineHeight;
+    lineMetrics.text = TextSpan(
+      text: '0' * _lineCount.toString().length,
+      style: gutterStyle,
     );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          width: 44,
-          color: isDark
-              ? HermesBackground.darkSecondary
-              : HermesBackground.lightTertiary,
-          child: SingleChildScrollView(
-            controller: _gutterScroll,
-            physics: const NeverScrollableScrollPhysics(),
-            child: SizedBox(
-              height: (_lineCount < 1 ? 1 : _lineCount) * 20.3 + 24,
+    lineMetrics.layout();
+    final gutterWidth = (lineMetrics.width + 16).clamp(44.0, double.infinity);
+    lineMetrics.dispose();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // EditableText reserves 2px caret width plus a 1px caret gap.
+        final sourceWidth = (constraints.maxWidth - gutterWidth - 24 - 3).clamp(
+          1.0,
+          double.infinity,
+        );
+        final lines = _ctrl.text.split('\n');
+        final extents = <int, double>{};
+        final strut = StrutStyle.fromTextStyle(
+          codeStyle,
+          forceStrutHeight: true,
+        );
+        double extent(int index) => extents.putIfAbsent(index, () {
+          final painter = TextPainter(
+            text: TextSpan(text: '${lines[index]}\n', style: codeStyle),
+            textDirection: TextDirection.ltr,
+            textScaler: MediaQuery.textScalerOf(context),
+            strutStyle: strut,
+          )..layout(maxWidth: sourceWidth);
+          final height = painter.height - lineHeight;
+          painter.dispose();
+          return height < lineHeight ? lineHeight : height;
+        });
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: gutterWidth,
+              key: const ValueKey('file-editor-gutter'),
+              color: palette.surface,
               child: ListView.builder(
+                controller: _gutterScroll,
                 physics: const NeverScrollableScrollPhysics(),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 itemCount: _lineCount,
-                itemExtent: 20.3,
+                itemExtentBuilder: (index, _) => extent(index),
                 itemBuilder: (_, index) => Text(
                   '${index + 1}',
                   textAlign: TextAlign.center,
@@ -833,30 +925,34 @@ class FileEditorScreenState extends State<FileEditorScreen>
                 ),
               ),
             ),
-          ),
-        ),
-        Expanded(
-          child: TextField(
-            controller: _ctrl,
-            scrollController: _editorScroll,
-            maxLines: null,
-            expands: true,
-            textAlignVertical: TextAlignVertical.top,
-            style: codeStyle,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: theme.scaffoldBackgroundColor,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.all(12),
+            Expanded(
+              child: ColoredBox(
+                color: palette.codeBg,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: TextField(
+                    key: _sourceFieldKey,
+                    controller: _ctrl,
+                    scrollController: _editorScroll,
+                    maxLines: null,
+                    expands: true,
+                    textAlignVertical: TextAlignVertical.top,
+                    style: codeStyle,
+                    strutStyle: strut,
+                    textDirection: TextDirection.ltr,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: null,
+                    onChanged: (t) => setState(() {
+                      _lineCount = '\n'.allMatches(t).length + 1;
+                    }),
+                  ),
+                ),
+              ),
             ),
-            onChanged: (t) => setState(() {
-              _lineCount = '\n'.allMatches(t).length + 1;
-            }),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 

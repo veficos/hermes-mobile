@@ -22,6 +22,7 @@ import '../core/stores/session_store.dart';
 import '../theme/hermes_tokens.dart';
 import '../theme/hermes_glass_theme.dart';
 import '../widgets/glass/glass_surface.dart';
+import '../widgets/glass/glass_alert_dialog.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
@@ -42,12 +43,16 @@ Future<void> showRequestSheet(
         canPop: false,
         child: Dialog(
           backgroundColor: liquid ? Colors.transparent : null,
+          shape: liquid ? const RoundedRectangleBorder() : null,
+          elevation: liquid ? 0 : null,
           child: GlassSurface(
             radius: 30,
-            thick: true,
+            role: HermesGlassRole.overlay,
             child: SizedBox(
               width: 560,
               child: RequestSheet(
+                // Dialog already subtracts viewInsets from its constraints.
+                keyboardInsetsHandled: liquid,
                 requestId: requestId,
                 ownerRoute: ownerRoute,
                 sessionId: sessionId,
@@ -61,23 +66,42 @@ Future<void> showRequestSheet(
   }
   await showModalBottomSheet<void>(
     context: context,
+    useSafeArea: liquid,
     isScrollControlled: true,
     isDismissible: false,
     enableDrag: false,
+    // This mandatory request cannot be dragged away; do not advertise a
+    // drag affordance inherited from the Liquid bottom-sheet theme.
+    showDragHandle: false,
     backgroundColor: liquid ? Colors.transparent : null,
-    builder: (_) => Align(
+    shape: liquid ? const RoundedRectangleBorder() : null,
+    elevation: liquid ? 0 : null,
+    builder: (sheetContext) => Align(
       alignment: Alignment.bottomCenter,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: width >= 840 ? 640 : double.infinity,
         ),
-        child: GlassSurface(
-          radius: 30,
-          thick: true,
-          child: RequestSheet(
-            requestId: requestId,
-            ownerRoute: ownerRoute,
-            sessionId: sessionId,
+        child: Padding(
+          padding: liquid
+              ? EdgeInsets.fromLTRB(
+                  12,
+                  12,
+                  12,
+                  12 +
+                      MediaQuery.viewInsetsOf(sheetContext).bottom +
+                      MediaQuery.paddingOf(sheetContext).bottom,
+                )
+              : EdgeInsets.zero,
+          child: GlassSurface(
+            radius: 30,
+            role: HermesGlassRole.overlay,
+            child: RequestSheet(
+              keyboardInsetsHandled: liquid,
+              requestId: requestId,
+              ownerRoute: ownerRoute,
+              sessionId: sessionId,
+            ),
           ),
         ),
       ),
@@ -87,6 +111,9 @@ Future<void> showRequestSheet(
 
 class RequestSheet extends StatefulWidget {
   final bool embedded;
+
+  /// True when the route places keyboard avoidance outside its material.
+  final bool keyboardInsetsHandled;
   final String? requestId;
   final OwnerRoute? ownerRoute;
   final String? sessionId;
@@ -94,6 +121,7 @@ class RequestSheet extends StatefulWidget {
   const RequestSheet({
     super.key,
     this.embedded = false,
+    this.keyboardInsetsHandled = false,
     this.requestId,
     this.ownerRoute,
     this.sessionId,
@@ -111,6 +139,7 @@ class _RequestSheetState extends State<RequestSheet> {
   final Set<String> _clarifySelected = {};
   final _clarifyOtherCtrl = TextEditingController();
   bool _busy = false;
+  PendingRequest? _submittingRequest;
 
   OwnerRoute? get _effectiveOwnerRoute {
     if (widget.ownerRoute != null || !widget.embedded) return widget.ownerRoute;
@@ -201,12 +230,20 @@ class _RequestSheetState extends State<RequestSheet> {
           : context.l10n.requestAlwaysAllowDetail(detail),
       confirmLabel: context.l10n.agentAlwaysAllow,
     );
-    if (confirmed && mounted) await _respond(choice: choice);
+    // A gateway event can remove/replace this request while the dialog is
+    // open. Consent applies only to the exact request that was displayed,
+    // never to the new FIFO head or a replacement with the same id.
+    if (confirmed &&
+        mounted &&
+        identical(_selected(context.read<RequestStore>()), req)) {
+      await _respond(choice: choice);
+    }
   }
 
   Future<void> _respond({String? choice, String? text}) async {
     final requests = context.read<RequestStore>();
     final target = _selected(requests);
+    if (_busy || target == null) return;
     final session = context.read<SessionStore>();
     final connection = context.read<ConnectionStore>();
     final runtimeId = session.runtimeId;
@@ -214,7 +251,10 @@ class _RequestSheetState extends State<RequestSheet> {
       showHermesToast(context, message: context.l10n.requestNoActiveSession);
       return;
     }
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _submittingRequest = target;
+    });
     try {
       await requests.respondById(
         widget.requestId,
@@ -280,7 +320,7 @@ class _RequestSheetState extends State<RequestSheet> {
         },
         ownerRoute: _effectiveOwnerRoute,
         sessionId: _effectiveSessionId,
-        kind: target?.kind,
+        kind: target.kind,
         resolution: {
           'choice': ?choice,
           if (text != null && text.isNotEmpty) 'answer': text,
@@ -291,7 +331,17 @@ class _RequestSheetState extends State<RequestSheet> {
       );
       _textCtrl.clear();
     } catch (e) {
-      if (mounted) {
+      final expired =
+          requests
+              .resolution(
+                target.requestId,
+                ownerRoute: target.ownerRoute,
+                sessionId: target.durableSessionId ?? target.sessionId,
+                kind: target.kind,
+              )
+              ?.status ==
+          'expired';
+      if (mounted && !expired) {
         showHermesErrorSnackBar(
           context,
           e,
@@ -299,7 +349,12 @@ class _RequestSheetState extends State<RequestSheet> {
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _submittingRequest = null;
+        });
+      }
     }
   }
 
@@ -507,7 +562,7 @@ class _RequestSheetState extends State<RequestSheet> {
     try {
       return await showDialog<Map<String, String>>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => GlassAlertDialog(
           title: Text(
             context.l10n.requestConfigureMcp(
               (entry?['name'] ?? 'MCP').toString(),
@@ -578,7 +633,7 @@ class _RequestSheetState extends State<RequestSheet> {
       message: context.l10n.requestCloseDescription,
       confirmLabel: context.l10n.commonClose,
     );
-    if (confirmed && mounted) {
+    if (confirmed && mounted && identical(_selected(requests), req)) {
       requests.dismissById(
         widget.requestId,
         ownerRoute: _effectiveOwnerRoute,
@@ -591,7 +646,22 @@ class _RequestSheetState extends State<RequestSheet> {
   @override
   Widget build(BuildContext context) {
     final requests = context.watch<RequestStore>();
-    final req = _selected(requests);
+    // The store temporarily dequeues a request during its RPC. Keep the
+    // submitted card visible and disabled until success/failure is known.
+    final submitting = _submittingRequest;
+    final submissionExpired =
+        submitting != null &&
+        requests
+                .resolution(
+                  submitting.requestId,
+                  ownerRoute: submitting.ownerRoute,
+                  sessionId:
+                      submitting.durableSessionId ?? submitting.sessionId,
+                  kind: submitting.kind,
+                )
+                ?.status ==
+            'expired';
+    final req = submissionExpired ? null : submitting ?? _selected(requests);
     if (req == null) {
       if (widget.embedded && widget.requestId != null) {
         final resolved = requests.resolution(
@@ -599,37 +669,64 @@ class _RequestSheetState extends State<RequestSheet> {
           ownerRoute: _effectiveOwnerRoute,
           sessionId: _effectiveSessionId,
         );
-        final detail =
-            resolved?.result['choice'] ??
-            resolved?.result['answer'] ??
-            resolved?.status ??
-            context.l10n.requestProcessed;
+        final choice = resolved?.result['choice']?.toString();
+        final expired = resolved?.status == 'expired';
+        final approvalChoice =
+            resolved?.kind == RequestKind.approval && choice != null;
+        final denied =
+            resolved?.kind == RequestKind.approval &&
+            (choice == 'deny' || resolved?.status == 'declined');
+        final detail = expired
+            ? context.l10n.requestExpired
+            : approvalChoice
+            ? _choiceLabel(RequestKind.approval, choice)
+            : resolved?.result['choice'] ??
+                  resolved?.result['answer'] ??
+                  resolved?.status ??
+                  context.l10n.requestProcessed;
         final liquid = HermesGlassTheme.of(context).enabled;
         final palette = HermesPalette.of(context);
         return Container(
-          decoration: BoxDecoration(
-            color: liquid
-                ? palette.surface.withValues(alpha: .92)
-                : palette.surface,
-            borderRadius: BorderRadius.circular(
-              liquid ? HermesGlassTokens.controlRadius : HermesRadius.card,
-            ),
-            border: Border.all(color: palette.border),
-          ),
+          key: const ValueKey('inline-request-resolved'),
+          decoration: liquid
+              ? ShapeDecoration(
+                  color: palette.surface,
+                  shape: RoundedSuperellipseBorder(
+                    borderRadius: BorderRadius.circular(
+                      HermesGlassTokens.controlRadius,
+                    ),
+                    side: BorderSide(color: palette.border),
+                  ),
+                )
+              : BoxDecoration(
+                  color: palette.surface,
+                  borderRadius: BorderRadius.circular(HermesRadius.card),
+                  border: Border.all(color: palette.border),
+                ),
           child: ListTile(
             dense: true,
             leading: Icon(
               resolved == null
                   ? Icons.hourglass_empty
+                  : expired
+                  ? Icons.timer_off_outlined
+                  : denied
+                  ? Icons.cancel_outlined
                   : Icons.check_circle_outline,
-              color: resolved == null ? palette.text3 : palette.accent,
+              color: resolved == null || denied || expired
+                  ? palette.text3
+                  : palette.accent,
             ),
             title: Text(
               resolved == null
                   ? context.l10n.requestPending
+                  : expired
+                  ? context.l10n.requestExpired
                   : context.l10n.requestInteractionProcessed,
             ),
-            subtitle: resolved == null ? null : Text(detail.toString()),
+            subtitle: resolved == null || expired
+                ? null
+                : Text(detail.toString()),
           ),
         );
       }
@@ -643,6 +740,7 @@ class _RequestSheetState extends State<RequestSheet> {
     }
 
     final theme = Theme.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
     final palette = HermesPalette.of(context);
     final warning = theme.brightness == Brightness.dark
         ? HermesSemanticDark.orange
@@ -678,18 +776,21 @@ class _RequestSheetState extends State<RequestSheet> {
         right: 20,
         top: 16,
         bottom:
-            (widget.embedded ? 0 : MediaQuery.of(context).viewInsets.bottom) +
+            (widget.embedded || widget.keyboardInsetsHandled
+                ? 0
+                : MediaQuery.of(context).viewInsets.bottom) +
             20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: Text(_kindLabel, style: theme.textTheme.titleMedium),
-              ),
+              Text(_kindLabel, style: theme.textTheme.titleMedium),
               if (req.kind == RequestKind.approval)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -715,6 +816,7 @@ class _RequestSheetState extends State<RequestSheet> {
           const SizedBox(height: 8),
           if (req.command != null && req.command!.isNotEmpty) ...[
             Container(
+              key: const ValueKey('request-command'),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: palette.codeBg,
@@ -727,6 +829,14 @@ class _RequestSheetState extends State<RequestSheet> {
           ],
           if (req.question != null && req.question!.isNotEmpty)
             Text(req.question!),
+          if (_submittingRequest != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Semantics(
+                liveRegion: true,
+                child: Text(context.l10n.chatSendingEllipsis),
+              ),
+            ),
           if (req.kind == RequestKind.mcpSetup) ...[
             Text(
               context.l10n.requestServer(
@@ -856,18 +966,37 @@ class _RequestSheetState extends State<RequestSheet> {
         ],
       ),
     );
-    if (!widget.embedded) return content;
+    if (!widget.embedded) {
+      return HermesGlassTheme.of(context).enabled
+          ? SingleChildScrollView(child: content)
+          : content;
+    }
     return Container(
       key: const ValueKey('inline-request-card'),
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          kindTone.withValues(alpha: hermesTintAlpha(context, .05)),
-          palette.surface,
-        ),
-        borderRadius: BorderRadius.circular(HermesRadius.card),
-        border: Border.all(color: kindTone.withValues(alpha: .45)),
-      ),
+      decoration: liquid
+          ? ShapeDecoration(
+              color: Color.alphaBlend(
+                kindTone.withValues(alpha: hermesTintAlpha(context, .05)),
+                palette.surface,
+              ),
+              shape: RoundedSuperellipseBorder(
+                borderRadius: BorderRadius.circular(
+                  HermesGlassTokens.controlRadius,
+                ),
+                side: BorderSide(color: kindTone.withValues(alpha: .45)),
+              ),
+            )
+          : BoxDecoration(
+              color: Color.alphaBlend(
+                kindTone.withValues(alpha: hermesTintAlpha(context, .05)),
+                HermesGlassTheme.of(context).allowsTransparency(context)
+                    ? palette.surface.withValues(alpha: .78)
+                    : palette.surface,
+              ),
+              borderRadius: BorderRadius.circular(HermesRadius.card),
+              border: Border.all(color: kindTone.withValues(alpha: .45)),
+            ),
       child: content,
     );
   }
@@ -916,7 +1045,9 @@ class _RequestSheetState extends State<RequestSheet> {
                         ? scheme.primary
                         : choice == 'deny'
                         ? scheme.error.withValues(alpha: liquid ? .12 : .08)
-                        : liquid
+                        : HermesGlassTheme.of(
+                            context,
+                          ).allowsTransparency(context)
                         ? palette.surface.withValues(alpha: .72)
                         : palette.codeBg,
                     foregroundColor: choice == 'once'
@@ -924,11 +1055,15 @@ class _RequestSheetState extends State<RequestSheet> {
                         : choice == 'deny'
                         ? scheme.error
                         : palette.text2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        liquid ? HermesGlassTokens.controlRadius : 12,
-                      ),
-                    ),
+                    shape: liquid
+                        ? RoundedSuperellipseBorder(
+                            borderRadius: BorderRadius.circular(
+                              HermesGlassTokens.controlRadius,
+                            ),
+                          )
+                        : RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                     side: choice == 'once'
                         ? BorderSide.none
                         : BorderSide(

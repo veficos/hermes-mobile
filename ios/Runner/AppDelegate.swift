@@ -5,6 +5,7 @@ import UserNotifications
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var pushChannel: FlutterMethodChannel?
+  private var accessibilityChannel: FlutterMethodChannel?
   private var pendingPushEvents: [(String, [String: Any])] = []
   private var pendingTokenResults: [FlutterResult] = []
   private var apnsToken: String?
@@ -58,6 +59,26 @@ import UserNotifications
     }
     pendingPushEvents.removeAll()
 
+    let accessibilityChannel = FlutterMethodChannel(
+      name: "hermes.accessibility",
+      binaryMessenger: registrar.messenger()
+    )
+    self.accessibilityChannel = accessibilityChannel
+    accessibilityChannel.setMethodCallHandler { call, result in
+      if call.method == "reduceTransparency" {
+        result(UIAccessibility.isReduceTransparencyEnabled)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    NotificationCenter.default.removeObserver(
+      self, name: UIAccessibility.reduceTransparencyStatusDidChangeNotification, object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(reduceTransparencyChanged),
+      name: UIAccessibility.reduceTransparencyStatusDidChangeNotification, object: nil
+    )
+
     let clipboardChannel = FlutterMethodChannel(
       name: "hermes.clipboard",
       binaryMessenger: registrar.messenger()
@@ -73,6 +94,12 @@ import UserNotifications
       }
       result(["bytes": FlutterStandardTypedData(bytes: data), "mime": "image/png", "filename": "clipboard.png"])
     }
+  }
+
+  @objc private func reduceTransparencyChanged() {
+    accessibilityChannel?.invokeMethod(
+      "reduceTransparencyChanged", arguments: UIAccessibility.isReduceTransparencyEnabled
+    )
   }
 
   override func application(

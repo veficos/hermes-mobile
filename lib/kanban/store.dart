@@ -44,6 +44,10 @@ class KanbanStore extends ChangeNotifier {
   KanbanStore([KanbanApi? api]) : _api = api;
   KanbanApi get api => requireApi();
   bool get ready => _api != null;
+  int _ownerEpoch = 0;
+
+  /// Invalidates operations even when navigation returns to the same board.
+  int get ownerEpoch => _ownerEpoch;
 
   KanbanApi requireApi([KanbanApi? expected]) {
     final current = _api;
@@ -60,6 +64,7 @@ class KanbanStore extends ChangeNotifier {
       return;
     }
     _poll?.cancel();
+    _ownerEpoch++;
     _loadGeneration++;
     _eventGeneration++;
     _reconnectAttempts = 0;
@@ -271,11 +276,13 @@ class KanbanStore extends ChangeNotifier {
   Future<void> selectBoard(String slug, {KanbanApi? expectedApi}) async {
     final api = requireApi(expectedApi);
     final previous = api.boardSlug;
+    final epoch = ++_ownerEpoch;
     api.boardSlug = slug;
     notifyListeners();
     await _connectEvents(api);
+    if (epoch != _ownerEpoch || !identical(api, _api)) return;
     await load(expectedApi: api);
-    if (!identical(api, _api)) return;
+    if (epoch != _ownerEpoch || !identical(api, _api)) return;
     if (error != null) {
       api.boardSlug = previous;
       notifyListeners();
@@ -404,9 +411,13 @@ class KanbanStore extends ChangeNotifier {
     if (ids.isEmpty) return <String>{};
     final ownerApi = requireApi();
     final boardSlug = ownerApi.boardSlug;
+    final epoch = _ownerEpoch;
     try {
       final raw = await ownerApi.bulk(ids.toList(), patch);
-      if (!identical(ownerApi, _api) || boardSlug != ownerApi.boardSlug) {
+      if (_disposed ||
+          epoch != _ownerEpoch ||
+          !identical(ownerApi, _api) ||
+          boardSlug != ownerApi.boardSlug) {
         return ids;
       }
       final failed = <String>{};
@@ -417,8 +428,9 @@ class KanbanStore extends ChangeNotifier {
               .where((e) => e.isNotEmpty),
         );
       }
-      selectedIds.removeWhere((id) => !failed.contains(id));
+      selectedIds.removeWhere((id) => ids.contains(id) && !failed.contains(id));
       await load(expectedApi: ownerApi);
+      if (_disposed || epoch != _ownerEpoch) return ids;
       notifyListeners();
       return failed;
     } catch (_) {

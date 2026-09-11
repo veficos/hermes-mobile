@@ -7,6 +7,7 @@ import '../../theme/hermes_tokens.dart';
 import '../../theme/hermes_glass_theme.dart';
 import '../../widgets/h/hermes_status.dart';
 import '../../widgets/h/hermes_tool.dart';
+import '../../widgets/mobile/mobile_page_scaffold.dart';
 import 'tool_dismiss_store.dart';
 import '../../screens/request_sheet.dart';
 
@@ -67,7 +68,8 @@ class ToolGroupCard extends StatelessWidget {
           icon: const Icon(Icons.visibility_outlined, size: 16),
           label: Text(context.l10n.toolGroupHiddenRestore(tools.length)),
           style: TextButton.styleFrom(
-            visualDensity: VisualDensity.compact,
+            minimumSize: const Size(44, 44),
+            visualDensity: VisualDensity.standard,
             textStyle: const TextStyle(fontSize: 12),
           ),
         ),
@@ -225,14 +227,14 @@ class _ToolGroupRow extends StatelessWidget {
                         style: TextStyle(fontSize: 11, color: palette.text3),
                       ),
                     ),
+                  const SizedBox(height: 4),
+                  HermesStatusChip(
+                    color: rowChipColor,
+                    label: rowChipLabel,
+                    pulse: running,
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(width: 6),
-            HermesStatusChip(
-              color: rowChipColor,
-              label: rowChipLabel,
-              pulse: running,
             ),
           ],
         ),
@@ -252,12 +254,9 @@ void _showToolDetail(
   Map<String, dynamic> tool,
   Widget Function(Map<String, dynamic> tool)? detailBuilder,
 ) {
-  showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
-    builder: (sheetContext) => DraggableScrollableSheet(
+  showMobileSheet<void>(
+    context,
+    (sheetContext) => DraggableScrollableSheet(
       initialChildSize: .55,
       minChildSize: .3,
       maxChildSize: .9,
@@ -314,88 +313,138 @@ class _ExpandableToolGroupState extends State<_ExpandableToolGroup> {
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 4),
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: liquid
-            ? palette.surface.withValues(alpha: .94)
-            : palette.surface,
-        borderRadius: BorderRadius.circular(
-          liquid ? HermesGlassTokens.controlRadius : kToolGroupRadius,
-        ),
-        border: Border.all(
-          color: liquid
-              ? palette.border.withValues(alpha: .72)
-              : palette.border,
-        ),
-        boxShadow: liquid ? const [] : hermesShadow(context),
-      ),
+      // Tool output belongs to the reading plane, not the glass control plane.
+      decoration: liquid
+          ? ShapeDecoration(
+              color: palette.surface,
+              shape: RoundedSuperellipseBorder(
+                borderRadius: BorderRadius.circular(
+                  HermesGlassTokens.controlRadius,
+                ),
+                side: BorderSide(color: palette.border),
+              ),
+            )
+          : BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(kToolGroupRadius),
+              border: Border.all(color: palette.border),
+              boxShadow: hermesShadow(context),
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Container(
-              color: liquid
-                  ? palette.codeBg.withValues(alpha: .78)
-                  : palette.codeBg,
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 11),
-              child: Row(
-                children: [
-                  Icon(Icons.build_outlined, size: 15, color: palette.accent),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: palette.text,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  HermesStatusChip(
-                    color: widget.chipColor,
-                    label: widget.chipLabel,
-                    pulse: widget.running,
-                  ),
-                  if (widget.onDismiss != null) ...[
-                    const SizedBox(width: 4),
-                    SizedBox(
-                      width: 25,
-                      height: 25,
-                      child: Tooltip(
-                        message: context.l10n.toolHideRow,
-                        child: InkWell(
-                          onTap: widget.onDismiss,
-                          borderRadius: BorderRadius.circular(7),
-                          child: Icon(
-                            Icons.visibility_off_outlined,
-                            size: 13,
-                            color: palette.text4,
-                          ),
+          ColoredBox(
+            color: palette.codeBg,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    expanded: _expanded,
+                    child: InkWell(
+                      onTap: () => setState(() => _expanded = !_expanded),
+                      child: Container(
+                        constraints: const BoxConstraints(minHeight: 44),
+                        color: palette.codeBg,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 11,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.build_outlined,
+                              size: 15,
+                              color: palette.accent,
+                            ),
+                            const SizedBox(width: 9),
+                            if (liquid)
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      widget.title,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: palette.text,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    HermesStatusChip(
+                                      color: widget.chipColor,
+                                      label: widget.chipLabel,
+                                      pulse: widget.running,
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else ...[
+                              Expanded(
+                                child: Text(
+                                  widget.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: palette.text,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: HermesStatusChip(
+                                  color: widget.chipColor,
+                                  label: widget.chipLabel,
+                                  pulse: widget.running,
+                                ),
+                              ),
+                            ],
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: AnimatedRotation(
+                                turns: _expanded ? .5 : 0,
+                                duration: HermesGlassMotion.resolve(
+                                  context,
+                                  const Duration(milliseconds: 180),
+                                ),
+                                curve: Curves.easeOutCubic,
+                                child: Icon(
+                                  Icons.expand_more,
+                                  size: 14,
+                                  color: palette.text4,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ],
+                  ),
+                ),
+                if (widget.onDismiss != null)
                   Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: AnimatedRotation(
-                      turns: _expanded ? .5 : 0,
-                      duration: MediaQuery.disableAnimationsOf(context)
-                          ? Duration.zero
-                          : const Duration(milliseconds: 180),
-                      curve: Curves.easeOutCubic,
-                      child: Icon(
-                        Icons.expand_more,
-                        size: 14,
-                        color: palette.text4,
+                    padding: const EdgeInsets.only(right: 6),
+                    child: IconButton(
+                      tooltip: context.l10n.toolHideRow,
+                      onPressed: widget.onDismiss,
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
                       ),
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(44, 44),
+                        visualDensity: VisualDensity.standard,
+                        foregroundColor: palette.text3,
+                      ),
+                      icon: const Icon(Icons.visibility_off_outlined, size: 18),
                     ),
                   ),
-                ],
-              ),
+              ],
             ),
           ),
           if (_expanded)

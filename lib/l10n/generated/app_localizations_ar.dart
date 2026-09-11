@@ -9,6 +9,51 @@ class AppLocalizationsAr extends AppLocalizations {
   AppLocalizationsAr([String locale = 'ar']) : super(locale);
 
   @override
+  String get requestExpired => 'انتهت صلاحية الطلب';
+
+  @override
+  String get clientPerformanceTitle => 'أداء التطبيق';
+
+  @override
+  String get clientPerformanceSubtitle => 'عرض مقاييس التشغيل الحالي ونسخها';
+
+  @override
+  String get fileEditorEditFile => 'تحرير الملف';
+
+  @override
+  String get fileEditorShowChanges => 'عرض التغييرات';
+
+  @override
+  String get taskPreviousColumn => 'العمود السابق';
+
+  @override
+  String get taskNextColumn => 'العمود التالي';
+
+  @override
+  String taskVisibleColumns(int first, int last, int total) {
+    return 'الأعمدة $first–$last من $total';
+  }
+
+  @override
+  String get appearancePreviewNotice => 'معاينة فقط — لن تُرسل أي رسائل';
+
+  @override
+  String get appearancePreviewContent =>
+      'يبقى المحتوى واضحًا أسفل عناصر التحكم العائمة.';
+
+  @override
+  String get appearancePreviewComposer => 'معاينة إدخال الرسالة';
+
+  @override
+  String get agentDiagnostics => 'حالة الخدمة والتشخيص';
+
+  @override
+  String get agentBackendRunning => 'الخدمة الخلفية تعمل';
+
+  @override
+  String get agentBackendStopped => 'الخدمة الخلفية متوقفة';
+
+  @override
   String get appearanceVisualStyle => 'نمط الواجهة';
 
   @override

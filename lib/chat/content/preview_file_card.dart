@@ -5,6 +5,7 @@ import '../../core/preview_bridge.dart';
 import '../../core/stores/connection_store.dart';
 import '../../l10n/l10n.dart';
 import '../../widgets/h/hermes_states.dart';
+import '../../widgets/h/hermes_glass.dart';
 import '../../widgets/h/hermes_toast.dart';
 import '../../widgets/web_preview.dart';
 
@@ -85,7 +86,9 @@ class _PreviewFileCardState extends State<PreviewFileCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       key: ValueKey('preview-file-${widget.file}'),
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: Column(

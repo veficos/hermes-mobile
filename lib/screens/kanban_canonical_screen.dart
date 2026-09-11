@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../kanban/api.dart';
@@ -6,6 +7,10 @@ import '../kanban/models.dart';
 import '../kanban/store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
+import '../widgets/glass/glass_search_field.dart';
+import '../widgets/glass/glass_selection_row.dart';
+import '../widgets/glass/glass_surface.dart';
 import '../widgets/h/hermes_segmented_control.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_status.dart';
@@ -37,8 +42,27 @@ class KanbanCanonicalScreen extends StatefulWidget {
 
 class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   final _search = TextEditingController();
+  final _searchActionFocus = FocusNode(debugLabel: 'Task search action');
+  final _searchFieldFocus = FocusNode(debugLabel: 'Task search field');
+
+  void _toggleSearch(KanbanStore store) {
+    setState(() {
+      _searching = !_searching;
+      if (!_searching) {
+        _search.clear();
+        store.setFilters(search: '');
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      (_searching ? _searchFieldFocus : _searchActionFocus).requestFocus();
+    });
+  }
+
   bool _columns = false;
   bool _searching = false;
+  bool _movingSelection = false;
+  bool _submittingSelection = false;
   bool _initialProjectScheduled = false;
   bool _initialProjectResolved = false;
   bool _projectBoardMissing = false;
@@ -168,6 +192,8 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
   @override
   void dispose() {
     _search.dispose();
+    _searchActionFocus.dispose();
+    _searchFieldFocus.dispose();
     super.dispose();
   }
 
@@ -218,125 +244,243 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       );
     }
     final tasks = store.filteredTasks;
-    return HermesPageScaffold(
-      title: context.l10n.taskTitle,
-      titleMode: HermesPageTitleMode.large,
-      maxContentWidth: HermesLayout.workspace,
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              HermesMobileMetrics.pagePadding,
-              HermesSpacing.sm,
-              HermesMobileMetrics.pagePadding,
-              HermesSpacing.sm,
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: _viewToggle()),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      tooltip: _searching
-                          ? context.l10n.taskCloseSearch
-                          : context.l10n.taskSearch,
-                      onPressed: () => setState(() {
-                        _searching = !_searching;
-                        if (!_searching) {
-                          _search.clear();
-                          store.setFilters(search: '');
-                        }
-                      }),
-                      icon: Icon(_searching ? Icons.close : Icons.search),
-                    ),
-                    HermesAdaptiveMenuButton<String>(
-                      tooltip: context.l10n.taskOptions,
-                      icon: const Icon(Icons.tune, size: 20),
-                      onSelected: (value) {
-                        if (value == 'boards') _showBoards(context, store);
-                        if (value == 'filters') _showFilters(context, store);
-                        if (value == 'orchestration') {
-                          _showOrchestration(context, store);
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: 'boards',
-                          child: Text(context.l10n.taskSwitchBoard),
-                        ),
-                        PopupMenuItem(
-                          value: 'filters',
-                          child: Text(context.l10n.taskFilter),
-                        ),
-                        PopupMenuItem(
-                          value: 'orchestration',
-                          child: Text(context.l10n.taskOrchestration),
-                        ),
-                      ],
-                    ),
-                    IconButton(
-                      tooltip: context.l10n.taskNew,
-                      onPressed: () => _newTask(context, store),
-                      icon: const Icon(Icons.add, size: 21),
-                    ),
-                  ],
-                ),
-                if (_searching) ...[
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _search,
-                    autofocus: true,
-                    onChanged: (value) => store.setFilters(search: value),
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search, size: 18),
-                      hintText: context.l10n.taskSearch,
-                      isDense: true,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                _deliverySummary(tasks),
-              ],
-            ),
-          ),
-          Expanded(
-            child: store.loading && store.boardData == null
-                ? const Center(child: CircularProgressIndicator())
-                : store.error != null && store.boardData == null
-                ? HermesErrorState(
-                    description: context.l10n.kanbanOperationFailed(
-                      store.error!,
-                    ),
-                    onRetry: store.load,
-                  )
-                : tasks.isEmpty
-                ? RefreshIndicator(
-                    onRefresh: store.load,
-                    child: ListView(
-                      children: [
-                        SizedBox(
-                          height: MediaQuery.sizeOf(context).height * 0.5,
-                          child: HermesEmptyState(
-                            icon: Icons.checklist_outlined,
-                            title: context.l10n.commonNoData,
+    final hasResultFilters =
+        store.search.trim().isNotEmpty ||
+        store.assigneeFilter.isNotEmpty ||
+        store.tenantFilter.isNotEmpty;
+    return Focus(
+      canRequestFocus: false,
+      onKeyEvent: (_, event) {
+        if (_searching &&
+            event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.escape) {
+          final composing = _search.value.composing;
+          if (composing.isValid && !composing.isCollapsed) {
+            return KeyEventResult.ignored;
+          }
+          _toggleSearch(store);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: HermesPageScaffold(
+        title: context.l10n.taskTitle,
+        titleMode: HermesPageTitleMode.large,
+        maxContentWidth: HermesLayout.workspace,
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                HermesMobileMetrics.pagePadding,
+                HermesSpacing.sm,
+                HermesMobileMetrics.pagePadding,
+                HermesSpacing.sm,
+              ),
+              child: Column(
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final stacked =
+                          constraints.maxWidth < 360 ||
+                          MediaQuery.textScalerOf(context).scale(14) > 21;
+                      final actions = Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(width: 6),
+                          IconButton(
+                            focusNode: _searchActionFocus,
+                            tooltip: _searching
+                                ? context.l10n.taskCloseSearch
+                                : context.l10n.taskSearch,
+                            onPressed: () => _toggleSearch(store),
+                            icon: Icon(_searching ? Icons.close : Icons.search),
                           ),
-                        ),
-                      ],
-                    ),
-                  )
-                : RefreshIndicator(
-                    onRefresh: store.load,
-                    child: _columns
-                        ? _columnView(store, tasks)
-                        : _listView(store, tasks),
+                          HermesAdaptiveMenuButton<String>(
+                            tooltip: context.l10n.taskOptions,
+                            icon: const Icon(Icons.tune, size: 20),
+                            onSelected: (value) {
+                              if (value == 'boards') {
+                                _showBoards(context, store);
+                              }
+                              if (value == 'filters') {
+                                _showFilters(context, store);
+                              }
+                              if (value == 'orchestration') {
+                                _showOrchestration(context, store);
+                              }
+                            },
+                            itemBuilder: (_) => [
+                              PopupMenuItem(
+                                value: 'boards',
+                                child: Text(context.l10n.taskSwitchBoard),
+                              ),
+                              PopupMenuItem(
+                                value: 'filters',
+                                child: Text(context.l10n.taskFilter),
+                              ),
+                              PopupMenuItem(
+                                value: 'orchestration',
+                                child: Text(context.l10n.taskOrchestration),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            tooltip: context.l10n.taskNew,
+                            onPressed: () => _newTask(context, store),
+                            icon: const Icon(Icons.add, size: 21),
+                          ),
+                        ],
+                      );
+                      if (stacked) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _viewToggle(),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: actions,
+                            ),
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: _viewToggle()),
+                          actions,
+                        ],
+                      );
+                    },
                   ),
-          ),
-        ],
+                  if (_searching) ...[
+                    const SizedBox(height: 8),
+                    if (HermesGlassTheme.of(context).enabled)
+                      GlassSearchField(
+                        focusNode: _searchFieldFocus,
+                        controller: _search,
+                        autofocus: true,
+                        hintText: context.l10n.taskSearch,
+                        onChanged: (value) => store.setFilters(search: value),
+                      )
+                    else
+                      TextField(
+                        focusNode: _searchFieldFocus,
+                        controller: _search,
+                        autofocus: true,
+                        onChanged: (value) => store.setFilters(search: value),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          hintText: context.l10n.taskSearch,
+                          isDense: true,
+                        ),
+                      ),
+                  ],
+                  const SizedBox(height: 8),
+                  if (store.assigneeFilter.isNotEmpty ||
+                      store.tenantFilter.isNotEmpty ||
+                      store.includeArchived)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (store.assigneeFilter.isNotEmpty)
+                              Text(
+                                context.l10n.taskAssigneeFilter(
+                                  store.assigneeFilter,
+                                ),
+                              ),
+                            if (store.tenantFilter.isNotEmpty)
+                              Text(
+                                context.l10n.taskTenantFilter(
+                                  store.tenantFilter,
+                                ),
+                              ),
+                            if (store.includeArchived)
+                              Text(context.l10n.taskShowArchived),
+                            TextButton(
+                              key: const ValueKey('task-clear-visible-filters'),
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size(44, 44),
+                              ),
+                              onPressed: () => store.setFilters(
+                                assignee: '',
+                                tenant: '',
+                                archived: false,
+                              ),
+                              child: Text(context.l10n.taskClearFilters),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  _deliverySummary(tasks),
+                ],
+              ),
+            ),
+            Expanded(
+              child: store.loading && store.boardData == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : store.error != null && store.boardData == null
+                  ? HermesErrorState(
+                      description: context.l10n.kanbanOperationFailed(
+                        store.error!,
+                      ),
+                      onRetry: store.load,
+                    )
+                  : tasks.isEmpty
+                  ? RefreshIndicator(
+                      onRefresh: store.load,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 32),
+                            child: HermesEmptyState(
+                              icon: hasResultFilters
+                                  ? Icons.search_off
+                                  : Icons.checklist_outlined,
+                              title: hasResultFilters
+                                  ? context.l10n.commonNoMatches
+                                  : context.l10n.commonNoData,
+                              primaryLabel: hasResultFilters
+                                  ? context.l10n.taskClearFilters
+                                  : context.l10n.taskNew,
+                              onPrimary: hasResultFilters
+                                  ? () {
+                                      _search.clear();
+                                      store.setFilters(
+                                        search: '',
+                                        assignee: '',
+                                        tenant: '',
+                                      );
+                                    }
+                                  : () => _newTask(context, store),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: store.load,
+                      notificationPredicate: (notification) =>
+                          notification.metrics.axis == Axis.vertical &&
+                          notification.depth == (_columns ? 1 : 0),
+                      child: _columns
+                          ? _columnView(store, tasks)
+                          : _listView(store, tasks),
+                    ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: store.selectedIds.isEmpty
+            ? null
+            : _bulkBar(context, store),
       ),
-      bottomNavigationBar: store.selectedIds.isEmpty
-          ? null
-          : _bulkBar(context, store),
     );
   }
 
@@ -404,71 +548,99 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
     );
   }
 
-  Widget _listView(KanbanStore s, List<KanbanTask> tasks) => ListView(
+  Widget _listView(KanbanStore s, List<KanbanTask> tasks) => ListView.builder(
+    key: PageStorageKey((s.api.client, s.api.boardSlug, 'task-list')),
+    physics: const AlwaysScrollableScrollPhysics(),
     padding: const EdgeInsets.fromLTRB(
       HermesMobileMetrics.pagePadding,
       0,
       HermesMobileMetrics.pagePadding,
       HermesSpacing.xl,
     ),
-    children: [for (final task in tasks) _card(task, s)],
+    itemCount: tasks.length,
+    itemBuilder: (_, index) => _card(tasks[index], s),
   );
   Widget _columnView(KanbanStore s, List<KanbanTask> tasks) => LayoutBuilder(
+    key: PageStorageKey((s.api.client, s.api.boardSlug, 'task-board')),
     builder: (context, constraints) {
       final columnWidth = (constraints.maxWidth * _kBoardColumnWidthFactor)
           .clamp(_kBoardColumnMinWidth, _kBoardColumnMaxWidth)
           .toDouble();
-      return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(
-          HermesMobileMetrics.pagePadding,
-          0,
-          HermesMobileMetrics.pagePadding,
-          HermesSpacing.xl,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final c in s.boardData?.columns ?? const <KanbanColumn>[])
-              Container(
-                width: columnWidth,
-                margin: const EdgeInsets.only(right: HermesSpacing.xs),
-                padding: const EdgeInsets.all(HermesSpacing.xs),
-                decoration: BoxDecoration(
-                  color: HermesPalette.of(context).codeBg,
-                  borderRadius: BorderRadius.circular(HermesRadius.card),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Semantics(
-                      header: true,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _statusLabel(c.name),
-                              style: HermesType.subheadline.copyWith(
-                                fontWeight: FontWeight.w700,
+      return _BoardScrollSurface(
+        key: ValueKey((s.api.client, s.api.boardSlug)),
+        columnWidth: columnWidth,
+        labels: [
+          for (final c in s.boardData?.columns ?? const <KanbanColumn>[])
+            _statusLabel(c.name),
+        ],
+        child: SingleChildScrollView(
+          key: const PageStorageKey('task-board-horizontal'),
+          primary: true,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(
+            HermesMobileMetrics.pagePadding,
+            0,
+            HermesMobileMetrics.pagePadding,
+            HermesSpacing.xl,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final c in s.boardData?.columns ?? const <KanbanColumn>[])
+                Container(
+                  width: columnWidth,
+                  margin: const EdgeInsets.only(right: HermesSpacing.xs),
+                  padding: const EdgeInsets.all(HermesSpacing.xs),
+                  decoration: BoxDecoration(
+                    color: HermesPalette.of(context).codeBg,
+                    borderRadius: BorderRadius.circular(HermesRadius.card),
+                  ),
+                  child: Column(
+                    children: [
+                      Semantics(
+                        header: true,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _statusLabel(c.name),
+                                style: HermesType.subheadline.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
-                          ),
-                          Text(
-                            '${tasks.where((t) => t.status == c.name).length}',
-                            style: HermesType.caption.copyWith(
-                              color: HermesPalette.of(context).text4,
+                            Text(
+                              '${tasks.where((t) => t.status == c.name).length}',
+                              style: HermesType.caption.copyWith(
+                                color: HermesPalette.of(context).text4,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: HermesSpacing.xs),
-                    for (final task in tasks.where((t) => t.status == c.name))
-                      _card(task, s),
-                  ],
+                      const SizedBox(height: HermesSpacing.xs),
+                      Expanded(
+                        child: Builder(
+                          builder: (context) {
+                            final columnTasks = tasks
+                                .where((t) => t.status == c.name)
+                                .toList();
+                            return ListView.builder(
+                              key: PageStorageKey('task-column-${c.name}'),
+                              primary: false,
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              itemCount: columnTasks.length,
+                              itemBuilder: (_, index) =>
+                                  _card(columnTasks[index], s),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       );
     },
@@ -478,10 +650,18 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
     final selected = store.selectedIds.contains(task.id);
     final statusColor = _statusColor(task.status);
     final priorityColor = _priorityColor(task.priority);
+    final progress = _taskProgress(task);
     return Semantics(
       button: true,
       selected: selected,
-      label: '${task.title} · ${_statusLabel(task.status)}',
+      label: [
+        task.title,
+        _statusLabel(task.status),
+        _priorityLabel(task.priority),
+        task.assignee ?? context.l10n.taskUnassigned,
+        context.l10n.taskCommentCount(task.commentCount),
+      ].join(' · '),
+      value: progress == null ? null : '${(progress * 100).round()}%',
       onTap: () => store.selectedIds.isNotEmpty
           ? store.toggleSelected(task.id)
           : _detail(context, task, store),
@@ -499,43 +679,18 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Text(
+                  task.title,
+                  style: HermesType.body.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
                   children: [
-                    Expanded(
-                      child: Text(
-                        task.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: HermesType.body.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: HermesSpacing.xs),
                     HermesStatusChip(
                       label: _statusLabel(task.status),
                       color: statusColor,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        [
-                          context.l10n.taskPriorityMeta(
-                            _priorityLabel(task.priority),
-                          ),
-                          task.assignee ?? context.l10n.taskUnassigned,
-                          context.l10n.taskCommentCount(task.commentCount),
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: HermesType.footnote.copyWith(
-                          color: palette.text3,
-                        ),
-                      ),
                     ),
                     HermesStatusChip(
                       label: _priorityLabel(task.priority),
@@ -544,7 +699,15 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                     ),
                   ],
                 ),
-                if (_taskProgress(task) case final progress?) ...[
+                const SizedBox(height: 7),
+                Text(
+                  [
+                    task.assignee ?? context.l10n.taskUnassigned,
+                    context.l10n.taskCommentCount(task.commentCount),
+                  ].join(' · '),
+                  style: HermesType.footnote.copyWith(color: palette.text3),
+                ),
+                if (progress != null) ...[
                   const SizedBox(height: 9),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(HermesRadius.smallCard),
@@ -617,17 +780,37 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
     return null;
   }
 
-  Widget _bulkBar(BuildContext c, KanbanStore s) => BottomAppBar(
-    child: Row(
+  Widget _bulkBar(BuildContext c, KanbanStore s) {
+    final content = Row(
       children: [
-        Text(context.l10n.taskSelectedCount(s.selectedIds.length)),
-        const Spacer(),
+        Expanded(
+          child: Semantics(
+            liveRegion: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(context.l10n.taskSelectedCount(s.selectedIds.length)),
+                if (_submittingSelection)
+                  Text(
+                    context.l10n.commonProcessing,
+                    key: const ValueKey('task-bulk-processing'),
+                    style: Theme.of(c).textTheme.bodySmall,
+                  ),
+              ],
+            ),
+          ),
+        ),
         Semantics(
           button: true,
           label: context.l10n.kanbanMoveSelected,
           child: IconButton(
+            style: IconButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              visualDensity: VisualDensity.standard,
+            ),
             tooltip: context.l10n.kanbanMoveSelected,
-            onPressed: () => _moveSelected(c, s),
+            onPressed: _movingSelection ? null : () => _moveSelected(c, s),
             icon: const Icon(Icons.drive_file_move),
           ),
         ),
@@ -635,36 +818,110 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
           button: true,
           label: context.l10n.kanbanClearSelection,
           child: IconButton(
+            style: IconButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              visualDensity: VisualDensity.standard,
+            ),
             tooltip: context.l10n.kanbanClearSelection,
-            onPressed: s.clearSelection,
+            onPressed: _submittingSelection ? null : s.clearSelection,
             icon: const Icon(Icons.close),
           ),
         ),
       ],
-    ),
-  );
-  Future<void> _moveSelected(BuildContext c, KanbanStore s) async {
-    final status = await showMobileSheet<String>(
-      c,
-      isScrollControlled: false,
-      (_) => ListView(
-        children: [
-          for (final col in s.boardData?.columns ?? const <KanbanColumn>[])
-            ListTile(
-              title: Text(col.name),
-              onTap: () => Navigator.pop(c, col.name),
-            ),
-        ],
+    );
+    if (!HermesGlassTheme.of(c).enabled) {
+      // BottomAppBar's fixed default height clips scaled selection/status text.
+      return Material(
+        color: Theme.of(c).colorScheme.surface,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: content,
+          ),
+        ),
+      );
+    }
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: GlassSurface(
+          key: const ValueKey('task-bulk-glass'),
+          role: HermesGlassRole.control,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: content,
+          ),
+        ),
       ),
     );
-    if (status == null) return;
-    final failed = await s.bulkPatch(s.selectedIds, {'status': status});
-    if (c.mounted && failed.isNotEmpty) {
-      showHermesToast(
+  }
+
+  Future<void> _moveSelected(BuildContext c, KanbanStore s) async {
+    if (_movingSelection || s.selectedIds.isEmpty || !s.ready) return;
+    final ids = Set<String>.of(s.selectedIds);
+    final ownerApi = s.api;
+    final board = ownerApi.boardSlug;
+    final epoch = s.ownerEpoch;
+    setState(() => _movingSelection = true);
+    try {
+      final status = await showMobileSheet<String>(
         c,
-        message: c.l10n.taskBulkFailed(failed.length),
-        kind: HermesToastKind.error,
+        isScrollControlled: false,
+        (sheet) => ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          children: [
+            Semantics(
+              header: true,
+              child: Text(
+                c.l10n.kanbanMoveSelected,
+                key: const ValueKey('task-move-title'),
+                style: Theme.of(sheet).textTheme.titleLarge,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(c.l10n.taskSelectedCount(ids.length)),
+            const SizedBox(height: 16),
+            HermesMobileGroup(
+              children: [
+                for (final col
+                    in s.boardData?.columns ?? const <KanbanColumn>[])
+                  HermesMobileRow(
+                    key: ValueKey('task-move-target-${col.name}'),
+                    icon: Icons.drive_file_move_outlined,
+                    title: _statusLabel(col.name),
+                    onTap: () => Navigator.pop(sheet, col.name),
+                  ),
+              ],
+            ),
+          ],
+        ),
       );
+      if (!c.mounted ||
+          status == null ||
+          !s.ready ||
+          s.ownerEpoch != epoch ||
+          !identical(s.api, ownerApi) ||
+          ownerApi.boardSlug != board) {
+        return;
+      }
+      setState(() => _submittingSelection = true);
+      final failed = await s.bulkPatch(ids, {'status': status});
+      if (c.mounted && s.ownerEpoch == epoch && failed.isNotEmpty) {
+        showHermesToast(
+          c,
+          message: c.l10n.taskBulkFailed(failed.length),
+          kind: HermesToastKind.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _movingSelection = false;
+          _submittingSelection = false;
+        });
+      }
     }
   }
 
@@ -680,6 +937,29 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
 
   Future<void> _showBoards(BuildContext c, KanbanStore s) =>
       showKanbanBoardSheet(c, s);
+
+  Widget _filterChoice(BuildContext context, String value, String selected) {
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final active = value == selected;
+    return GlassSelectionRow(
+      selected: active,
+      child: ListTile(
+        selected: liquid && active,
+        title: Text(value.isEmpty ? context.l10n.taskAll : value),
+        trailing: liquid && active ? const Icon(Icons.check, size: 20) : null,
+        onTap: () => Navigator.pop(context, value),
+      ),
+    );
+  }
+
+  Widget _filterHeading(BuildContext context, String title) => Semantics(
+    header: true,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+      child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+    ),
+  );
+
   Future<void> _showFilters(BuildContext c, KanbanStore s) async {
     await showMobileSheet<void>(
       c,
@@ -687,7 +967,7 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
       (sheet) => StatefulBuilder(
         builder: (_, setSheet) => ListView(
           children: [
-            ListTile(title: Text(context.l10n.taskFilter)),
+            _filterHeading(sheet, context.l10n.taskFilter),
             SwitchListTile(
               title: Text(context.l10n.taskShowArchived),
               value: s.includeArchived,
@@ -708,18 +988,13 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                 final a = await showMobileSheet<String>(
                   sheet,
                   isScrollControlled: false,
-                  (_) => ListView(
+                  (picker) => ListView(
                     children: [
-                      ListTile(
-                        title: Text(context.l10n.taskAll),
-                        onTap: () => Navigator.pop(sheet, ''),
-                      ),
+                      _filterHeading(picker, context.l10n.kanbanAssignee),
+                      _filterChoice(picker, '', s.assigneeFilter),
                       for (final x
                           in s.boardData?.assignees ?? const <String>[])
-                        ListTile(
-                          title: Text(x),
-                          onTap: () => Navigator.pop(sheet, x),
-                        ),
+                        _filterChoice(picker, x, s.assigneeFilter),
                     ],
                   ),
                 );
@@ -741,17 +1016,12 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
                 final a = await showMobileSheet<String>(
                   sheet,
                   isScrollControlled: false,
-                  (_) => ListView(
+                  (picker) => ListView(
                     children: [
-                      ListTile(
-                        title: Text(context.l10n.taskAll),
-                        onTap: () => Navigator.pop(sheet, ''),
-                      ),
+                      _filterHeading(picker, context.l10n.kanbanTenant),
+                      _filterChoice(picker, '', s.tenantFilter),
                       for (final x in s.boardData?.tenants ?? const <String>[])
-                        ListTile(
-                          title: Text(x),
-                          onTap: () => Navigator.pop(sheet, x),
-                        ),
+                        _filterChoice(picker, x, s.tenantFilter),
                     ],
                   ),
                 );
@@ -1020,4 +1290,168 @@ class _KanbanCanonicalScreenState extends State<KanbanCanonicalScreen> {
 
   Future<void> _newTask(BuildContext c, KanbanStore s) =>
       showKanbanNewTaskSheet(c, s);
+}
+
+/// One horizontal controller per board. Vertical task lists explicitly opt
+/// out of it, so the visible draggable thumb only navigates board columns.
+class _BoardScrollSurface extends StatefulWidget {
+  const _BoardScrollSurface({
+    super.key,
+    required this.child,
+    required this.columnWidth,
+    required this.labels,
+  });
+  final Widget child;
+  final double columnWidth;
+  final List<String> labels;
+
+  @override
+  State<_BoardScrollSurface> createState() => _BoardScrollSurfaceState();
+}
+
+class _BoardScrollSurfaceState extends State<_BoardScrollSurface> {
+  final _controller = ScrollController();
+  bool _canPrevious = false;
+  bool _canNext = false;
+  bool _syncScheduled = false;
+  int _first = 0;
+  int _last = 0;
+
+  @override
+  void didUpdateWidget(covariant _BoardScrollSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleBounds();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_scheduleBounds);
+  }
+
+  void _scheduleBounds() {
+    if (_syncScheduled) return;
+    _syncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncScheduled = false;
+      if (!mounted ||
+          !_controller.hasClients ||
+          !_controller.position.hasContentDimensions) {
+        return;
+      }
+      final position = _controller.position;
+      final previous = position.pixels > position.minScrollExtent + .5;
+      final next = position.pixels < position.maxScrollExtent - .5;
+      final stride = widget.columnWidth + HermesSpacing.xs;
+      final limit = widget.labels.isEmpty ? 0 : widget.labels.length - 1;
+      final start = position.pixels - HermesMobileMetrics.pagePadding;
+      final first = ((start + HermesSpacing.xs) / stride).floor().clamp(
+        0,
+        limit,
+      );
+      final last = ((start + position.viewportDimension) / stride).ceil() - 1;
+      final boundedLast = last.clamp(first, limit);
+      if (previous != _canPrevious ||
+          next != _canNext ||
+          first != _first ||
+          boundedLast != _last) {
+        setState(() {
+          _canPrevious = previous;
+          _canNext = next;
+          _first = first;
+          _last = boundedLast;
+        });
+      }
+    });
+  }
+
+  void _step(int direction) {
+    if (!_controller.hasClients) return;
+    final position = _controller.position;
+    final delta = widget.columnWidth + HermesSpacing.xs;
+    _controller.jumpTo(
+      (position.pixels + direction * delta).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PrimaryScrollController(
+    controller: _controller,
+    child: NotificationListener<ScrollMetricsNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.axis == Axis.horizontal) _scheduleBounds();
+        return false;
+      },
+      child: Scrollbar(
+        key: const ValueKey('task-board-scrollbar'),
+        controller: _controller,
+        thumbVisibility: true,
+        trackVisibility: true,
+        interactive: true,
+        scrollbarOrientation: ScrollbarOrientation.bottom,
+        notificationPredicate: (notification) =>
+            notification.depth == 0 &&
+            notification.metrics.axis == Axis.horizontal,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  key: const ValueKey('task-board-previous'),
+                  tooltip: context.l10n.taskPreviousColumn,
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    visualDensity: VisualDensity.standard,
+                  ),
+                  onPressed: _canPrevious ? () => _step(-1) : null,
+                  icon: Icon(
+                    Directionality.of(context) == TextDirection.rtl
+                        ? Icons.chevron_right
+                        : Icons.chevron_left,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    widget.labels.isEmpty
+                        ? context.l10n.taskBoardView
+                        : context.l10n.taskVisibleColumns(
+                            _first.clamp(0, widget.labels.length - 1) + 1,
+                            _last.clamp(0, widget.labels.length - 1) + 1,
+                            widget.labels.length,
+                          ),
+                    key: const ValueKey('task-board-visible-columns'),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('task-board-next'),
+                  tooltip: context.l10n.taskNextColumn,
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    visualDensity: VisualDensity.standard,
+                  ),
+                  onPressed: _canNext ? () => _step(1) : null,
+                  icon: Icon(
+                    Directionality.of(context) == TextDirection.rtl
+                        ? Icons.chevron_left
+                        : Icons.chevron_right,
+                  ),
+                ),
+              ],
+            ),
+            Expanded(child: widget.child),
+          ],
+        ),
+      ),
+    ),
+  );
 }

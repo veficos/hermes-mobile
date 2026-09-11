@@ -29,6 +29,12 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../core/chat_message.dart';
 import '../widgets/chat_content_column.dart';
 import '../widgets/glass/glass_surface.dart';
+import '../widgets/glass/glass_button.dart';
+import '../widgets/glass/glass_floating_action.dart';
+import '../widgets/glass/glass_dock_layout.dart';
+import '../widgets/glass/glass_selection_row.dart';
+import '../widgets/glass/glass_environment.dart';
+import '../widgets/glass/glass_search_field.dart';
 import '../theme/hermes_glass_theme.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
 import '../core/clipboard.dart';
@@ -393,6 +399,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _slashSuggestionsLoading = false;
   bool _slashSuggestionQueryActive = false;
   int _slashSuggestionIndex = 0;
+  final _selectedSlashRow = GlobalKey();
+  final _completionScroll = ScrollController(keepScrollOffset: false);
   int _slashReplaceFrom = 1;
   Timer? _acDebounce;
   ComposerSuggestionStore? _activeSuggestionStore;
@@ -905,7 +913,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _setStuckToBottom(bool value) {
     _scrollCoordinator.updateStuck(value);
-    if (_stuckToBottom.value != value) _stuckToBottom.value = value;
+    final actual = _scrollCoordinator.stuckToBottom;
+    if (_stuckToBottom.value != actual) _stuckToBottom.value = actual;
   }
 
   void _onTranscriptChanged(
@@ -1104,10 +1113,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final fraction = messageCount <= 1
         ? 0.0
         : messageIndex / (messageCount - 1);
-    final target = (position.maxScrollExtent * fraction).clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
-    );
+    final target =
+        (position.minScrollExtent +
+                (position.maxScrollExtent - position.minScrollExtent) *
+                    fraction)
+            .clamp(position.minScrollExtent, position.maxScrollExtent);
     final duration = MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
         : const Duration(milliseconds: 260);
@@ -1695,6 +1705,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _completionScroll.dispose();
     _acDebounce?.cancel();
     _activeSuggestionStore?.removeListener(_onActiveSuggestionsChanged);
     _composerHandoffs?.removeListener(_consumeComposerHandoffs);
@@ -1845,7 +1856,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onScroll() {
     if (!_scrollCtrl.hasClients) return;
-    if (_scrollCtrl.correctingContent) {
+    if (_scrollCtrl.correctingContent || _loadingOlderViewport) {
       _scheduleActiveTopicUpdate();
       return;
     }
@@ -1868,9 +1879,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     _scheduleActiveTopicUpdate();
     if (_scrollCoordinator.allowPagination &&
-        position.pixels < 160 &&
+        position.pixels - position.minScrollExtent < 160 &&
         !_loadingOlderViewport &&
         context.read<SessionStore>().chat.hasMoreHistory &&
+        context.read<SessionStore>().chat.historyError == null &&
         mounted) {
       _loadingOlderViewport = true;
       if (_diagnosticLogging) {
@@ -1967,10 +1979,19 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final session = context.read<SessionStore>();
     final beforeCount = session.chat.loadedCount;
+    // Paging is an explicit reading-history intent, even when a short list
+    // is simultaneously close to both ends. Invalidate queued tail following.
+    _setStuckToBottom(false);
+    _bottomFollowForce = false;
+    _scrollCoordinator.beginOlderPage();
+    final readingRevision = _scrollCoordinator.readingRevision;
+    bool ownsReadingIntent() =>
+        _scrollCoordinator.readingRevision == readingRevision;
     int? countBeforeApply;
     final sessionEpoch = _scrollCoordinator.sessionEpoch;
     var beforeExtent = _scrollCtrl.position.maxScrollExtent;
     TranscriptViewportAnchor? anchor;
+    var motionBeforeApply = _scrollCtrl.motionPixels;
     final beforePixels = _scrollCtrl.position.pixels;
     final elapsed = Stopwatch()..start();
     if (_diagnosticLogging) {
@@ -1994,6 +2015,7 @@ class _ChatScreenState extends State<ChatScreen> {
             return;
           }
           beforeExtent = _scrollCtrl.position.maxScrollExtent;
+          motionBeforeApply = _scrollCtrl.motionPixels;
           countBeforeApply = session.chat.loadedCount;
           anchor = TranscriptViewportAnchor.capture(
             _messageKeys.values,
@@ -2002,6 +2024,10 @@ class _ChatScreenState extends State<ChatScreen> {
         },
       );
       if (!mounted || !_scrollCoordinator.ownsEpoch(sessionEpoch)) return;
+      if (!ownsReadingIntent()) {
+        session.chat.trimTranscriptWindowIfNeeded();
+        return;
+      }
       if (countBeforeApply == null ||
           session.chat.loadedCount == countBeforeApply) {
         // Nothing was actually prepended — either history was already
@@ -2023,10 +2049,13 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
       final restored = Completer<void>();
+      var needsAnchorRecovery = false;
+      _scrollCoordinator.restoringOlderPage(sessionEpoch);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         try {
           if (mounted && _scrollCtrl.hasClients) {
-            if (!_scrollCoordinator.ownsEpoch(sessionEpoch)) {
+            if (!_scrollCoordinator.ownsEpoch(sessionEpoch) ||
+                !ownsReadingIntent()) {
               restored.complete();
               return;
             }
@@ -2046,7 +2075,12 @@ class _ChatScreenState extends State<ChatScreen> {
             // of where the user has scrolled to meanwhile — so only the
             // anchor needs to change, not the compensation math.
             final livePixels = position.pixels;
-            final measuredAnchorOffset = anchor?.restoredOffset(position);
+            // Sliver layout may itself correct pixels after a prepend. Only
+            // gesture/ballistic movement should move the captured screen anchor.
+            final measuredAnchorOffset = anchor?.restoredOffset(
+              position,
+              userScrollDelta: _scrollCtrl.motionPixels - motionBeforeApply,
+            );
             final restoredPixels =
                 measuredAnchorOffset ??
                 _scrollCoordinator.restorePrependOffset(
@@ -2057,25 +2091,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   maxExtent: position.maxScrollExtent,
                 );
             _scrollCtrl.correctContentOffset(restoredPixels);
-            if (anchor != null && measuredAnchorOffset == null) {
-              final capturedAnchor = anchor!;
-              final userDelta = livePixels - capturedAnchor.pixels;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted ||
-                    !_scrollCtrl.hasClients ||
-                    !_scrollCoordinator.ownsEpoch(sessionEpoch)) {
-                  return;
-                }
-                final current = _scrollCtrl.position;
-                final corrected = capturedAnchor.restoredOffset(
-                  current,
-                  userScrollDelta: userDelta + current.pixels - restoredPixels,
-                );
-                if (corrected != null) {
-                  _scrollCtrl.correctContentOffset(corrected);
-                }
-              });
-            }
+            needsAnchorRecovery =
+                anchor != null && measuredAnchorOffset == null;
             if (_diagnosticLogging) {
               _logScroll(
                 'event=history.completed before_count=$beforeCount '
@@ -2094,12 +2111,55 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
       await restored.future;
+      // A variable-height sliver can discard the old anchor during prepend.
+      // Its total extent is only an estimate, so one estimated jump may not
+      // remount that row. Reacquire using actual mounted message order before
+      // applying the saved screen coordinate; never treat the estimate as final.
+      for (var attempt = 0; needsAnchorRecovery && attempt < 24; attempt++) {
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted ||
+            !_scrollCtrl.hasClients ||
+            !_scrollCoordinator.ownsEpoch(sessionEpoch) ||
+            !ownsReadingIntent()) {
+          break;
+        }
+        final position = _scrollCtrl.position;
+        final exact = anchor!.restoredOffset(
+          position,
+          userScrollDelta: _scrollCtrl.motionPixels - motionBeforeApply,
+        );
+        if (exact != null) {
+          _scrollCtrl.correctContentOffset(exact);
+          break;
+        }
+        final messages = session.chat.messages;
+        final targetIndex = messages.indexWhere(
+          (message) => identical(_messageKeys[message.id], anchor!.key),
+        );
+        if (targetIndex < 0) break;
+        final mountedIndexes = <int>[
+          for (var i = 0; i < messages.length; i++)
+            if (_messageKeys[messages[i].id]?.currentContext != null) i,
+        ];
+        if (mountedIndexes.isEmpty) break;
+        final direction = targetIndex < mountedIndexes.first
+            ? -1.0
+            : targetIndex > mountedIndexes.last
+            ? 1.0
+            : 0.0;
+        if (direction == 0) break;
+        final next =
+            (position.pixels + direction * position.viewportDimension * .8)
+                .clamp(position.minScrollExtent, position.maxScrollExtent);
+        if ((next - position.pixels).abs() < .5) break;
+        _scrollCtrl.correctContentOffset(next);
+      }
       // Now that the viewport is anchored, trimming the newer end (if the
       // transcript crossed budget) is just an off-screen removal — no
       // further position compensation needed.
       if (mounted && _scrollCoordinator.ownsEpoch(sessionEpoch)) {
         String? anchorId;
-        if (anchor != null) {
+        if (anchor != null && ownsReadingIntent()) {
           for (final entry in _messageKeys.entries) {
             if (identical(entry.value, anchor!.key)) {
               anchorId = entry.key;
@@ -2124,11 +2184,20 @@ class _ChatScreenState extends State<ChatScreen> {
       // Do not rethrow from this unawaited pagination task. The transcript and
       // composer must stay mounted; HistoryHeader exposes the retry action.
     } finally {
-      _loadingOlderViewport = false;
+      if (_scrollCoordinator.ownsEpoch(sessionEpoch)) {
+        _scrollCoordinator.endOlderPage(sessionEpoch);
+        _loadingOlderViewport = false;
+        if (_scrollCoordinator.stuckToBottom) _scrollToBottom();
+      }
     }
   }
 
   void _scrollToBottom({bool force = false}) {
+    if (force) {
+      _scrollCoordinator.followLatest();
+      _setStuckToBottom(true);
+    }
+    if (_loadingOlderViewport && !force) return;
     if (!force && !_scrollCoordinator.stuckToBottom) {
       if (_diagnosticLogging) {
         final now = _autoScrollLogWatch.elapsedMilliseconds;
@@ -2154,6 +2223,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _bottomFollowScheduled = false;
       _bottomFollowForce = false;
       if (!mounted || !_scrollCoordinator.ownsEpoch(epoch)) return;
+      if (_loadingOlderViewport && !force) return;
       if (!force && !_scrollCoordinator.stuckToBottom) return;
       if (_scrollCtrl.hasClients) {
         final position = _scrollCtrl.position;
@@ -4235,16 +4305,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final queue = session.sendQueue;
     if (queue.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
     final muted = theme.colorScheme.onSurfaceVariant;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.65,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
+    final content = Container(
+      decoration: liquid
+          ? null
+          : BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.65,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
       child: Material(
         type: MaterialType.transparency,
         child: Column(
@@ -4369,6 +4441,18 @@ class _ChatScreenState extends State<ChatScreen> {
                           if (session.chat.busy)
                             IconButton(
                               tooltip: context.l10n.chatSteerCurrentTurn,
+                              style: liquid
+                                  ? IconButton.styleFrom(
+                                      minimumSize: const Size(44, 44),
+                                      visualDensity: VisualDensity.standard,
+                                    )
+                                  : null,
+                              constraints: liquid
+                                  ? const BoxConstraints(
+                                      minWidth: 44,
+                                      minHeight: 44,
+                                    )
+                                  : null,
                               visualDensity: VisualDensity.compact,
                               icon: const Icon(
                                 Icons.explore_outlined,
@@ -4394,18 +4478,42 @@ class _ChatScreenState extends State<ChatScreen> {
                             tooltip: session.chat.busy
                                 ? context.l10n.chatSetAsNext
                                 : context.l10n.chatSendNow,
+                            constraints: liquid
+                                ? const BoxConstraints(
+                                    minWidth: 44,
+                                    minHeight: 44,
+                                  )
+                                : null,
                             visualDensity: VisualDensity.compact,
                             icon: const Icon(
                               Icons.subdirectory_arrow_left,
                               size: 18,
                             ),
                             onPressed: () => session.sendQueuedNow(item.id),
+                            style: liquid
+                                ? IconButton.styleFrom(
+                                    minimumSize: const Size(44, 44),
+                                    visualDensity: VisualDensity.standard,
+                                  )
+                                : null,
                           ),
                           IconButton(
                             tooltip: context.l10n.commonCancel,
                             visualDensity: VisualDensity.compact,
                             icon: const Icon(Icons.close, size: 18),
                             onPressed: () => session.cancelQueued(item.id),
+                            style: liquid
+                                ? IconButton.styleFrom(
+                                    minimumSize: const Size(44, 44),
+                                    visualDensity: VisualDensity.standard,
+                                  )
+                                : null,
+                            constraints: liquid
+                                ? const BoxConstraints(
+                                    minWidth: 44,
+                                    minHeight: 44,
+                                  )
+                                : null,
                           ),
                         ],
                       ),
@@ -4417,6 +4525,17 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       ),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: liquid
+          ? GlassSurface(
+              key: const ValueKey('chat-queue-glass'),
+              radius: HermesGlassTokens.controlRadius,
+              role: HermesGlassRole.control,
+              child: content,
+            )
+          : content,
     );
   }
 
@@ -5335,6 +5454,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _refreshSuggestions(String text) async {
+    if (_completionScroll.hasClients) _completionScroll.jumpTo(0);
     final cmd = context.read<CommandStore>();
     final detected = detectCompletionQuery(
       text,
@@ -5633,6 +5753,25 @@ class _ChatScreenState extends State<ChatScreen> {
     _activeSuggestionStore?.markHandled(suggestion);
   }
 
+  Widget _suggestionSurface({
+    required Widget child,
+    EdgeInsetsGeometry padding = EdgeInsets.zero,
+  }) {
+    if (!HermesGlassTheme.of(context).enabled) {
+      return HermesGlassCard(
+        radius: HermesRadius.card,
+        padding: padding,
+        child: child,
+      );
+    }
+    return GlassSurface(
+      key: const ValueKey('composer-suggestion-glass'),
+      radius: 24,
+      role: HermesGlassRole.overlay,
+      child: Padding(padding: padding, child: child),
+    );
+  }
+
   Widget _buildActiveSuggestionCard(
     List<ActiveComposerSuggestion> suggestions,
   ) {
@@ -5640,8 +5779,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(
       constraints: const BoxConstraints(maxHeight: 144),
       margin: const EdgeInsets.only(bottom: 6),
-      child: HermesGlassCard(
-        radius: HermesRadius.card,
+      child: _suggestionSurface(
         padding: EdgeInsets.zero,
         child: Material(
           type: MaterialType.transparency,
@@ -5699,10 +5837,53 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildCronSuggestionCard(String phrase) {
     final theme = Theme.of(context);
+    if (HermesGlassTheme.of(context).enabled) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: _suggestionSurface(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.event_repeat, color: theme.colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      context.l10n.chatCronSuggestion(phrase),
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              OverflowBar(
+                alignment: MainAxisAlignment.end,
+                spacing: 8,
+                overflowSpacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: _acceptCronSuggestion,
+                    child: Text(context.l10n.chatCreateScheduledTask),
+                  ),
+                  IconButton(
+                    tooltip: context.l10n.commonIgnore,
+                    onPressed: _dismissCronSuggestion,
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      child: HermesGlassCard(
-        radius: HermesRadius.card,
+      child: _suggestionSurface(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
@@ -5752,207 +5933,273 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(
       constraints: const BoxConstraints(maxHeight: 220),
       margin: const EdgeInsets.only(bottom: 6),
-      child: HermesGlassCard(
-        radius: HermesRadius.card,
+      child: _suggestionSurface(
         padding: EdgeInsets.zero,
         // ListTile paints its background/splash on the nearest Material
         // ancestor; the glass card is a DecoratedBox, so insert a transparent
         // Material to keep taps visible (and debug assertions quiet).
         child: Material(
           type: MaterialType.transparency,
-          child: ListView(
-            shrinkWrap: true,
-            padding: EdgeInsets.zero,
-            children: [
-              if (_slashSuggestionsLoading)
-                ListTile(
-                  key: ValueKey('slash-suggestions-loading'),
-                  dense: true,
-                  leading: SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+          child: SingleChildScrollView(
+            controller: _completionScroll,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_slashSuggestionsLoading)
+                  ListTile(
+                    key: ValueKey('slash-suggestions-loading'),
+                    dense: true,
+                    leading: SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    title: Text(context.l10n.chatLoadingCommands),
+                  )
+                else if (_slashSuggestions.isNotEmpty)
+                  for (var i = 0; i < _slashSuggestions.length; i++) ...[
+                    if (_slashSuggestions[i].group?.isNotEmpty == true &&
+                        (i == 0 ||
+                            _slashSuggestions[i - 1].group !=
+                                _slashSuggestions[i].group))
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                        child: Text(
+                          _slashSuggestions[i].group == slashGroupSkills
+                              ? context.l10n.slashGroupSkills
+                              : _slashSuggestions[i].group == slashGroupCommands
+                              ? context.l10n.slashGroupCommands
+                              : _slashSuggestions[i].group!,
+                          style: HermesType.onSurfaceVariant(
+                            HermesType.caption,
+                            theme,
+                          ).copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    GlassSelectionRow(
+                      key: i == _slashSuggestionIndex
+                          ? _selectedSlashRow
+                          : null,
+                      selected: i == _slashSuggestionIndex,
+                      child: ListTile(
+                        key: ValueKey('slash-suggestion-$i'),
+                        dense: true,
+                        selected: i == _slashSuggestionIndex,
+                        leading: Icon(
+                          _slashSuggestions[i].group == slashGroupSkills
+                              ? Icons.auto_awesome_outlined
+                              : Icons.bolt,
+                          size: 18,
+                          color:
+                              HermesGlassTheme.of(context).enabled &&
+                                  i == _slashSuggestionIndex
+                              ? theme.colorScheme.onPrimaryContainer
+                              : theme.colorScheme.primary,
+                        ),
+                        title: Text(
+                          _slashSuggestions[i].display,
+                          style: HermesType.onSurface(HermesType.body, theme)
+                              .copyWith(
+                                color:
+                                    HermesGlassTheme.of(context).enabled &&
+                                        i == _slashSuggestionIndex
+                                    ? theme.colorScheme.onPrimaryContainer
+                                    : null,
+                              ),
+                        ),
+                        subtitle: _slashSuggestions[i].meta == null
+                            ? null
+                            : Text(
+                                _slashSuggestions[i].meta!,
+                                style:
+                                    HermesType.onSurfaceVariant(
+                                      HermesType.caption,
+                                      theme,
+                                    ).copyWith(
+                                      color:
+                                          HermesGlassTheme.of(
+                                                context,
+                                              ).enabled &&
+                                              i == _slashSuggestionIndex
+                                          ? theme.colorScheme.onPrimaryContainer
+                                          : null,
+                                    ),
+                              ),
+                        onTap: () =>
+                            _applySlashSuggestion(_slashSuggestions[i]),
+                        selectedTileColor: HermesGlassTheme.of(context).enabled
+                            ? Colors.transparent
+                            : null,
+                      ),
+                    ),
+                  ]
+                else if (_slashSuggestionQueryActive)
+                  if (context.watch<CommandStore>().lastCompletionFailed)
+                    ListTile(
+                      key: ValueKey('slash-suggestions-failed'),
+                      dense: true,
+                      leading: Icon(
+                        Icons.cloud_off_outlined,
+                        size: 18,
+                        color: theme.colorScheme.error,
+                      ),
+                      title: Text(context.l10n.chatCommandSearchFailed),
+                    )
+                  else
+                    ListTile(
+                      key: ValueKey('slash-suggestions-empty'),
+                      dense: true,
+                      leading: Icon(Icons.search_off_outlined, size: 18),
+                      title: Text(context.l10n.chatNoMatchingCommands),
+                      subtitle: Text(context.l10n.chatCommandSearchHint),
+                    )
+                else if (_sessionRefSuggestions.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                    child: Text(context.l10n.chatSessions),
                   ),
-                  title: Text(context.l10n.chatLoadingCommands),
-                )
-              else if (_slashSuggestions.isNotEmpty)
-                for (var i = 0; i < _slashSuggestions.length; i++) ...[
-                  if (_slashSuggestions[i].group?.isNotEmpty == true &&
-                      (i == 0 ||
-                          _slashSuggestions[i - 1].group !=
-                              _slashSuggestions[i].group))
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                      child: Text(
-                        _slashSuggestions[i].group == slashGroupSkills
-                            ? context.l10n.slashGroupSkills
-                            : _slashSuggestions[i].group == slashGroupCommands
-                            ? context.l10n.slashGroupCommands
-                            : _slashSuggestions[i].group!,
+                  for (final suggestion in _sessionRefSuggestions)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.chat_bubble_outline, size: 18),
+                      title: Text(suggestion.title),
+                      subtitle: Text(suggestion.value),
+                      onTap: () => _applySessionRefSuggestion(suggestion),
+                    ),
+                ] else if (_referenceSuggestions.isNotEmpty) ...[
+                  for (var i = 0; i < _referenceSuggestions.length; i++)
+                    GlassSelectionRow(
+                      key: i == _slashSuggestionIndex
+                          ? _selectedSlashRow
+                          : null,
+                      selected: i == _slashSuggestionIndex,
+                      child: ListTile(
+                        key: ValueKey(
+                          'reference-suggestion-${_referenceSuggestions[i].id}',
+                        ),
+                        dense: true,
+                        selected: i == _slashSuggestionIndex,
+                        selectedColor: HermesGlassTheme.of(context).enabled
+                            ? theme.colorScheme.onPrimaryContainer
+                            : null,
+                        selectedTileColor: HermesGlassTheme.of(context).enabled
+                            ? Colors.transparent
+                            : null,
+                        leading: Icon(
+                          switch (_referenceSuggestions[i].kind) {
+                            ComposerReferenceKind.file =>
+                              Icons.insert_drive_file_outlined,
+                            ComposerReferenceKind.folder =>
+                              Icons.folder_outlined,
+                            ComposerReferenceKind.url => Icons.link,
+                            ComposerReferenceKind.image => Icons.image_outlined,
+                            ComposerReferenceKind.tool =>
+                              Icons.handyman_outlined,
+                            ComposerReferenceKind.git ||
+                            ComposerReferenceKind.diff ||
+                            ComposerReferenceKind.staged =>
+                              Icons.difference_outlined,
+                            ComposerReferenceKind.session =>
+                              Icons.chat_bubble_outline,
+                            ComposerReferenceKind.contributed =>
+                              Icons.extension_outlined,
+                          },
+                          size: 18,
+                          color:
+                              HermesGlassTheme.of(context).enabled &&
+                                  i == _slashSuggestionIndex
+                              ? theme.colorScheme.onPrimaryContainer
+                              : theme.colorScheme.primary,
+                        ),
+                        title: Text(_referenceSuggestions[i].display),
+                        subtitle: _referenceSuggestions[i].description == null
+                            ? null
+                            : Text(
+                                _referenceSuggestions[i].description!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                        trailing:
+                            _referenceSuggestions[i].isContainer &&
+                                !_referenceSuggestions[i].insertText.endsWith(
+                                  ':',
+                                )
+                            ? IconButton(
+                                tooltip: context.l10n.commonOpen,
+                                icon: const Icon(Icons.chevron_right),
+                                onPressed: () => _applyReferenceSuggestion(
+                                  _referenceSuggestions[i],
+                                  descend: true,
+                                ),
+                              )
+                            : null,
+                        onTap: () => _applyReferenceSuggestion(
+                          _referenceSuggestions[i],
+                          descend:
+                              _referenceSuggestions[i].isContainer &&
+                              !_referenceSuggestions[i].insertText.endsWith(
+                                ':',
+                              ),
+                        ),
+                      ),
+                    ),
+                ] else if (_emojiSuggestions.isNotEmpty) ...[
+                  for (var i = 0; i < _emojiSuggestions.length; i++)
+                    GlassSelectionRow(
+                      key: i == _slashSuggestionIndex
+                          ? _selectedSlashRow
+                          : null,
+                      selected: i == _slashSuggestionIndex,
+                      child: ListTile(
+                        key: ValueKey(
+                          'emoji-suggestion-${_emojiSuggestions[i].shortcode}',
+                        ),
+                        dense: true,
+                        selected: i == _slashSuggestionIndex,
+                        selectedColor: HermesGlassTheme.of(context).enabled
+                            ? theme.colorScheme.onPrimaryContainer
+                            : null,
+                        selectedTileColor: HermesGlassTheme.of(context).enabled
+                            ? Colors.transparent
+                            : null,
+                        leading: Text(
+                          _emojiSuggestions[i].emoji,
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                        title: Text(':${_emojiSuggestions[i].shortcode}:'),
+                        onTap: () =>
+                            _applyEmojiSuggestion(_emojiSuggestions[i]),
+                      ),
+                    ),
+                ] else
+                  for (final p in _pathSuggestions)
+                    ListTile(
+                      dense: true,
+                      leading: Icon(
+                        p.isDirectory
+                            ? Icons.folder_outlined
+                            : Icons.insert_drive_file_outlined,
+                        size: 18,
+                        color: p.isDirectory
+                            ? HermesSemantic.orange
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                      title: Text(
+                        p.name,
+                        style: HermesType.onSurface(HermesType.body, theme),
+                      ),
+                      subtitle: Text(
+                        p.path,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: HermesType.onSurfaceVariant(
                           HermesType.caption,
                           theme,
-                        ).copyWith(fontWeight: FontWeight.w700),
+                        ),
                       ),
+                      onTap: () => _applyPathSuggestion(p),
                     ),
-                  ListTile(
-                    key: ValueKey('slash-suggestion-$i'),
-                    dense: true,
-                    selected: i == _slashSuggestionIndex,
-                    leading: Icon(
-                      _slashSuggestions[i].group == slashGroupSkills
-                          ? Icons.auto_awesome_outlined
-                          : Icons.bolt,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
-                    title: Text(
-                      _slashSuggestions[i].display,
-                      style: HermesType.onSurface(HermesType.body, theme),
-                    ),
-                    subtitle: _slashSuggestions[i].meta == null
-                        ? null
-                        : Text(
-                            _slashSuggestions[i].meta!,
-                            style: HermesType.onSurfaceVariant(
-                              HermesType.caption,
-                              theme,
-                            ),
-                          ),
-                    onTap: () => _applySlashSuggestion(_slashSuggestions[i]),
-                  ),
-                ]
-              else if (_slashSuggestionQueryActive)
-                if (context.watch<CommandStore>().lastCompletionFailed)
-                  ListTile(
-                    key: ValueKey('slash-suggestions-failed'),
-                    dense: true,
-                    leading: Icon(
-                      Icons.cloud_off_outlined,
-                      size: 18,
-                      color: theme.colorScheme.error,
-                    ),
-                    title: Text(context.l10n.chatCommandSearchFailed),
-                  )
-                else
-                  ListTile(
-                    key: ValueKey('slash-suggestions-empty'),
-                    dense: true,
-                    leading: Icon(Icons.search_off_outlined, size: 18),
-                    title: Text(context.l10n.chatNoMatchingCommands),
-                    subtitle: Text(context.l10n.chatCommandSearchHint),
-                  )
-              else if (_sessionRefSuggestions.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                  child: Text(context.l10n.chatSessions),
-                ),
-                for (final suggestion in _sessionRefSuggestions)
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.chat_bubble_outline, size: 18),
-                    title: Text(suggestion.title),
-                    subtitle: Text(suggestion.value),
-                    onTap: () => _applySessionRefSuggestion(suggestion),
-                  ),
-              ] else if (_referenceSuggestions.isNotEmpty) ...[
-                for (var i = 0; i < _referenceSuggestions.length; i++)
-                  ListTile(
-                    key: ValueKey(
-                      'reference-suggestion-${_referenceSuggestions[i].id}',
-                    ),
-                    dense: true,
-                    selected: i == _slashSuggestionIndex,
-                    leading: Icon(
-                      switch (_referenceSuggestions[i].kind) {
-                        ComposerReferenceKind.file =>
-                          Icons.insert_drive_file_outlined,
-                        ComposerReferenceKind.folder => Icons.folder_outlined,
-                        ComposerReferenceKind.url => Icons.link,
-                        ComposerReferenceKind.image => Icons.image_outlined,
-                        ComposerReferenceKind.tool => Icons.handyman_outlined,
-                        ComposerReferenceKind.git ||
-                        ComposerReferenceKind.diff ||
-                        ComposerReferenceKind.staged =>
-                          Icons.difference_outlined,
-                        ComposerReferenceKind.session =>
-                          Icons.chat_bubble_outline,
-                        ComposerReferenceKind.contributed =>
-                          Icons.extension_outlined,
-                      },
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
-                    title: Text(_referenceSuggestions[i].display),
-                    subtitle: _referenceSuggestions[i].description == null
-                        ? null
-                        : Text(
-                            _referenceSuggestions[i].description!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                    trailing:
-                        _referenceSuggestions[i].isContainer &&
-                            !_referenceSuggestions[i].insertText.endsWith(':')
-                        ? IconButton(
-                            tooltip: context.l10n.commonOpen,
-                            icon: const Icon(Icons.chevron_right),
-                            onPressed: () => _applyReferenceSuggestion(
-                              _referenceSuggestions[i],
-                              descend: true,
-                            ),
-                          )
-                        : null,
-                    onTap: () => _applyReferenceSuggestion(
-                      _referenceSuggestions[i],
-                      descend:
-                          _referenceSuggestions[i].isContainer &&
-                          !_referenceSuggestions[i].insertText.endsWith(':'),
-                    ),
-                  ),
-              ] else if (_emojiSuggestions.isNotEmpty) ...[
-                for (var i = 0; i < _emojiSuggestions.length; i++)
-                  ListTile(
-                    key: ValueKey(
-                      'emoji-suggestion-${_emojiSuggestions[i].shortcode}',
-                    ),
-                    dense: true,
-                    selected: i == _slashSuggestionIndex,
-                    leading: Text(
-                      _emojiSuggestions[i].emoji,
-                      style: const TextStyle(fontSize: 22),
-                    ),
-                    title: Text(':${_emojiSuggestions[i].shortcode}:'),
-                    onTap: () => _applyEmojiSuggestion(_emojiSuggestions[i]),
-                  ),
-              ] else
-                for (final p in _pathSuggestions)
-                  ListTile(
-                    dense: true,
-                    leading: Icon(
-                      p.isDirectory
-                          ? Icons.folder_outlined
-                          : Icons.insert_drive_file_outlined,
-                      size: 18,
-                      color: p.isDirectory
-                          ? HermesSemantic.orange
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                    title: Text(
-                      p.name,
-                      style: HermesType.onSurface(HermesType.body, theme),
-                    ),
-                    subtitle: Text(
-                      p.path,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: HermesType.onSurfaceVariant(
-                        HermesType.caption,
-                        theme,
-                      ),
-                    ),
-                    onTap: () => _applyPathSuggestion(p),
-                  ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -6051,6 +6298,21 @@ class _ChatScreenState extends State<ChatScreen> {
             (_slashSuggestionIndex + delta) % selectableCount;
         if (_slashSuggestionIndex < 0) {
           _slashSuggestionIndex += selectableCount;
+        }
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final selectedContext = _selectedSlashRow.currentContext;
+        if (selectedContext != null) {
+          Scrollable.ensureVisible(
+            selectedContext,
+            alignment: .5,
+            duration:
+                MediaQuery.disableAnimationsOf(context) ||
+                    MediaQuery.accessibleNavigationOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 120),
+          );
         }
       });
       return KeyEventResult.handled;
@@ -6956,17 +7218,21 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       // Locate the request's existing transcript row before opening a modal.
       // Background requests without a loaded interaction still use the sheet.
-      final sameOwner = request.ownerRoute == null ||
+      final sameOwner =
+          request.ownerRoute == null ||
           request.ownerRoute == session.owner?.route;
-      final sameSession = request.sessionId == session.runtimeId ||
+      final sameSession =
+          request.sessionId == session.runtimeId ||
           request.sessionId == session.durableId ||
           (request.durableSessionId != null &&
               request.durableSessionId == session.durableId);
-      for (final message in sameOwner && sameSession
-          ? session.chat.messages
-          : const <ChatMessage>[]) {
+      for (final message
+          in sameOwner && sameSession
+              ? session.chat.messages
+              : const <ChatMessage>[]) {
         final containsRequest = message.parts.any(
-          (part) => part.kind == 'interaction' &&
+          (part) =>
+              part.kind == 'interaction' &&
               part.interaction?['request_id']?.toString() == request.requestId,
         );
         if (!containsRequest) continue;
@@ -7218,6 +7484,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // ── Draft session lifecycle: durable id transitions. ──
     final sid = session.durableId ?? '';
     if (_scrollCoordinator.enterSession(sid)) {
+      _loadingOlderViewport = false;
       _mountedUserMessageIds.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -7323,16 +7590,20 @@ class _ChatScreenState extends State<ChatScreen> {
         : null;
 
     final appBar = AppBar(
-      backgroundColor: HermesGlassTheme.of(context).enabled ? Colors.transparent : null,
+      backgroundColor: HermesGlassTheme.of(context).enabled
+          ? Colors.transparent
+          : null,
       flexibleSpace: HermesGlassTheme.of(context).enabled
-          ? const GlassSurface(radius: 0, thick: true, child: SizedBox.expand()) : null,
-      // XL App Shell already owns the global navigation affordance. Keeping
-      // a second back button in the conversation header duplicates that
-      // chrome; retain the back affordance for tablet/phone surfaces.
-      automaticallyImplyLeading:
-          !widget.embedded &&
-          (!hasSessionRail || screenWidth < HermesBreakpoints.desktop),
-      leading: hasSessionRail && screenWidth < HermesBreakpoints.desktop
+          ? const GlassSurface(
+              radius: 0,
+              role: HermesGlassRole.navigation,
+              child: SizedBox.expand(),
+            )
+          : null,
+      // A pushed chat covers the shell even on XL screens. Only embedded
+      // chats can rely on the host's navigation instead of a route back action.
+      automaticallyImplyLeading: !widget.embedded,
+      leading: !widget.embedded && Navigator.of(context).canPop()
           ? const ChatPageBackButton()
           : null,
       title: hasSessionRail
@@ -7421,7 +7692,7 @@ class _ChatScreenState extends State<ChatScreen> {
           builder: (context) {
             final tabs = context.watch<SessionTabStore>();
             if (tabs.tabs.length < 2) return const SizedBox.shrink();
-            return IconButton(
+            return _headerAction(
               tooltip: context.l10n.chatSessions,
               icon: Badge(
                 isLabelVisible: tabs.tabs.any((tab) => tab.unread),
@@ -7457,7 +7728,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   )?.targetKey('chat.sessionTray'),
                   isLabelVisible: attention > 0,
                   label: Text('$attention'),
-                  child: IconButton(
+                  child: _headerAction(
                     tooltip: context.l10n.chatSessions,
                     icon: const Icon(Icons.dynamic_feed_outlined),
                     onPressed: total == 0 ? null : _showActiveSessionTray,
@@ -7467,13 +7738,14 @@ class _ChatScreenState extends State<ChatScreen> {
             );
           },
         ),
-        IconButton(
+        _headerAction(
           tooltip: context.l10n.chatFindInConversation,
+          selected: _findOpen,
           icon: Icon(_findOpen ? Icons.search_off : Icons.search),
           onPressed: _toggleFind,
         ),
         if (hasSessionRail)
-          IconButton(
+          _headerAction(
             tooltip: context.l10n.chatHistoryLocator,
             icon: const Icon(Icons.travel_explore_outlined),
             onPressed: () => _showHistoryLocator(chat),
@@ -7482,7 +7754,7 @@ class _ChatScreenState extends State<ChatScreen> {
         // workspace file panel as an end drawer. Tablets keep the 3-column
         // layout, so no entry is shown there.
         if (!useThreePane)
-          IconButton(
+          _headerAction(
             tooltip: context.l10n.chatWorkspaceFiles,
             icon: const Icon(Icons.folder_outlined),
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
@@ -7491,56 +7763,97 @@ class _ChatScreenState extends State<ChatScreen> {
       ],
     );
 
+    // Reading text must never move behind translucent navigation: blurred
+    // glyphs there look like a second, displaced transcript while scrolling.
+    const underlapHeader = false;
+    const transcriptTopInset = 0.0;
     final chatBody = Column(
       children: [
         if (_findOpen)
           Material(
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            color: HermesGlassTheme.of(context).enabled
+                ? Colors.transparent
+                : Theme.of(context).colorScheme.surfaceContainerHigh,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _findCtrl,
-                      focusNode: _findFocus,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: context.l10n.chatFindHint,
-                        prefixIcon: const Icon(Icons.search),
-                      ),
-                      textInputAction: TextInputAction.search,
-                      onChanged: (_) => _scheduleFind(chat),
-                      onSubmitted: (_) => _stepFind(chat, forward: true),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final controls = <Widget>[
+                    Expanded(
+                      child: HermesGlassTheme.of(context).enabled
+                          ? GlassSearchField(
+                              controller: _findCtrl,
+                              focusNode: _findFocus,
+                              hintText: context.l10n.chatFindHint,
+                              onChanged: (_) => _scheduleFind(chat),
+                              onSubmitted: (_) =>
+                                  _stepFind(chat, forward: true),
+                            )
+                          : TextField(
+                              controller: _findCtrl,
+                              focusNode: _findFocus,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: context.l10n.chatFindHint,
+                                prefixIcon: const Icon(Icons.search),
+                              ),
+                              textInputAction: TextInputAction.search,
+                              onChanged: (_) => _scheduleFind(chat),
+                              onSubmitted: (_) =>
+                                  _stepFind(chat, forward: true),
+                            ),
                     ),
-                  ),
-                  Builder(
-                    builder: (_) {
-                      final count = _findMatches(chat).length;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text(
-                          count == 0 ? '0/0' : '${_findIndex + 1}/$count',
+                    Builder(
+                      builder: (_) {
+                        final count = _findMatches(chat).length;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            count == 0 ? '0/0' : '${_findIndex + 1}/$count',
+                          ),
+                        );
+                      },
+                    ),
+                    _headerAction(
+                      tooltip: context.l10n.commonPrevious,
+                      onPressed: _findMatches(chat).isEmpty
+                          ? null
+                          : () => _stepFind(chat, forward: false),
+                      icon: const Icon(Icons.keyboard_arrow_up),
+                    ),
+                    _headerAction(
+                      tooltip: context.l10n.commonNext,
+                      onPressed: _findMatches(chat).isEmpty
+                          ? null
+                          : () => _stepFind(chat, forward: true),
+                      icon: const Icon(Icons.keyboard_arrow_down),
+                    ),
+                    _headerAction(
+                      tooltip: context.l10n.commonClose,
+                      onPressed: _toggleFind,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ];
+                  if (HermesGlassTheme.of(context).enabled &&
+                      constraints.maxWidth < 600) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        (controls.first as Expanded).child,
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            controls[1],
+                            const Spacer(),
+                            ...controls.skip(2),
+                          ],
                         ),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    tooltip: context.l10n.commonPrevious,
-                    onPressed: () => _stepFind(chat, forward: false),
-                    icon: const Icon(Icons.keyboard_arrow_up),
-                  ),
-                  IconButton(
-                    tooltip: context.l10n.commonNext,
-                    onPressed: () => _stepFind(chat, forward: true),
-                    icon: const Icon(Icons.keyboard_arrow_down),
-                  ),
-                  IconButton(
-                    tooltip: context.l10n.commonClose,
-                    onPressed: _toggleFind,
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
+                      ],
+                    );
+                  }
+                  return Row(children: controls);
+                },
               ),
             ),
           ),
@@ -7565,145 +7878,303 @@ class _ChatScreenState extends State<ChatScreen> {
               _buildRecoveryBanner(context.read<ChatStore>()),
         ),
         Expanded(
-          child: Stack(
-            children: [
-              ChatTranscriptPanel(
-                scrollCtrl: _scrollCtrl,
-                scrollCoordinator: _scrollCoordinator,
-                onTranscriptChanged: _onTranscriptChanged,
-                onMessageLongPress: _showMessageMenu,
-                onRegenerate: session.readOnly ? null : _regenerateFromFooter,
-                onBranch: session.readOnly ? null : _branchFromHere,
-                onJumpToQuestion: _locateMessage,
-                onQuoteMessage: session.readOnly ? null : _quoteMessage,
-                keyForMessage: _keyForMessage,
-                onUserMessageMountChanged: _onUserMessageMountChanged,
-                highlightMessageId: _locatorHighlightId,
-                editingMessageId: _editingMessageId,
-                editController: _editCtrl,
-                editFocusNode: _editFocus,
-                onEditSubmit: _submitInlineEdit,
-                onEditCancel: _cancelInlineEdit,
-                onRestoreVersion: session.readOnly
-                    ? null
-                    : _restorePreviewedVersion,
-                editSuggestions: _editingMessageId != null
-                    ? _buildSuggestions()
-                    : null,
-                onEditAttach: _editingMessageId != null
-                    ? _pickImageForEdit
-                    : null,
-                editAttachmentCount: _editAttachments.length,
-                loadError: chat.loadingTranscript ? null : connection.error,
-                onRetryLoad: sid.isEmpty
-                    ? null
-                    : () => session.resumeSession(
-                        sid,
-                        profile: session.activeProfile,
-                      ),
-                onPromptSelected: _insertStarterPrompt,
-              ),
-              Positioned.fill(
-                child: Selector<ChatStore, int>(
-                  selector: (_, store) => store.vibeBurstRevision,
-                  builder: (context, revision, _) => VibeHeartBurst(
-                    revision: revision,
-                    animationsDisabled: MediaQuery.disableAnimationsOf(context),
+          child: GlassDockLayout(
+            onInsetChanged: _scrollToBottom,
+            // Keep glass controls, but reserve real layout space for them.
+            // Trailing padding alone does not prevent history passing behind
+            // the composer when the reader scrolls away from the tail.
+            enabled: false,
+            bodyBuilder: (context, dockInset) => Stack(
+              children: [
+                DecoratedBox(
+                  decoration:
+                      HermesGlassTheme.of(context).allowsTransparency(context)
+                      ? BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              HermesPalette.of(
+                                context,
+                              ).accentBg.withValues(alpha: .10),
+                              Colors.transparent,
+                              HermesPalette.of(
+                                context,
+                              ).accentBg.withValues(alpha: .06),
+                            ],
+                          ),
+                        )
+                      : const BoxDecoration(),
+                  child: ChatTranscriptPanel(
+                    topInset: transcriptTopInset,
+                    bottomInset: dockInset,
+                    scrollCtrl: _scrollCtrl,
+                    onLoadOlder: () {
+                      if (_loadingOlderViewport) return;
+                      _loadingOlderViewport = true;
+                      unawaited(_loadOlderKeepingViewport());
+                    },
+                    scrollCoordinator: _scrollCoordinator,
+                    onTranscriptChanged: _onTranscriptChanged,
+                    onMessageLongPress: _showMessageMenu,
+                    onRegenerate: session.readOnly
+                        ? null
+                        : _regenerateFromFooter,
+                    onBranch: session.readOnly ? null : _branchFromHere,
+                    onJumpToQuestion: _locateMessage,
+                    onQuoteMessage: session.readOnly ? null : _quoteMessage,
+                    keyForMessage: _keyForMessage,
+                    onUserMessageMountChanged: _onUserMessageMountChanged,
+                    highlightMessageId: _locatorHighlightId,
+                    editingMessageId: _editingMessageId,
+                    editController: _editCtrl,
+                    editFocusNode: _editFocus,
+                    onEditSubmit: _submitInlineEdit,
+                    onEditCancel: _cancelInlineEdit,
+                    onRestoreVersion: session.readOnly
+                        ? null
+                        : _restorePreviewedVersion,
+                    editSuggestions: _editingMessageId != null
+                        ? _buildSuggestions()
+                        : null,
+                    onEditAttach: _editingMessageId != null
+                        ? _pickImageForEdit
+                        : null,
+                    editAttachmentCount: _editAttachments.length,
+                    loadError: chat.loadingTranscript ? null : connection.error,
+                    onRetryLoad: sid.isEmpty
+                        ? null
+                        : () => session.resumeSession(
+                            sid,
+                            profile: session.activeProfile,
+                          ),
+                    onPromptSelected: _insertStarterPrompt,
                   ),
                 ),
-              ),
-              if (chat.messages.where((m) => m.role == 'user').length > 1)
-                Positioned(
-                  right: 8,
-                  top: 16,
-                  child: _buildTopicRail(chat.messages),
-                ),
-              // Scroll-to-bottom FAB (desktop parity: scroll-to-bottom-button)
-              Positioned(
-                right: 12,
-                bottom: 8,
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _stuckToBottom,
-                  builder: (context, stuckToBottom, _) => AnimatedOpacity(
-                    duration: MediaQuery.disableAnimationsOf(context)
-                        ? Duration.zero
-                        : HermesMotion.standard,
-                    opacity: stuckToBottom ? 0.0 : 1.0,
-                    child: IgnorePointer(
-                      ignoring: stuckToBottom,
-                      child: FloatingActionButton.small(
-                        heroTag:
-                            'scroll_to_bottom:${widget.surfaceId ?? 'main'}',
-                        tooltip: context.l10n.chatScrollToBottom,
-                        onPressed: () {
-                          if (_diagnosticLogging) {
-                            if (_scrollCtrl.hasClients) {
-                              final position = _scrollCtrl.position;
-                              _logScroll(
-                                'event=scroll_to_bottom.clicked '
-                                'pixels=${position.pixels.toStringAsFixed(1)} '
-                                'max_extent=${position.maxScrollExtent.toStringAsFixed(1)} '
-                                'distance_to_bottom=${(position.maxScrollExtent - position.pixels).toStringAsFixed(1)} '
-                                'message_count=${chat.messages.length}',
-                              );
-                            } else {
-                              _logScroll(
-                                'event=scroll_to_bottom.clicked has_clients=false '
-                                'message_count=${chat.messages.length}',
-                              );
-                            }
-                          }
-                          _setStuckToBottom(true);
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (_scrollCtrl.hasClients) {
-                              final target =
-                                  _scrollCtrl.position.maxScrollExtent;
-                              if (MediaQuery.disableAnimationsOf(context)) {
-                                _scrollCtrl.jumpTo(target);
-                              } else {
-                                _scrollCtrl.animateTo(
-                                  target,
-                                  duration: HermesMotion.deliberate,
-                                  curve: Curves.easeOutCubic,
-                                );
-                              }
-                            }
-                          });
-                        },
-                        child: const Icon(Icons.arrow_downward_outlined),
+                Positioned.fill(
+                  child: Selector<ChatStore, int>(
+                    selector: (_, store) => store.vibeBurstRevision,
+                    builder: (context, revision, _) => VibeHeartBurst(
+                      revision: revision,
+                      animationsDisabled: MediaQuery.disableAnimationsOf(
+                        context,
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                if (chat.messages.where((m) => m.role == 'user').length > 1)
+                  Positioned(
+                    right: 8,
+                    top: 16,
+                    child: _buildTopicRail(chat.messages),
+                  ),
+                // Scroll-to-bottom FAB (desktop parity: scroll-to-bottom-button)
+                Positioned(
+                  right: 12,
+                  bottom: 8 + dockInset,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _stuckToBottom,
+                    builder: (context, stuckToBottom, _) => AnimatedOpacity(
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : HermesMotion.standard,
+                      opacity: stuckToBottom ? 0.0 : 1.0,
+                      child: IgnorePointer(
+                        ignoring: stuckToBottom,
+                        child: GlassFloatingAction(
+                          interactive: !stuckToBottom,
+                          heroTag:
+                              'scroll_to_bottom:${widget.surfaceId ?? 'main'}',
+                          tooltip: context.l10n.chatScrollToBottom,
+                          onPressed: () {
+                            if (_diagnosticLogging) {
+                              if (_scrollCtrl.hasClients) {
+                                final position = _scrollCtrl.position;
+                                _logScroll(
+                                  'event=scroll_to_bottom.clicked '
+                                  'pixels=${position.pixels.toStringAsFixed(1)} '
+                                  'max_extent=${position.maxScrollExtent.toStringAsFixed(1)} '
+                                  'distance_to_bottom=${(position.maxScrollExtent - position.pixels).toStringAsFixed(1)} '
+                                  'message_count=${chat.messages.length}',
+                                );
+                              } else {
+                                _logScroll(
+                                  'event=scroll_to_bottom.clicked has_clients=false '
+                                  'message_count=${chat.messages.length}',
+                                );
+                              }
+                            }
+                            _scrollCoordinator.followLatest();
+                            _setStuckToBottom(true);
+                            final returnEpoch = _scrollCoordinator.sessionEpoch;
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!mounted ||
+                                  !_scrollCoordinator.ownsEpoch(returnEpoch)) {
+                                return;
+                              }
+                              if (_scrollCtrl.hasClients) {
+                                final target =
+                                    _scrollCtrl.position.maxScrollExtent;
+                                if (MediaQuery.disableAnimationsOf(context)) {
+                                  _scrollCtrl.jumpTo(target);
+                                } else {
+                                  _scrollCtrl.animateTo(
+                                    target,
+                                    duration: HermesMotion.deliberate,
+                                    curve: Curves.easeOutCubic,
+                                  );
+                                }
+                              }
+                            });
+                          },
+                          child: const Icon(Icons.arrow_downward_outlined),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            dock: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Pending interactive requests (approval/clarify/…) surface as a slim
+                // strip so an approval-gated turn never looks like endless "思考中…";
+                // tapping opens the global request sheet (same as the shell FAB).
+                _buildRequestBanner(),
+                // WebUI queue parity: a strip above the composer shows the pending
+                // queue count and expands to per-item management (ui.js queue card).
+                _buildComposerStatusStack(session),
+                // Desktop file-drop is only meaningful on desktop platforms; mobile
+                // browsers / touch devices have no drag-and-drop file gesture.
+                if (defaultTargetPlatform == TargetPlatform.windows ||
+                    defaultTargetPlatform == TargetPlatform.macOS ||
+                    defaultTargetPlatform == TargetPlatform.linux)
+                  DropTarget(
+                    onDragDone: session.readOnly ? null : _onDropFiles,
+                    child: _buildComposer(session, chat, voice),
+                  )
+                else
+                  _buildComposer(session, chat, voice),
+              ],
+            ),
           ),
         ),
-        // Pending interactive requests (approval/clarify/…) surface as a slim
-        // strip so an approval-gated turn never looks like endless "思考中…";
-        // tapping opens the global request sheet (same as the shell FAB).
-        _buildRequestBanner(),
-        // WebUI queue parity: a strip above the composer shows the pending
-        // queue count and expands to per-item management (ui.js queue card).
-        _buildComposerStatusStack(session),
-        // Desktop file-drop is only meaningful on desktop platforms; mobile
-        // browsers / touch devices have no drag-and-drop file gesture.
-        if (defaultTargetPlatform == TargetPlatform.windows ||
-            defaultTargetPlatform == TargetPlatform.macOS ||
-            defaultTargetPlatform == TargetPlatform.linux)
-          DropTarget(
-            onDragDone: session.readOnly ? null : _onDropFiles,
-            child: _buildComposer(session, chat, voice),
-          )
-        else
-          _buildComposer(session, chat, voice),
       ],
     );
 
     // L/XL use Sessions + Chat + Context and retain page-level navigation
     // because ChatScreen is pushed above AppShell.
+    Widget withEnvironment(Widget page) => GlassEnvironment(child: page);
+    final pageBackground = HermesGlassTheme.of(context).enabled
+        ? Colors.transparent
+        : null;
     if (hasSessionRail) {
-      return WithUndoShortcuts(
+      return withEnvironment(
+        WithUndoShortcuts(
+          onFind: _toggleFind,
+          onUndo: () async {
+            try {
+              await session.undoLastTurn();
+              if (context.mounted) {
+                showHermesToast(
+                  context,
+                  message: l10n.chatLastTurnUndone,
+                  kind: HermesToastKind.success,
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                showHermesErrorSnackBar(
+                  context,
+                  e,
+                  fallback: l10n.chatUndoFailed('$e'),
+                );
+              }
+            }
+          },
+          child: Scaffold(
+            key: _scaffoldKey,
+            backgroundColor: pageBackground,
+            appBar: appBar,
+            body: Row(
+              children: [
+                TabletSessionRail(
+                  width: railWidth,
+                  onOpen: (row) => row.isDelegatedChild
+                      ? session.openReadOnlySession(
+                          row.id,
+                          profile: row.profile,
+                        )
+                      : session.resumeSession(row.id, profile: row.profile),
+                  onNew: () => session.newChat(),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: Column(children: [Expanded(child: chatBody)]),
+                ),
+                if (useThreePane) ...[
+                  const VerticalDivider(width: 1),
+                  SizedBox(
+                    key: const ValueKey('chat-workspace-sidebar-slot'),
+                    width: _rightSidebarCollapsed
+                        ? RightSidebar.collapsedWidth
+                        : sidebarWidth,
+                    child: _desktopSidebarReady
+                        ? RightSidebar(
+                            width: sidebarWidth,
+                            initialTab: RightSidebarTab.files,
+                            onCollapsedChanged: (collapsed) {
+                              if (mounted &&
+                                  collapsed != _rightSidebarCollapsed) {
+                                setState(
+                                  () => _rightSidebarCollapsed = collapsed,
+                                );
+                              }
+                            },
+                          )
+                        : const Center(child: CircularProgressIndicator()),
+                  ),
+                ],
+              ],
+            ),
+            endDrawer: useThreePane
+                ? null
+                : Builder(
+                    builder: (drawerCtx) {
+                      final liquid = HermesGlassTheme.of(drawerCtx).enabled;
+                      final content = Padding(
+                        padding: EdgeInsets.only(top: workspaceTopInset),
+                        child: const RightSidebar(
+                          width: 360,
+                          initialTab: RightSidebarTab.files,
+                          collapsible: false,
+                        ),
+                      );
+                      return Drawer(
+                        width: 360,
+                        backgroundColor: liquid ? Colors.transparent : null,
+                        elevation: liquid ? 0 : null,
+                        child: liquid
+                            ? GlassSurface(
+                                key: const ValueKey(
+                                  'chat-desktop-drawer-glass',
+                                ),
+                                radius: 28,
+                                role: HermesGlassRole.overlay,
+                                child: content,
+                              )
+                            : content,
+                      );
+                    },
+                  ),
+          ),
+        ),
+      );
+    }
+
+    return withEnvironment(
+      WithUndoShortcuts(
         onFind: _toggleFind,
         onUndo: () async {
           try {
@@ -7727,108 +8198,48 @@ class _ChatScreenState extends State<ChatScreen> {
         },
         child: Scaffold(
           key: _scaffoldKey,
+          backgroundColor: pageBackground,
+          extendBodyBehindAppBar: underlapHeader,
           appBar: appBar,
-          body: Row(
-            children: [
-              TabletSessionRail(
-                width: railWidth,
-                onOpen: (row) => row.isDelegatedChild
-                    ? session.openReadOnlySession(row.id, profile: row.profile)
-                    : session.resumeSession(row.id, profile: row.profile),
-                onNew: () => session.newChat(),
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(
-                child: Column(children: [Expanded(child: chatBody)]),
-              ),
-              if (useThreePane) ...[
-                const VerticalDivider(width: 1),
-                SizedBox(
-                  key: const ValueKey('chat-workspace-sidebar-slot'),
-                  width: _rightSidebarCollapsed
-                      ? RightSidebar.collapsedWidth
-                      : sidebarWidth,
-                  child: _desktopSidebarReady
-                      ? RightSidebar(
-                          width: sidebarWidth,
+          body: widget.embedded ? chatBody : MobileSafeBody(child: chatBody),
+          // A12 phone entry: workspace file panel as an end drawer (the tablet
+          // layout keeps RightSidebar docked in the third column instead).
+          endDrawer: Builder(
+            builder: (drawerCtx) {
+              final screenWidth = MediaQuery.sizeOf(drawerCtx).width;
+              final width = screenWidth < 600
+                  ? (screenWidth * .85).clamp(0.0, 320.0).toDouble()
+                  : 360.0;
+              final liquid = HermesGlassTheme.of(drawerCtx).enabled;
+              return Drawer(
+                width: width,
+                backgroundColor: liquid ? Colors.transparent : null,
+                elevation: liquid ? 0 : null,
+                child: liquid
+                    ? GlassSurface(
+                        key: const ValueKey('chat-workspace-drawer-glass'),
+                        radius: 28,
+                        role: HermesGlassRole.overlay,
+                        child: Padding(
+                          padding: EdgeInsets.only(top: workspaceTopInset),
+                          child: RightSidebar(
+                            width: width,
+                            initialTab: RightSidebarTab.files,
+                            collapsible: false,
+                          ),
+                        ),
+                      )
+                    : Padding(
+                        padding: EdgeInsets.only(top: workspaceTopInset),
+                        child: RightSidebar(
+                          width: width,
                           initialTab: RightSidebarTab.files,
-                          onCollapsedChanged: (collapsed) {
-                            if (mounted &&
-                                collapsed != _rightSidebarCollapsed) {
-                              setState(
-                                () => _rightSidebarCollapsed = collapsed,
-                              );
-                            }
-                          },
-                        )
-                      : const Center(child: CircularProgressIndicator()),
-                ),
-              ],
-            ],
+                          collapsible: false,
+                        ),
+                      ),
+              );
+            },
           ),
-          endDrawer: useThreePane
-              ? null
-              : Drawer(
-                  width: 360,
-                  child: Padding(
-                    padding: EdgeInsets.only(top: workspaceTopInset),
-                    child: const RightSidebar(
-                      width: 360,
-                      initialTab: RightSidebarTab.files,
-                      collapsible: false,
-                    ),
-                  ),
-                ),
-        ),
-      );
-    }
-
-    return WithUndoShortcuts(
-      onFind: _toggleFind,
-      onUndo: () async {
-        try {
-          await session.undoLastTurn();
-          if (context.mounted) {
-            showHermesToast(
-              context,
-              message: l10n.chatLastTurnUndone,
-              kind: HermesToastKind.success,
-            );
-          }
-        } catch (e) {
-          if (context.mounted) {
-            showHermesErrorSnackBar(
-              context,
-              e,
-              fallback: l10n.chatUndoFailed('$e'),
-            );
-          }
-        }
-      },
-      child: Scaffold(
-        key: _scaffoldKey,
-        appBar: appBar,
-        body: widget.embedded ? chatBody : MobileSafeBody(child: chatBody),
-        // A12 phone entry: workspace file panel as an end drawer (the tablet
-        // layout keeps RightSidebar docked in the third column instead).
-        endDrawer: Builder(
-          builder: (drawerCtx) {
-            final screenWidth = MediaQuery.sizeOf(drawerCtx).width;
-            final width = screenWidth < 600
-                ? (screenWidth * .85).clamp(0.0, 320.0).toDouble()
-                : 360.0;
-            return Drawer(
-              width: width,
-              child: Padding(
-                padding: EdgeInsets.only(top: workspaceTopInset),
-                child: RightSidebar(
-                  width: width,
-                  initialTab: RightSidebarTab.files,
-                  collapsible: false,
-                ),
-              ),
-            );
-          },
         ),
       ),
     );
@@ -7848,6 +8259,23 @@ class _ChatScreenState extends State<ChatScreen> {
       height: 44,
       child: Icon(icon, size: 18, color: resolved.withValues(alpha: 0.75)),
     );
+  }
+
+  Widget _headerAction({
+    required String tooltip,
+    required Widget icon,
+    required VoidCallback? onPressed,
+    bool selected = false,
+  }) {
+    if (HermesGlassTheme.of(context).enabled) {
+      return GlassButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        selected: selected,
+        child: icon,
+      );
+    }
+    return IconButton(tooltip: tooltip, icon: icon, onPressed: onPressed);
   }
 
   Widget _footerIconButton({

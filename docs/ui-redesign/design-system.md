@@ -13,16 +13,27 @@ Classic 与 Liquid 是独立于四套配色和明暗模式的视觉维度；不�
 
 - 材质只应用于导航、输入外壳、操作组与弹层；消息、代码、Diff、终端
   保持稳定实色阅读表面，禁止逐消息添加 BackdropFilter。
-- GlassSurface 管理裁剪和背景采样；嵌套玻璃复用上层模糊，子层仅着色。
+- GlassSurface 管理裁剪和背景采样；嵌套玻璃复用上层材质，通常仅裁剪，
+  不重复模糊、着色、高光和阴影；子层要求不透明降级时单独提供实色表面。
 - GlassActionGroup 的按钮共享材质；GlassButton 实际点击区域至少 44×44，
   使用标准键盘焦点、语义和禁用反馈。
-- 应用减少透明度、应用／系统高对比均切换为不透明材质。系统减少透明度
-  桥接尚待接入，不得把应用开关宣称为自动跟随系统。
+- 应用减少透明度、应用／系统高对比均切换为不透明材质。iOS 原生
+  AppDelegate 与 AppearanceStore 已接入系统减少透明度查询、变更通知和
+  回到前台刷新；真机验收仍待完成。Web 不使用该原生桥接，不得将原生
+  接入宣称为 Safari 自动跟随系统减少透明度。
 - 减少动画时控件状态转换取消时间动画；不以动画延迟流式文字呈现。
+- `HermesGlassMotion` 集中定义 Liquid 按压反馈 120ms、展开 240ms 与
+  easeOutCubic 曲线；发送按钮与共享 GlassButton 使用相同按压规则，
+  Classic 发送按钮保留原 100ms 线性行为。不同动效类别不强制同一时长。
 - ScrollEdgeScrim 不接收指针事件、不增加模糊，保护滚动边缘的可读性。
 - Liquid 的共享模糊、透明度、高光、阴影与反馈时长集中在
   `HermesGlassTokens`；深色及不透明降级不投影，以边框区分层级。
   Classic 的既有 token 保持不变。
+- `HermesGlassRole` 将导航、输入／浮动控件、菜单／弹层分为 navigation、
+  control、overlay，由 `HermesGlassRecipe` 解析默认轮廓与材质。显式 radius
+  可覆盖轮廓以支持平直顶栏；角色优先于兼容用的 thick。首轮迁移保留
+  原有厚材质浓度和模糊，overlay 默认使用 sheetRadius；尚未完成按角色
+  光学校准，不得将三个配置入口描述为三种已验收的光学效果。
 - 性能验收记录代表设备的滚动、流式输出和弹层帧耗时，以 60Hz 约
   16.7ms 帧预算为目标；widget 测试通过不等于性能验收通过。
 
@@ -147,6 +158,13 @@ orange，failed→red（`HermesAgentStatus.color`）。工具状态映射见 `He
   Cascadia Code, DejaVu Sans Mono, Liberation Mono, SF Mono, Menlo, monospace。
 
 ### §4.2 字阶
+
+Liquid 手机分组列表使用 `HermesLiquidTypography` 的独立阅读档位：
+视口小于 600 时标题 17 / 行高 1.3，辅助说明 14 / 行高 1.4，标题允许
+自然换行。Classic 与 600 及以上视口保留原有列表密度；这不是全局正文
+字号迁移。大字缩放继续交由 TextScaler，不能通过固定行高裁掉内容。
+共享 HermesListRow 的说明仍保留普通字号最多两行、大字完整换行策略。
+
 
 `HermesType` 裸 `TextStyle` **只含字号/字重/行高——不含颜色**。优先用
 `Theme.of(context).textTheme.xxx`（主题已注入 onSurface 色）；直接用裸 token 必须

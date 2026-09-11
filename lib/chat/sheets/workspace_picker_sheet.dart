@@ -7,6 +7,8 @@ import '../../l10n/l10n.dart';
 import '../../screens/files_screen.dart';
 import '../../widgets/adaptive_form_dialog.dart';
 import '../../widgets/mobile/mobile_page_scaffold.dart';
+import '../../widgets/glass/glass_selection_row.dart';
+import '../../theme/hermes_glass_theme.dart';
 
 Future<String?> showChatWorkspacePickerSheet(
   BuildContext context, {
@@ -89,15 +91,27 @@ Future<String?> showChatWorkspacePickerSheet(
                 itemBuilder: (_, index) {
                   final (path, icon) = options[index];
                   final selected = path == current;
-                  return ListTile(
-                    leading: Icon(icon),
-                    title: Text(
-                      path,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  final liquid = HermesGlassTheme.of(sheetContext).enabled;
+                  return GlassSelectionRow(
+                    selected: selected,
+                    child: ListTile(
+                      selected: liquid && selected,
+                      selectedColor: liquid
+                          ? Theme.of(
+                              sheetContext,
+                            ).colorScheme.onPrimaryContainer
+                          : null,
+                      leading: Icon(icon),
+                      title: Text(
+                        path,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: selected
+                          ? const Icon(Icons.check_circle)
+                          : null,
+                      onTap: () => Navigator.of(sheetContext).pop(path),
                     ),
-                    trailing: selected ? const Icon(Icons.check_circle) : null,
-                    onTap: () => Navigator.of(sheetContext).pop(path),
                   );
                 },
               ),

@@ -9,6 +9,50 @@ class AppLocalizationsJa extends AppLocalizations {
   AppLocalizationsJa([String locale = 'ja']) : super(locale);
 
   @override
+  String get requestExpired => 'リクエストの有効期限が切れました';
+
+  @override
+  String get clientPerformanceTitle => 'クライアントのパフォーマンス';
+
+  @override
+  String get clientPerformanceSubtitle => '今回の実行の指標を表示・コピー';
+
+  @override
+  String get fileEditorEditFile => 'ファイルを編集';
+
+  @override
+  String get fileEditorShowChanges => '変更を表示';
+
+  @override
+  String get taskPreviousColumn => '前の列';
+
+  @override
+  String get taskNextColumn => '次の列';
+
+  @override
+  String taskVisibleColumns(int first, int last, int total) {
+    return '$total 列中 $first–$last 列';
+  }
+
+  @override
+  String get appearancePreviewNotice => 'プレビューのみ。メッセージは送信されません';
+
+  @override
+  String get appearancePreviewContent => 'フローティング操作の下でも内容を読みやすく表示します。';
+
+  @override
+  String get appearancePreviewComposer => 'メッセージ入力プレビュー';
+
+  @override
+  String get agentDiagnostics => 'サービス状態と診断';
+
+  @override
+  String get agentBackendRunning => 'バックエンド稼働中';
+
+  @override
+  String get agentBackendStopped => 'バックエンド停止';
+
+  @override
   String get appearanceVisualStyle => 'インターフェイスのスタイル';
 
   @override

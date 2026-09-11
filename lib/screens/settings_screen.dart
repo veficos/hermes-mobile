@@ -7,6 +7,7 @@ import '../core/stores/terminal_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/glass/glass_alert_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import 'connect_screen.dart';
@@ -122,7 +123,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final controller = TextEditingController(text: _terminalFontFamily);
     final selected = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassAlertDialog(
         title: Text(l10n.terminalFontTitle),
         content: SizedBox(
           width: 440,

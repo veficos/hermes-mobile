@@ -9,6 +9,52 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get requestExpired => 'Request expired';
+
+  @override
+  String get clientPerformanceTitle => 'Client performance';
+
+  @override
+  String get clientPerformanceSubtitle =>
+      'View and copy metrics from this app run';
+
+  @override
+  String get fileEditorEditFile => 'Edit file';
+
+  @override
+  String get fileEditorShowChanges => 'Show changes';
+
+  @override
+  String get taskPreviousColumn => 'Previous column';
+
+  @override
+  String get taskNextColumn => 'Next column';
+
+  @override
+  String taskVisibleColumns(int first, int last, int total) {
+    return 'Columns $first–$last of $total';
+  }
+
+  @override
+  String get appearancePreviewNotice => 'Preview only — no messages are sent';
+
+  @override
+  String get appearancePreviewContent =>
+      'Your content stays readable beneath floating controls.';
+
+  @override
+  String get appearancePreviewComposer => 'Message preview';
+
+  @override
+  String get agentDiagnostics => 'Service status & diagnostics';
+
+  @override
+  String get agentBackendRunning => 'Backend running';
+
+  @override
+  String get agentBackendStopped => 'Backend stopped';
+
+  @override
   String get appearanceVisualStyle => 'Interface style';
 
   @override

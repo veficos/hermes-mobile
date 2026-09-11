@@ -11,6 +11,7 @@ import '../../l10n/l10n.dart';
 import '../h/hermes_states.dart';
 import '../h/hermes_toast.dart';
 import '../web_preview.dart';
+import '../h/hermes_glass.dart';
 
 /// Rich card for `image_generate` / `generate_image` tool calls.
 /// Extracted verbatim from `lib/widgets/message_bubble.dart` (formerly the
@@ -138,11 +139,12 @@ class GeneratedImageToolCard extends StatelessWidget {
     final running = data['running'] == true;
     final failed = data['is_error'] == true || data['error'] != null;
     if (url == null || url.isEmpty) {
-      return Card(
+      return HermesGlassCard(
+        padding: EdgeInsets.zero,
+        clipBehavior: Clip.antiAlias,
         key: ValueKey(
           'image-generation-${data['tool_id'] ?? data['id'] ?? ''}',
         ),
-        clipBehavior: Clip.antiAlias,
         child: AspectRatio(
           aspectRatio: _aspectRatio,
           child: running
@@ -176,7 +178,8 @@ class GeneratedImageToolCard extends StatelessWidget {
     }
     final provider = _provider(url);
     final thumbnailProvider = _thumbnailProvider(url);
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

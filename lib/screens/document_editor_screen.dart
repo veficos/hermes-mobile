@@ -8,6 +8,7 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 
 /// In-memory code/JSON editor for generated artifacts. The caller owns
 /// persistence (usually a composer handoff), matching Desktop semantics.
@@ -33,6 +34,8 @@ class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
   );
 
   bool get _dirty => _controller.text != widget.initialValue;
+  bool _confirmingExit = false;
+  bool _allowExit = false;
 
   @override
   void dispose() {
@@ -61,9 +64,10 @@ class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_dirty,
+      canPop: _allowExit || !_dirty,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
+        if (didPop || _confirmingExit) return;
+        _confirmingExit = true;
         final discard = await showHermesConfirmDialog(
           context: context,
           title: context.l10n.fileEditorDiscardQuestion,
@@ -72,48 +76,51 @@ class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
           cancelLabel: context.l10n.fileEditorKeepEditing,
           destructive: true,
         );
-        if (discard && context.mounted) Navigator.pop(context);
+        _confirmingExit = false;
+        if (!discard || !mounted) return;
+        setState(() => _allowExit = true);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.pop(context);
+        });
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            _dirty ? '● ${widget.title}' : widget.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          actions: [
-            if (widget.json)
-              IconButton(
-                tooltip: context.l10n.configFullJson,
-                onPressed: _format,
-                icon: const Icon(Icons.data_object),
-              ),
+      child: HermesPageScaffold(
+        title: _dirty ? '● ${widget.title}' : widget.title,
+        actions: [
+          if (widget.json)
             IconButton(
-              tooltip: context.l10n.commonCopy,
-              onPressed: () => Clipboard.setData(
-                ClipboardData(text: _controller.text),
-              ),
-              icon: const Icon(Icons.copy_outlined),
+              tooltip: context.l10n.configFullJson,
+              onPressed: _format,
+              icon: const Icon(Icons.data_object),
             ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, _controller.text),
-              child: Text(context.l10n.commonDone),
-            ),
-          ],
-        ),
-        body: TextField(
-          controller: _controller,
-          autofocus: true,
-          expands: true,
-          minLines: null,
-          maxLines: null,
-          textAlignVertical: TextAlignVertical.top,
-          style: HermesType.code.copyWith(height: 1.5),
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.all(16),
+          IconButton(
+            tooltip: context.l10n.commonCopy,
+            onPressed: () =>
+                Clipboard.setData(ClipboardData(text: _controller.text)),
+            icon: const Icon(Icons.copy_outlined),
           ),
-          onChanged: (_) => setState(() {}),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _controller.text),
+            child: Text(context.l10n.commonDone),
+          ),
+        ],
+        body: ColoredBox(
+          color: HermesPalette.of(context).codeBg,
+          child: TextField(
+            controller: _controller,
+            autofocus: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            expands: true,
+            minLines: null,
+            maxLines: null,
+            textAlignVertical: TextAlignVertical.top,
+            style: HermesType.code.copyWith(height: 1.5),
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.all(16),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
         ),
       ),
     );

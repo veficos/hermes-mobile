@@ -20,18 +20,16 @@ import '../../theme/hermes_tokens.dart';
 import '../../widgets/h/hermes_states.dart';
 import '../../widgets/h/hermes_status.dart';
 import '../../widgets/h/hermes_tool.dart';
+import '../../widgets/mobile/mobile_page_scaffold.dart';
 
 Future<void> showBackgroundProcessSheet(
   BuildContext context, {
   required String sessionId,
   required String processId,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
-    builder: (_) => DraggableScrollableSheet(
+  return showMobileSheet<void>(
+    context,
+    (_) => DraggableScrollableSheet(
       initialChildSize: .6,
       minChildSize: .35,
       maxChildSize: .92,
@@ -42,6 +40,7 @@ Future<void> showBackgroundProcessSheet(
         scrollController: scrollController,
       ),
     ),
+    avoidViewInsets: false,
   );
 }
 

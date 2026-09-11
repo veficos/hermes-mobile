@@ -9,6 +9,8 @@ import '../../core/stores/session_store.dart';
 import '../../l10n/l10n.dart';
 import '../../widgets/h/hermes_toast.dart';
 import '../../widgets/h/hermes_states.dart';
+import '../../theme/hermes_glass_theme.dart';
+import '../../widgets/glass/glass_menu_entry.dart';
 
 Future<void> showChatContextPopover(
   BuildContext context,
@@ -34,63 +36,61 @@ Future<void> showChatContextPopover(
       ancestor: overlay,
     ),
   );
-  final selected = await showMenu<String>(
-    context: anchorContext,
-    position: RelativeRect.fromRect(anchorRect, Offset.zero & overlay.size),
-    items: [
-      PopupMenuItem<String>(
-        enabled: false,
-        padding: EdgeInsets.zero,
-        child: SizedBox(
-          width: 280,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  context.l10n.chatContextUsage,
-                  style: Theme.of(context).textTheme.labelMedium,
+  final entries = <PopupMenuEntry<String>>[
+    PopupMenuItem<String>(
+      enabled: false,
+      padding: EdgeInsets.zero,
+      child: SizedBox(
+        width: 280,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                context.l10n.chatContextUsage,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                usage == null
+                    ? context.l10n.chatNoContextData
+                    : '${usage.percent.round()}% of ${formatContextLimit(usage.max)}',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              if (usage != null && usage.categories.isEmpty) ...[
+                const SizedBox(height: 10),
+                LinearProgressIndicator(
+                  value: (usage.percent / 100).clamp(0, 1),
+                  minHeight: 4,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  usage == null
-                      ? context.l10n.chatNoContextData
-                      : '${usage.percent.round()}% of ${formatContextLimit(usage.max)}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                if (usage != null && usage.categories.isEmpty) ...[
-                  const SizedBox(height: 10),
-                  LinearProgressIndicator(
-                    value: (usage.percent / 100).clamp(0, 1),
-                    minHeight: 4,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ],
-                if (usage != null && usage.categories.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  ContextUsageBreakdown(categories: usage.categories),
-                ],
               ],
-            ),
+              if (usage != null && usage.categories.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ContextUsageBreakdown(categories: usage.categories),
+              ],
+            ],
           ),
         ),
       ),
-      PopupMenuItem<String>(
-        value: 'compress',
-        enabled: !session.readOnly,
-        padding: EdgeInsets.zero,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Row(
-            children: [
-              const Icon(Icons.compress, size: 18),
-              const SizedBox(width: 10),
-              Text(
+    ),
+    PopupMenuItem<String>(
+      value: 'compress',
+      enabled: !session.readOnly,
+      padding: EdgeInsets.zero,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        color: Theme.of(context).colorScheme.primaryContainer,
+        child: Row(
+          children: [
+            const Icon(Icons.compress, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
                 context.l10n.chatCompressContext,
                 style: TextStyle(
                   color: session.readOnly
@@ -99,11 +99,29 @@ Future<void> showChatContextPopover(
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-    ],
+    ),
+  ];
+  final liquid = HermesGlassTheme.of(context).enabled;
+  final selected = await showMenu<String>(
+    context: anchorContext,
+    position: RelativeRect.fromRect(anchorRect, Offset.zero & overlay.size),
+    color: liquid ? Colors.transparent : null,
+    elevation: liquid ? 0 : null,
+    surfaceTintColor: liquid ? Colors.transparent : null,
+    shape: liquid ? const RoundedRectangleBorder() : null,
+    menuPadding: liquid ? EdgeInsets.zero : null,
+    items: liquid
+        ? [
+            GlassMenuEntry<String>(
+              entries: entries,
+              maxHeight: GlassMenuEntry.availableHeight(anchorContext),
+            ),
+          ]
+        : entries,
   );
   if (selected != 'compress' || !context.mounted) return;
 

@@ -12,6 +12,12 @@ class GlassActionGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!HermesGlassTheme.of(context).enabled) return child;
-    return GlassSurface(radius: 24, thick: true, child: child);
+    // GlassSurface owns continuous clipping and nested material policy,
+    // including stricter local accessibility overrides. Do not duplicate it.
+    return GlassSurface(
+      radius: HermesGlassTokens.controlRadius,
+      role: HermesGlassRole.control,
+      child: child,
+    );
   }
 }

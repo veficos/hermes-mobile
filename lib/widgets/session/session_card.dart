@@ -205,7 +205,12 @@ class SessionCard extends StatelessWidget {
       children: [
         Icon(icon, size: 12, color: palette.text4),
         const SizedBox(width: 4),
-        Text(label, style: TextStyle(color: palette.text3, fontSize: 11)),
+        Flexible(
+          child: Text(
+            label,
+            style: TextStyle(color: palette.text3, fontSize: 11),
+          ),
+        ),
       ],
     );
 
@@ -251,10 +256,7 @@ class SessionCard extends StatelessWidget {
                     extraBadges!,
                   ],
                   const SizedBox(width: 8),
-                  HermesStatusChip(
-                    label: statusLabel,
-                    color: statusColor,
-                  ),
+                  HermesStatusChip(label: statusLabel, color: statusColor),
                 ],
               ),
               if (preview.isNotEmpty) ...[

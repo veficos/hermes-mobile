@@ -243,11 +243,13 @@ class _SettingsHubScreenState extends State<SettingsHubScreen> {
                             icon: const Icon(Icons.arrow_back),
                           ),
                           const SizedBox(width: HermesSpacing.xs),
-                          Text(
-                            l10n.featureSettings,
-                            style: HermesType.onSurface(
-                              HermesType.title,
-                              Theme.of(context),
+                          Expanded(
+                            child: Text(
+                              l10n.featureSettings,
+                              style: HermesType.onSurface(
+                                HermesType.title,
+                                Theme.of(context),
+                              ),
                             ),
                           ),
                         ],
@@ -429,17 +431,12 @@ class _AppearancePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.appearanceTitle)),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: const SingleChildScrollView(
-            padding: EdgeInsets.all(HermesSpacing.lg),
-            child: _AppearanceContent(),
-          ),
-        ),
-      ),
+    return HermesPageScaffold(
+      title: context.l10n.appearanceTitle,
+      scrollable: true,
+      maxContentWidth: 760,
+      bodyPadding: const EdgeInsets.all(HermesSpacing.lg),
+      body: const _AppearanceContent(),
     );
   }
 }
@@ -651,7 +648,7 @@ class _AppearanceContent extends StatelessWidget {
         const SizedBox(height: HermesSpacing.lg),
         GlassSurface(
           radius: HermesGlassTokens.controlRadius,
-          thick: true,
+          role: HermesGlassRole.control,
           child: Padding(
             padding: const EdgeInsets.all(HermesSpacing.sm),
             child: SegmentedButton<ThemeMode>(
@@ -684,7 +681,7 @@ class _AppearanceContent extends StatelessWidget {
         const SizedBox(height: HermesSpacing.sm),
         GlassSurface(
           radius: HermesGlassTokens.controlRadius,
-          thick: true,
+          role: HermesGlassRole.control,
           child: Padding(
             padding: const EdgeInsets.all(HermesSpacing.sm),
             child: SegmentedButton<HermesVisualStyle>(
@@ -722,20 +719,20 @@ class _AppearanceContent extends StatelessWidget {
         LayoutBuilder(
           builder: (context, constraints) {
             final columns = constraints.maxWidth < 420 ? 2 : 4;
-            return GridView.count(
-              crossAxisCount: columns,
-              crossAxisSpacing: HermesSpacing.sm,
-              mainAxisSpacing: HermesSpacing.sm,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: columns == 2 ? 1.45 : 1.1,
+            final cardWidth = (constraints.maxWidth - HermesSpacing.sm * (columns - 1)) / columns;
+            return Wrap(
+              spacing: HermesSpacing.sm,
+              runSpacing: HermesSpacing.sm,
               children: [
                 for (final accent in HermesAccents.all)
-                  _ThemePreviewCard(
+                  SizedBox(
+                    width: cardWidth,
+                    child: _ThemePreviewCard(
                     theme: accent,
                     dark: isDark,
                     selected: appearance.accent.id == accent.id,
                     onTap: () => appearance.setAccentId(accent.id),
+                    ),
                   ),
               ],
             );
@@ -945,6 +942,7 @@ class _LanguageOptionTile extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(14, 11, 12, 11),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _LanguageBadge(label: badge, icon: badgeIcon, selected: selected),
               const SizedBox(width: 12),
@@ -954,8 +952,6 @@ class _LanguageOptionTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -964,8 +960,6 @@ class _LanguageOptionTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         subtitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(
                           context,
                         ).textTheme.bodySmall?.copyWith(color: palette.text3),
@@ -1006,13 +1000,20 @@ class _ThemePreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = theme.paletteOf(dark ? Brightness.dark : Brightness.light);
     final liquid = HermesGlassTheme.of(context).enabled;
-    return InkWell(
+    return Semantics(
+      key: ValueKey('theme-preview-${theme.id}'),
+      button: true,
+      selected: selected,
+      child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(HermesRadius.card),
       child: Column(
         children: [
           AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
+            duration: MediaQuery.disableAnimationsOf(context) ||
+                    MediaQuery.accessibleNavigationOf(context)
+                ? Duration.zero
+                : HermesGlassTokens.feedbackDuration,
             height: liquid ? 78 : 72,
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -1099,6 +1100,7 @@ class _ThemePreviewCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

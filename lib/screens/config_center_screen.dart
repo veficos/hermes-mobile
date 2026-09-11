@@ -18,6 +18,7 @@ import '../core/stores/profile_scope_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_states.dart';
+import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/profile_scope_selector.dart';
 import 'mcp_screen.dart';
@@ -276,7 +277,9 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
         padding: const EdgeInsets.all(HermesSpacing.xl),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
-          child: Card(
+          child: HermesGlassCard(
+            padding: EdgeInsets.zero,
+            radius: 24,
             child: Padding(
               padding: const EdgeInsets.all(HermesSpacing.xl),
               child: Column(
@@ -411,7 +414,8 @@ class _ConfigCenterScreenState extends State<ConfigCenterScreen>
       'database' => l10n.configCenterDatabase,
       _ => s.type,
     };
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Padding(
         padding: const EdgeInsets.all(12),

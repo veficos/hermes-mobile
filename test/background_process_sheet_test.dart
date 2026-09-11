@@ -4,6 +4,8 @@ import 'package:hermes_mobile/chat/composer/background_process_sheet.dart';
 import 'package:hermes_mobile/core/stores/composer_status_store.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
 
 /// Tapping a background-process row in the composer status stack must open
 /// a viewer showing THAT process's own command/output/exit code — not a
@@ -47,11 +49,20 @@ void main() {
     ComposerStatusStore composer, {
     required String sessionId,
     required String processId,
+    bool liquid = false,
+    bool reduced = false,
   }) async {
     await tester.pumpWidget(
       ChangeNotifierProvider<ComposerStatusStore>.value(
         value: composer,
         child: MaterialApp(
+          theme: buildHermesTheme(
+            brightness: Brightness.light,
+            visualStyle: liquid
+                ? HermesVisualStyle.liquid
+                : HermesVisualStyle.classic,
+            reduceTransparency: reduced,
+          ),
           locale: const Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -91,6 +102,36 @@ void main() {
     expect(find.text('运行中'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '停止进程'), findsOneWidget);
   });
+
+  for (final reduced in [false, true]) {
+    testWidgets(
+      'Liquid process sheet samples backdrop and stops process (reduced: $reduced)',
+      (tester) async {
+        final composer = await seed(sessionId: 'sid', processId: 'proc-1');
+        addTearDown(composer.dispose);
+        final rpc = _FakeRpc();
+        composer.bindRpc(rpc);
+        await pumpSheet(
+          tester,
+          composer,
+          sessionId: 'sid',
+          processId: 'proc-1',
+          liquid: true,
+          reduced: reduced,
+        );
+        expect(
+          find.byType(BackdropFilter),
+          reduced ? findsNothing : findsOneWidget,
+        );
+        expect(find.textContaining('compiling...'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.widgetWithText(OutlinedButton, '停止进程'));
+        await tester.pumpAndSettle();
+        expect(rpc.killed, ['proc-1']);
+        expect(find.text('npm run build'), findsNothing);
+      },
+    );
+  }
 
   testWidgets('stopping the process calls the rpc and dismisses the row', (
     tester,

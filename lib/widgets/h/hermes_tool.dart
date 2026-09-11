@@ -751,6 +751,14 @@ class _HermesToolCardState extends State<HermesToolCard> {
         ? failedBorder.withValues(alpha: 0.4)
         : palette.border;
     final stripeColor = isFailed ? failedBorder : palette.accent;
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final continuous = RoundedSuperellipseBorder(
+      borderRadius: const BorderRadius.only(
+        topRight: Radius.circular(kToolCardRadius),
+        bottomRight: Radius.circular(kToolCardRadius),
+      ),
+      side: BorderSide(color: edgeColor),
+    );
     // Flutter can't combine a non-uniform-color Border with a borderRadius
     // (throws "A borderRadius can only be given on borders with uniform
     // colors" at paint time), so the accent stripe is a separate clipped
@@ -759,18 +767,25 @@ class _HermesToolCardState extends State<HermesToolCard> {
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 4),
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: codeBg,
-        // Prototype parity (`.toolcard{border-radius:0 11px 11px 0}`): the
-        // left edge stays square where the accent stripe sits flush against
-        // it; only the right corners round off.
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(kToolCardRadius),
-          bottomRight: Radius.circular(kToolCardRadius),
-        ),
-        border: Border.all(color: edgeColor),
-        boxShadow: hermesShadow(context),
-      ),
+      decoration: liquid
+          ? ShapeDecoration(
+              color: HermesGlassTheme.of(context).allowsTransparency(context)
+                  ? palette.codeBg.withValues(alpha: .94)
+                  : palette.codeBg,
+              shape: continuous,
+            )
+          : BoxDecoration(
+              color: codeBg,
+              // Prototype parity (`.toolcard{border-radius:0 11px 11px 0}`): the
+              // left edge stays square where the accent stripe sits flush against
+              // it; only the right corners round off.
+              borderRadius: const BorderRadius.only(
+                topRight: Radius.circular(kToolCardRadius),
+                bottomRight: Radius.circular(kToolCardRadius),
+              ),
+              border: Border.all(color: edgeColor),
+              boxShadow: hermesShadow(context),
+            ),
       // IntrinsicHeight lets the stripe stretch to match the content's own
       // height even when an ancestor (a scrollable transcript) gives this
       // card unbounded height — CrossAxisAlignment.stretch alone would
@@ -1434,11 +1449,23 @@ IconData toolKindIcon(ToolPresentationKind kind) {
 /// alpha, and (b) went the wrong direction in dark mode for at least one
 /// caller (adding black on top of an already-dark surface darkens it
 /// further instead of elevating it).
-BoxDecoration toolCodeBoxDecoration(
+Decoration toolCodeBoxDecoration(
   BuildContext context, {
   double radius = HermesRadius.smallCard,
 }) {
   final palette = HermesPalette.of(context);
+  final liquid = HermesGlassTheme.of(context).enabled;
+  if (liquid) {
+    return ShapeDecoration(
+      color: HermesGlassTheme.of(context).allowsTransparency(context)
+          ? palette.elevated.withValues(alpha: .82)
+          : palette.elevated,
+      shape: RoundedSuperellipseBorder(
+        borderRadius: BorderRadius.circular(radius),
+        side: BorderSide(color: palette.border),
+      ),
+    );
+  }
   return BoxDecoration(
     color: palette.elevated,
     border: Border.all(color: palette.border),
@@ -1509,24 +1536,48 @@ class _ToolCardShellState extends State<ToolCardShell> {
     final tint = widget.accentColor ?? palette.accent;
     final stripeColor = widget.failed ? failedBorder : tint;
     final liquid = HermesGlassTheme.of(context).enabled;
+    final transparent = HermesGlassTheme.of(
+      context,
+    ).allowsTransparency(context);
     // Flutter can't combine a non-uniform-color Border with a borderRadius,
     // so the accent stripe is a separate clipped child, not a BorderSide.
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 4),
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: liquid ? palette.codeBg.withValues(alpha: .94) : palette.codeBg,
-        // Prototype parity (`.toolcard{border-radius:0 11px 11px 0}`).
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(kToolCardRadius),
-          bottomRight: Radius.circular(kToolCardRadius),
-        ),
-        border: Border.all(
-          color: liquid ? edgeColor.withValues(alpha: .72) : edgeColor,
-        ),
-        boxShadow: liquid ? const [] : hermesShadow(context),
-      ),
+      decoration: liquid
+          ? ShapeDecoration(
+              color: transparent
+                  ? palette.codeBg.withValues(alpha: .94)
+                  : palette.codeBg,
+              shape: RoundedSuperellipseBorder(
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(kToolCardRadius),
+                  bottomRight: Radius.circular(kToolCardRadius),
+                ),
+                side: BorderSide(
+                  color: transparent
+                      ? edgeColor.withValues(alpha: .72)
+                      : edgeColor,
+                ),
+              ),
+            )
+          : BoxDecoration(
+              color: HermesGlassTheme.of(context).allowsTransparency(context)
+                  ? palette.codeBg.withValues(alpha: .94)
+                  : palette.codeBg,
+              // Prototype parity (`.toolcard{border-radius:0 11px 11px 0}`).
+              borderRadius: const BorderRadius.only(
+                topRight: Radius.circular(kToolCardRadius),
+                bottomRight: Radius.circular(kToolCardRadius),
+              ),
+              border: Border.all(
+                color: HermesGlassTheme.of(context).allowsTransparency(context)
+                    ? edgeColor.withValues(alpha: .72)
+                    : edgeColor,
+              ),
+              boxShadow: liquid ? const [] : hermesShadow(context),
+            ),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1549,6 +1600,13 @@ class _ToolCardShellState extends State<ToolCardShell> {
       children: [
         InkWell(
           onTap: () => setState(() => _expanded = !_expanded),
+          customBorder: HermesGlassTheme.of(context).enabled
+              ? const RoundedSuperellipseBorder(
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(kToolCardRadius - 1),
+                  ),
+                )
+              : null,
           borderRadius: const BorderRadius.only(
             topRight: Radius.circular(kToolCardRadius - 1),
           ),

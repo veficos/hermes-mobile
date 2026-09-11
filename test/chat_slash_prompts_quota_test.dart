@@ -13,6 +13,9 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
+import 'package:hermes_mobile/widgets/glass/glass_selection_row.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
@@ -38,6 +41,7 @@ class _FakeGateway extends GatewayClient {
   final List<(String, Map<String, dynamic>)> calls = [];
   Map<String, dynamic> commandsCatalog = const {};
   Map<String, dynamic> slashCompletion = const {};
+  Map<String, dynamic> pathCompletion = const {};
   Map<String, dynamic>? slashExecResult;
 
   /// When > 0, the next `prompt.submit` calls fail with this transport error.
@@ -66,6 +70,8 @@ class _FakeGateway extends GatewayClient {
         return Future.value(commandsCatalog);
       case 'complete.slash':
         return Future.value(slashCompletion);
+      case 'complete.path':
+        return Future.value(pathCompletion);
       case 'slash.exec':
         return Future.value(slashExecResult ?? const <String, dynamic>{});
       case 'prompt.submit':
@@ -223,16 +229,21 @@ class _ChatRig {
   late final ChatStore chat;
   late final SessionStore session;
 
-  Widget app({Locale? locale}) => MultiProvider(
+  Widget app({
+    Locale? locale,
+    bool liquid = false,
+    bool reduced = false,
+    double textScale = 1,
+  }) => MultiProvider(
     providers: [
       ChangeNotifierProvider<ConnectionStore>.value(value: connection),
       ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
         create: (_) => SessionTabStore(),
-        update: (_, connection, tabs) =>
-            (tabs ?? SessionTabStore())..attachRoutedEvents(
-              connection.routedEvents,
-              owners: connection.sessionOwners,
-            ),
+        update: (_, connection, tabs) => (tabs ?? SessionTabStore())
+          ..attachRoutedEvents(
+            connection.routedEvents,
+            owners: connection.sessionOwners,
+          ),
       ),
       ChangeNotifierProvider.value(value: session),
       ChangeNotifierProvider.value(value: chat),
@@ -240,10 +251,22 @@ class _ChatRig {
       ChangeNotifierProvider.value(value: CommandStore(connection: connection)),
     ],
     child: MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       locale: locale ?? const Locale('zh'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: ThemeData(platform: TargetPlatform.linux),
+      theme: liquid
+          ? buildHermesTheme(
+              brightness: Brightness.dark,
+              visualStyle: HermesVisualStyle.liquid,
+              reduceTransparency: reduced,
+            ).copyWith(platform: TargetPlatform.linux)
+          : ThemeData(platform: TargetPlatform.linux),
       home: const ChatScreen(),
     ),
   );
@@ -342,6 +365,181 @@ void main() {
   });
 
   group('P0 slash skill contract', () {
+    testWidgets('Liquid file references scroll to last keyboard selection', (
+      tester,
+    ) async {
+      final rig = _ChatRig();
+      addTearDown(rig.dispose);
+      rig.gateway.pathCompletion = {
+        'items': List.generate(
+          12,
+          (i) => {
+            'path': 'src/file$i.dart',
+            'name': 'file$i.dart',
+            'text': '@file:src/file$i.dart',
+          },
+        ),
+      };
+      await tester.pumpWidget(rig.app(liquid: true, textScale: 2));
+      await tester.pumpAndSettle();
+      final field = find.byType(TextField).first;
+      await tester.enterText(field, '@file:src');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      for (var i = 1; i < 12; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+        expect(find.text('file$i.dart').hitTestable(), findsOneWidget);
+      }
+      await tester.enterText(field, '@file:src/f');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(find.text('file0.dart').hitTestable(), findsOneWidget);
+      // Up wraps to the final result after query reset.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(find.text('file11.dart').hitTestable(), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(field).controller!.text,
+        contains('@file:src/file11.dart'),
+      );
+      expect(
+        find.byKey(const ValueKey('composer-suggestion-glass')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+    testWidgets('Liquid large-text emoji keyboard selection stays visible', (
+      tester,
+    ) async {
+      final rig = _ChatRig();
+      addTearDown(rig.dispose);
+      await tester.pumpWidget(rig.app(liquid: true, textScale: 2));
+      await tester.pumpAndSettle();
+      final field = find.byType(TextField).first;
+      await tester.enterText(field, ':ha');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      final panel = find.byKey(const ValueKey('composer-suggestion-glass'));
+      final rows = find.descendant(
+        of: panel,
+        matching: find.byType(GlassSelectionRow),
+      );
+      expect(rows.evaluate().length, greaterThan(2));
+      for (var i = 0; i < rows.evaluate().length; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+        final selected = find.descendant(
+          of: panel,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is ListTile && widget.selected,
+          ),
+        );
+        expect(selected.hitTestable(), findsOneWidget);
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(field).controller!.text, contains('😂'));
+      expect(panel, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+    testWidgets(
+      'Liquid emoji completion uses rounded selection and inserts emoji',
+      (tester) async {
+        final rig = _ChatRig();
+        addTearDown(rig.dispose);
+        await tester.pumpWidget(rig.app(liquid: true));
+        await tester.pumpAndSettle();
+        final field = find.byType(TextField).first;
+        await tester.enterText(field, ':smi');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+        final row = find.byKey(const ValueKey('emoji-suggestion-smile'));
+        expect(row.hitTestable(), findsOneWidget);
+        expect(
+          find.ancestor(of: row, matching: find.byType(GlassSelectionRow)),
+          findsOneWidget,
+        );
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextField>(field).controller!.text,
+          contains('😄'),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+    testWidgets('Liquid cron suggestion separates copy from actions on phone', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final rig = _ChatRig();
+      addTearDown(rig.dispose);
+      await tester.pumpWidget(rig.app(liquid: true, textScale: 2));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '每天早上帮我检查一下日志');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      final panel = find.byKey(const ValueKey('composer-suggestion-glass'));
+      expect(panel, findsOneWidget);
+      final create = find.descendant(
+        of: panel,
+        matching: find.byType(TextButton),
+      );
+      final dismiss = find.descendant(
+        of: panel,
+        matching: find.byType(IconButton),
+      );
+      expect(create.hitTestable(), findsOneWidget);
+      expect(dismiss.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(dismiss);
+      await tester.pumpAndSettle();
+      expect(panel, findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+        '每天早上帮我检查一下日志',
+      );
+    });
+    for (final reduced in [false, true]) {
+      testWidgets('Liquid slash suggestions share glass ($reduced)', (
+        tester,
+      ) async {
+        final rig = _ChatRig();
+        addTearDown(rig.dispose);
+        await tester.pumpWidget(rig.app(liquid: true, reduced: reduced));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).first, '/');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        final panel = find.byKey(const ValueKey('composer-suggestion-glass'));
+        expect(panel, findsOneWidget);
+        final rows = tester.widgetList<GlassSelectionRow>(
+          find.descendant(of: panel, matching: find.byType(GlassSelectionRow)),
+        );
+        expect(rows.where((row) => row.selected).length, 1);
+        final selected = find.descendant(
+          of: panel,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is ListTile && widget.selected,
+          ),
+        );
+        final tile = tester.widget<ListTile>(selected);
+        expect(
+          (tile.title! as Text).style!.color,
+          Theme.of(tester.element(selected)).colorScheme.onPrimaryContainer,
+        );
+        expect(
+          find.descendant(of: panel, matching: find.byType(BackdropFilter)),
+          reduced ? findsNothing : findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
     testWidgets('bare slash loads catalog skills under Skills', (tester) async {
       final rig = _ChatRig();
       rig.gateway.commandsCatalog = {
@@ -460,6 +658,34 @@ void main() {
       expect(tester.widget<TextField>(composer).controller!.text, '/second ');
       rig.dispose();
     });
+
+    testWidgets(
+      'Liquid keyboard selection scrolls through long completion list',
+      (tester) async {
+        final rig = _ChatRig();
+        addTearDown(rig.dispose);
+        rig.gateway.slashCompletion = {
+          'items': List.generate(
+            12,
+            (i) => {'text': '/item$i', 'display': '/item$i'},
+          ),
+        };
+        await tester.pumpWidget(rig.app(liquid: true));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).first, '/item');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+        for (var i = 1; i < 12; i++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+          await tester.pumpAndSettle();
+          expect(find.text('/item$i').hitTestable(), findsOneWidget);
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+        expect(find.text('/item0').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets(
       'skill dispatch submits expanded prompt instead of invocation',

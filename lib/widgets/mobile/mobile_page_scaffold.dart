@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../theme/hermes_tokens.dart';
 import '../../theme/hermes_glass_theme.dart';
 import '../glass/glass_surface.dart';
+import '../glass/glass_button.dart';
+import '../glass/glass_environment.dart';
 import '../glass/scroll_edge_scrim.dart';
 
 enum HermesPageTitleMode { compact, large }
@@ -14,6 +16,7 @@ class HermesPageScaffold extends StatelessWidget {
   const HermesPageScaffold({
     super.key,
     required this.title,
+    this.titleSemanticsLabel,
     required this.body,
     this.subtitle,
     this.actions,
@@ -29,9 +32,11 @@ class HermesPageScaffold extends StatelessWidget {
     this.header,
     this.showAppBar = true,
     this.extendBehindNavigation = false,
+    this.scrollBodyBehindHeader = false,
   });
 
   final String title;
+  final String? titleSemanticsLabel;
   final String? subtitle;
   final Widget body;
   final List<Widget>? actions;
@@ -51,6 +56,10 @@ class HermesPageScaffold extends StatelessWidget {
   /// their scroll extent. Other pages keep the safe, non-overlapping layout.
   final bool extendBehindNavigation;
 
+  /// For an existing primary scrollable body (not a box to wrap in a scroll view).
+  /// Liquid coordinates its scroll with the pinned glass header.
+  final bool scrollBodyBehindHeader;
+
   Widget _constrain(Widget child) => Center(
     child: ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxContentWidth ?? double.infinity),
@@ -62,11 +71,25 @@ class HermesPageScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
     final liquid = HermesGlassTheme.of(context).enabled;
+    final route = ModalRoute.of(context);
+    final resolvedLeading =
+        leading ??
+        (liquid && route?.impliesAppBarDismissal == true
+            ? GlassButton(
+                tooltip: route is PageRoute && route.fullscreenDialog
+                    ? MaterialLocalizations.of(context).closeButtonTooltip
+                    : MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: route is PageRoute && route.fullscreenDialog
+                    ? const Icon(Icons.close)
+                    : const BackButtonIcon(),
+              )
+            : null);
     final glassHeader = liquid
         ? const ScrollEdgeScrim(
             child: GlassSurface(
               radius: 0,
-              thick: true,
+              role: HermesGlassRole.navigation,
               child: SizedBox.expand(),
             ),
           )
@@ -75,23 +98,41 @@ class HermesPageScaffold extends StatelessWidget {
         showAppBar &&
         titleMode == HermesPageTitleMode.large &&
         MediaQuery.sizeOf(context).width < HermesBreakpoints.navigation;
+    // A scroll-owned header lets content actually pass behind the material.
+    // Keep non-scrollable bodies out of this path: their constraints and
+    // keyboard layout must remain owned by Scaffold.
+    final useScrollingHeader = liquid && showAppBar && scrollable;
+    final useNestedHeader = liquid && showAppBar && scrollBodyBehindHeader;
 
     Widget content;
-    if (useLargeTitle && !scrollable) {
+    if ((useLargeTitle && !scrollable) || useNestedHeader) {
       content = NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverAppBar.large(
-            leading: leading,
-            title: Text(title),
-            actions: actions,
-            pinned: true,
-            forceElevated: innerBoxIsScrolled,
-            backgroundColor: liquid
-                ? Colors.transparent
-                : backgroundColor ?? palette.bg,
-            flexibleSpace: glassHeader,
-            surfaceTintColor: Colors.transparent,
-          ),
+          if (useLargeTitle)
+            SliverAppBar.large(
+              leading: resolvedLeading,
+              title: Text(title, semanticsLabel: titleSemanticsLabel),
+              actions: actions,
+              pinned: true,
+              forceElevated: innerBoxIsScrolled,
+              backgroundColor: liquid
+                  ? Colors.transparent
+                  : backgroundColor ?? palette.bg,
+              flexibleSpace: glassHeader,
+              surfaceTintColor: Colors.transparent,
+            ),
+          if (!useLargeTitle)
+            SliverAppBar(
+              leading: resolvedLeading,
+              title: Text(title, semanticsLabel: titleSemanticsLabel),
+              actions: actions,
+              pinned: true,
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              flexibleSpace: glassHeader,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+            ),
           if (subtitle?.isNotEmpty == true)
             SliverToBoxAdapter(
               child: _constrain(
@@ -114,8 +155,8 @@ class HermesPageScaffold extends StatelessWidget {
       content = CustomScrollView(
         slivers: [
           SliverAppBar.large(
-            leading: leading,
-            title: Text(title),
+            leading: resolvedLeading,
+            title: Text(title, semanticsLabel: titleSemanticsLabel),
             actions: actions,
             pinned: true,
             backgroundColor: liquid
@@ -145,6 +186,48 @@ class HermesPageScaffold extends StatelessWidget {
           ),
         ],
       );
+    } else if (useScrollingHeader) {
+      content = CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            leading: resolvedLeading,
+            titleSpacing: 16,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  semanticsLabel: titleSemanticsLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (subtitle?.isNotEmpty == true)
+                  Text(
+                    subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: palette.text3),
+                  ),
+              ],
+            ),
+            actions: actions,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            flexibleSpace: glassHeader,
+          ),
+          if (header != null) SliverToBoxAdapter(child: _constrain(header!)),
+          SliverPadding(
+            padding: bodyPadding,
+            sliver: SliverToBoxAdapter(child: _constrain(body)),
+          ),
+        ],
+      );
     } else {
       final padded = Padding(padding: bodyPadding, child: body);
       content = scrollable
@@ -164,9 +247,12 @@ class HermesPageScaffold extends StatelessWidget {
         ? bottomNavigationBar
         : _HermesBottomAction(below: bottomNavigationBar, child: bottomAction!);
 
-    return Scaffold(
-      backgroundColor: backgroundColor ?? palette.bg,
-      appBar: !showAppBar || useLargeTitle
+    final useEnvironment = liquid && backgroundColor == null;
+    final page = Scaffold(
+      backgroundColor:
+          backgroundColor ?? (useEnvironment ? Colors.transparent : palette.bg),
+      appBar:
+          !showAppBar || useLargeTitle || useScrollingHeader || useNestedHeader
           ? null
           : AppBar(
               backgroundColor: HermesGlassTheme.of(context).enabled
@@ -175,17 +261,22 @@ class HermesPageScaffold extends StatelessWidget {
               flexibleSpace: HermesGlassTheme.of(context).enabled
                   ? const GlassSurface(
                       radius: 0,
-                      thick: true,
+                      role: HermesGlassRole.navigation,
                       child: SizedBox.expand(),
                     )
                   : null,
-              leading: leading,
+              leading: resolvedLeading,
               titleSpacing: 16,
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(
+                    title,
+                    semanticsLabel: titleSemanticsLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   if (subtitle?.isNotEmpty == true)
                     Text(
                       subtitle!,
@@ -200,13 +291,26 @@ class HermesPageScaffold extends StatelessWidget {
               actions: actions,
             ),
       body: SafeArea(
-        top: !useLargeTitle,
+        top: !(useLargeTitle || useScrollingHeader || useNestedHeader),
         bottom: !(liquid && extendBehindNavigation),
-        child: content,
+        // StretchingOverscrollIndicator transforms the complete viewport,
+        // including pinned backdrop filters. Keep those layers in stable
+        // coordinates while still delivering overscroll notifications to
+        // RefreshIndicator (do not replace the scroll physics).
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(
+            overscroll:
+                !(useLargeTitle || useNestedHeader || useScrollingHeader),
+          ),
+          child: content,
+        ),
       ),
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: bottom,
     );
+    // Standalone routes own a base; embedded pages reuse the shell's field.
+    // Explicit content backgrounds (previews/editors) remain authoritative.
+    return useEnvironment ? GlassEnvironment(child: page) : page;
   }
 }
 
@@ -223,7 +327,7 @@ class _HermesBottomAction extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         AnimatedPadding(
-          duration: HermesMotion.fast,
+          duration: HermesGlassMotion.resolve(context, HermesMotion.fast),
           padding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(context).bottom,
           ),
@@ -322,14 +426,24 @@ Future<T?> showMobileSheet<T>(
     useSafeArea: useSafeArea,
     showDragHandle: liquid ? false : showDragHandle,
     backgroundColor: liquid ? Colors.transparent : backgroundColor,
+    // GlassSurface owns the outline. The route must not paint a second
+    // theme border around the sheet (including its keyboard padding).
+    shape: liquid ? const RoundedRectangleBorder() : null,
+    elevation: liquid ? 0 : null,
     builder: (ctx) => Padding(
-      padding: avoidViewInsets
-          ? EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom)
-          : EdgeInsets.zero,
+      padding: EdgeInsets.fromLTRB(
+        liquid ? 12 : 0,
+        liquid ? 12 : 0,
+        liquid ? 12 : 0,
+        (avoidViewInsets ? MediaQuery.viewInsetsOf(ctx).bottom : 0) +
+            (liquid
+                ? 12 + (useSafeArea ? MediaQuery.paddingOf(ctx).bottom : 0)
+                : 0),
+      ),
       child: liquid
           ? GlassSurface(
               radius: 30,
-              thick: true,
+              role: HermesGlassRole.overlay,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -345,7 +459,13 @@ Future<T?> showMobileSheet<T>(
                         ),
                       ),
                     ),
-                  Flexible(child: builder(ctx)),
+                  Flexible(
+                    child: MediaQuery.removePadding(
+                      context: ctx,
+                      removeBottom: useSafeArea,
+                      child: Builder(builder: builder),
+                    ),
+                  ),
                 ],
               ),
             )

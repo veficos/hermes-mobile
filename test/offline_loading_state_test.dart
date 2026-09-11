@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:hermes_mobile/widgets/glass/glass_search_field.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -322,6 +325,7 @@ Future<void> _pump(
   bool settle = true,
   Locale locale = const Locale('zh'),
   TextScaler textScaler = TextScaler.noScaling,
+  bool liquid = false,
 }) async {
   final chat = ChatStore();
   final requests = RequestStore();
@@ -354,6 +358,12 @@ Future<void> _pump(
         ChangeNotifierProvider.value(value: terminal),
       ],
       child: MaterialApp(
+        theme: liquid
+            ? buildHermesTheme(
+                brightness: Brightness.light,
+                visualStyle: HermesVisualStyle.liquid,
+              )
+            : null,
         locale: locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -373,6 +383,52 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets('Liquid agent content scrolls with pinned glass header', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final connection = _ReloadConnection()..exposeApi(_ReloadApi());
+    addTearDown(connection.dispose);
+    await _pump(
+      tester,
+      const AgentScreen(),
+      connection,
+      settle: false,
+      liquid: true,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(NestedScrollView), findsOneWidget);
+    expect(
+      tester.widget<SliverAppBar>(find.byType(SliverAppBar)).pinned,
+      isTrue,
+    );
+    expect(find.byType(RefreshIndicator), findsOneWidget);
+    final search = find.byType(GlassSearchField);
+    expect(search, findsOneWidget);
+    await Scrollable.ensureVisible(tester.element(search), alignment: .5);
+    await tester.pump(const Duration(milliseconds: 300));
+    final input = find.descendant(of: search, matching: find.byType(TextField));
+    await tester.enterText(input, 'missing-bot');
+    await tester.pump();
+    await tester.tap(
+      find.descendant(of: search, matching: find.byIcon(Icons.close)),
+    );
+    await tester.pump();
+    expect(tester.widget<GlassSearchField>(search).controller.text, isEmpty);
+    final list = find.byType(ListView).first;
+    await tester.drag(list, const Offset(0, -400));
+    await tester.pump(const Duration(milliseconds: 400));
+    final title = find
+        .descendant(of: find.byType(SliverAppBar), matching: find.byType(Text))
+        .first;
+    expect(title.hitTestable(), findsOneWidget);
+    expect(tester.getTopLeft(title).dy, lessThan(80));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   final screens = <String, Widget>{
     'skills': const SkillsScreen(),
     'plugins': const PluginsScreen(),

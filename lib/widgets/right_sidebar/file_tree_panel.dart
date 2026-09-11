@@ -21,6 +21,8 @@ import '../h/hermes_toast.dart';
 import '../mobile/hermes_adaptive_menu.dart';
 import '../mobile/mobile_page_scaffold.dart';
 import '../glass/glass_search_field.dart';
+import '../glass/glass_alert_dialog.dart';
+import '../glass/glass_button.dart';
 import '../../theme/hermes_glass_theme.dart';
 
 class FileTreePanel extends StatefulWidget {
@@ -104,22 +106,31 @@ class _FileTreePanelState extends State<FileTreePanel>
               ),
             ),
           ),
-          SizedBox.square(
-            dimension: 36,
-            child: IconButton(
+          if (HermesGlassTheme.of(context).enabled)
+            GlassButton(
               tooltip: context.l10n.commonRefresh,
-              icon: const Icon(Icons.refresh, size: 18),
               onPressed: store.refresh,
-              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
-              padding: EdgeInsets.zero,
-              visualDensity: VisualDensity.compact,
+              child: const Icon(Icons.refresh, size: 18),
+            )
+          else
+            SizedBox.square(
+              dimension: 36,
+              child: IconButton(
+                tooltip: context.l10n.commonRefresh,
+                icon: const Icon(Icons.refresh, size: 18),
+                onPressed: store.refresh,
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
             ),
-          ),
           HermesAdaptiveMenuButton<String>(
             tooltip: context.l10n.commonMore,
             icon: const Icon(Icons.more_horiz, size: 18),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 36, height: 36),
             onSelected: (value) {
               if (value == 'view') store.toggleTreeMode();
               if (value == 'folder') _showNewFolderDialog(context, store);
@@ -159,8 +170,10 @@ class _FileTreePanelState extends State<FileTreePanel>
   Widget _buildSearchBar(BuildContext context, FileTreeStore store) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: SizedBox(
-        height: HermesGlassTheme.of(context).enabled ? 42 : 32,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: HermesGlassTheme.of(context).enabled ? 44 : 32,
+        ),
         child: GlassSearchField(
           controller: _searchCtrl,
           focusNode: _searchFocus,
@@ -279,24 +292,36 @@ class _FileTreePanelState extends State<FileTreePanel>
         final isSelected = store.selectedPath == entry.path;
         return Material(
           color: isSelected
-              ? Theme.of(
-                  context,
-                ).colorScheme.primaryContainer.withValues(alpha: 0.5)
+              ? HermesGlassTheme.of(context).enabled
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
+                    : Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withValues(alpha: .5)
               : Colors.transparent,
           child: InkWell(
             onTap: () => _onTapEntry(store, entry),
             onLongPress: () => _showEntryMenu(context, store, entry),
-            child: Padding(
+            child: Container(
+              constraints: HermesGlassTheme.of(context).enabled
+                  ? const BoxConstraints(minHeight: 44)
+                  : null,
               padding: EdgeInsets.only(left: 4.0 + row.depth * 18.0, right: 4),
               child: Row(
                 children: [
                   // 展开箭头 / 占位
                   SizedBox(
-                    width: 18,
+                    width: HermesGlassTheme.of(context).enabled ? 44 : 18,
                     child: entry.isDirectory
                         ? IconButton(
+                            tooltip:
+                                '${expanded ? context.l10n.commonCollapse : context.l10n.commonExpand} ${entry.name}',
                             padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
+                            constraints: HermesGlassTheme.of(context).enabled
+                                ? const BoxConstraints(
+                                    minWidth: 44,
+                                    minHeight: 44,
+                                  )
+                                : const BoxConstraints(),
                             icon: Icon(
                               expanded
                                   ? Icons.expand_more
@@ -330,10 +355,12 @@ class _FileTreePanelState extends State<FileTreePanel>
                     ),
                   ),
                   IconButton(
-                    tooltip: context.l10n.commonMore,
+                    tooltip: '${context.l10n.commonMore} ${entry.name}',
                     icon: const Icon(Icons.more_vert, size: 16),
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                    constraints: HermesGlassTheme.of(context).enabled
+                        ? const BoxConstraints(minWidth: 44, minHeight: 44)
+                        : const BoxConstraints(),
                     onPressed: () => _showEntryMenu(context, store, entry),
                   ),
                 ],
@@ -362,14 +389,19 @@ class _FileTreePanelState extends State<FileTreePanel>
         final isSelected = store.selectedPath == entry.path;
         return Material(
           color: isSelected
-              ? Theme.of(
-                  context,
-                ).colorScheme.primaryContainer.withValues(alpha: 0.5)
+              ? HermesGlassTheme.of(context).enabled
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
+                    : Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withValues(alpha: .5)
               : Colors.transparent,
           child: InkWell(
             onTap: () => _onTapEntry(store, entry),
             onLongPress: () => _showEntryMenu(context, store, entry),
-            child: Padding(
+            child: Container(
+              constraints: HermesGlassTheme.of(context).enabled
+                  ? const BoxConstraints(minHeight: 44)
+                  : null,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               child: Row(
                 children: [
@@ -401,6 +433,15 @@ class _FileTreePanelState extends State<FileTreePanel>
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
+                  IconButton(
+                    tooltip: '${context.l10n.commonMore} ${entry.name}',
+                    icon: const Icon(Icons.more_vert, size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: HermesGlassTheme.of(context).enabled
+                        ? const BoxConstraints(minWidth: 44, minHeight: 44)
+                        : const BoxConstraints(),
+                    onPressed: () => _showEntryMenu(context, store, entry),
+                  ),
                 ],
               ),
             ),
@@ -413,7 +454,11 @@ class _FileTreePanelState extends State<FileTreePanel>
   // ── 交互 ──
   void _onTapEntry(FileTreeStore store, FsEntry entry) {
     if (entry.isDirectory) {
-      store.toggleDirectory(entry);
+      if (store.treeMode) {
+        store.toggleDirectory(entry);
+      } else {
+        store.openEntry(entry);
+      }
     } else {
       store.openEntry(entry);
       widget.onPreviewFile?.call(entry);
@@ -605,14 +650,14 @@ class _FileTreePanelState extends State<FileTreePanel>
     BuildContext context,
     FileTreeStore store,
   ) async {
-    final controller = TextEditingController();
     final l10n = context.l10n;
     final connection = context.read<ConnectionStore>();
     final api = connectedApiOrNotify(context, connection);
     if (api == null) return;
+    final controller = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         title: Text(context.l10n.filesNewFolder),
         content: TextField(
           controller: controller,

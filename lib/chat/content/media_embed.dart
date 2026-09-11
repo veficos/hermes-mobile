@@ -6,6 +6,7 @@ import '../../core/stores/connection_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
 import '../../widgets/h/hermes_toast.dart';
+import '../../widgets/h/hermes_glass.dart';
 import '../../widgets/web_preview.dart' show openChatLink;
 
 enum MediaKind { audio, video, file, none }
@@ -198,8 +199,11 @@ class MediaLinkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isVideo = kind == MediaKind.video;
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
       margin: const EdgeInsets.symmetric(vertical: 6),
+      radius: 16,
+      onTap: () => openChatLink(context, url),
       child: ListTile(
         leading: Icon(
           isVideo ? Icons.movie_outlined : Icons.attach_file_outlined,
@@ -213,7 +217,6 @@ class MediaLinkCard extends StatelessWidget {
           isVideo ? context.l10n.chatOpenVideo : context.l10n.chatOpenFile,
         ),
         trailing: const Icon(Icons.open_in_new, size: 18),
-        onTap: () => openChatLink(context, url),
       ),
     );
   }

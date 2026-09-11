@@ -13,6 +13,7 @@ import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../theme/hermes_glass_theme.dart';
+import '../widgets/glass/glass_button.dart';
 import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_logo.dart';
@@ -31,6 +32,29 @@ import 'feature_registry.dart';
 import 'notification_screen.dart';
 import 'session_list_screen.dart';
 import 'settings_hub_screen.dart';
+
+Widget _homeToolbarButton(
+  BuildContext context, {
+  Key? key,
+  required String tooltip,
+  required VoidCallback? onPressed,
+  required Widget icon,
+}) {
+  if (HermesGlassTheme.of(context).enabled) {
+    return GlassButton(
+      key: key,
+      tooltip: tooltip,
+      onPressed: onPressed,
+      child: icon,
+    );
+  }
+  return IconButton(
+    key: key,
+    tooltip: tooltip,
+    onPressed: onPressed,
+    icon: icon,
+  );
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -128,6 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _toolOrder = List.of(_defaultToolOrder);
   bool _loading = true;
   bool _opening = false;
+  String? _openingSessionId;
   bool _reconnecting = false;
   int _generation = 0;
 
@@ -233,7 +258,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openChat({SessionRow? row}) async {
     if (_opening) return;
-    setState(() => _opening = true);
+    setState(() {
+      _opening = true;
+      _openingSessionId = row?.id;
+    });
     try {
       if (row != null) {
         if (row.readOnly || row.isDelegatedChild) {
@@ -257,7 +285,12 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       return;
     } finally {
-      if (mounted) setState(() => _opening = false);
+      if (mounted) {
+        setState(() {
+          _opening = false;
+          _openingSessionId = null;
+        });
+      }
     }
     if (!mounted) return;
     Navigator.of(
@@ -343,13 +376,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return HermesPageScaffold(
       title: 'Hermes',
+      scrollBodyBehindHeader: true,
       extendBehindNavigation: true,
       // Wide layouts already expose the app-shell rail/top chrome. Keeping
       // Home's own compact bar there duplicates navigation and consumes the
       // first content row; retain it only for phone-sized surfaces.
       showAppBar: width < HermesBreakpoints.navigation,
       maxContentWidth: maxWidth,
-      leading: IconButton(
+      leading: _homeToolbarButton(
+        context,
         key: const ValueKey('home-settings-avatar'),
         tooltip: context.l10n.featureSettings,
         onPressed: () => Navigator.of(
@@ -379,7 +414,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? status
                 : '$status · ${context.l10n.paletteReconnectDesc}';
             final colorScheme = Theme.of(context).colorScheme;
-            return IconButton(
+            return _homeToolbarButton(
+              context,
               key: const ValueKey('home-reconnect'),
               tooltip: tooltip,
               onPressed: connection.isConfigured && !busy ? _reconnect : null,
@@ -399,7 +435,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         if (store.profiles.isNotEmpty) _profileMenu(store),
         Consumer<NotificationStore>(
-          builder: (context, notifications, _) => IconButton(
+          builder: (context, notifications, _) => _homeToolbarButton(
+            context,
             tooltip: context.l10n.notificationTitle,
             icon: Stack(
               clipBehavior: Clip.none,
@@ -482,23 +519,36 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     final palette = HermesPalette.of(context);
     final title = runningRow?.title?.trim();
+    final liquid = HermesGlassTheme.of(context).enabled;
     return Container(
+      key: const ValueKey('home-continue-hero'),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [palette.accent, palette.accentHover],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: palette.accent.withValues(alpha: .28),
-            blurRadius: 28,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+      decoration: liquid
+          ? ShapeDecoration(
+              shape: RoundedSuperellipseBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [palette.accent, palette.accentHover],
+              ),
+            )
+          : BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [palette.accent, palette.accentHover],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: palette.accent.withValues(alpha: .28),
+                  blurRadius: 28,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -525,9 +575,11 @@ class _HomeScreenState extends State<HomeScreen> {
               foregroundColor: Colors.white,
               elevation: 0,
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: liquid
+                  ? const StadiumBorder()
+                  : RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
             ),
             onPressed: () =>
                 runningRow != null ? _openChat(row: runningRow) : _openChat(),
@@ -662,26 +714,45 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: FutureBuilder<bool>(
               future: _store.hasUnreadForSession(row),
-              builder: (_, snap) => SessionCard(
-                session: row,
-                attention: row.needsAttention,
-                working: !row.needsAttention && row.isActivelyWorking,
-                unread: snap.data == true,
-                sessionColor: sessionColor,
-                childrenCount: hasChildren ? 1 : 0,
-                expanded: _expanded.contains(row.id),
-                expandButtonKey: ValueKey('home-session-toggle-${row.id}'),
-                onToggleExpand: () => setState(() {
-                  if (!_expanded.add(row.id)) _expanded.remove(row.id);
-                }),
-                onMore: () => SessionRowActions.show(
-                  context,
-                  session: row,
-                  isArchived: row.archived,
-                  isStarred: row.pinned,
-                  onRefreshed: _load,
-                ),
-                extraBadges: SessionMetaBadges(row: row),
+              builder: (_, snap) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SessionCard(
+                    session: row,
+                    attention: row.needsAttention,
+                    working: !row.needsAttention && row.isActivelyWorking,
+                    unread: snap.data == true,
+                    sessionColor: sessionColor,
+                    childrenCount: hasChildren ? 1 : 0,
+                    expanded: _expanded.contains(row.id),
+                    expandButtonKey: ValueKey('home-session-toggle-${row.id}'),
+                    onToggleExpand: () => setState(() {
+                      if (!_expanded.add(row.id)) _expanded.remove(row.id);
+                    }),
+                    onMore: () => SessionRowActions.show(
+                      context,
+                      session: row,
+                      isArchived: row.archived,
+                      isStarred: row.pinned,
+                      onRefreshed: _load,
+                    ),
+                    extraBadges: SessionMetaBadges(row: row),
+                  ),
+                  if (_openingSessionId == row.id)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Semantics(
+                        key: ValueKey('home-session-opening-${row.id}'),
+                        liveRegion: true,
+                        child: Text(
+                          context.l10n.commonLoading,
+                          style: TextStyle(
+                            color: HermesPalette.of(context).text2,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -706,6 +777,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final scale = MediaQuery.textScalerOf(context).scale(1);
       return GridView.builder(
         key: const ValueKey('home-quick-tools'),
+        // The outer page owns safe-area padding and scrolling. Inheriting
+        // MediaQuery padding here leaves a second bottom gap before Work.
+        padding: EdgeInsets.zero,
+        primary: false,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: 6,
@@ -713,7 +788,9 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisCount: compact ? 3 : 6,
           mainAxisSpacing: 9,
           crossAxisSpacing: 9,
-          mainAxisExtent: 108 + ((scale - 1).clamp(0, 1) * 54),
+          // Do not cap height growth at 2x while the labels keep scaling.
+          // The surrounding page scrolls when accessibility text needs space.
+          mainAxisExtent: 108 + ((scale - 1).clamp(0, double.infinity) * 54),
         ),
         itemBuilder: (context, index) {
           if (index < 5) {

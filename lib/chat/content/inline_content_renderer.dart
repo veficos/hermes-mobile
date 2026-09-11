@@ -10,9 +10,10 @@ import '../../core/performance_metrics.dart';
 import '../../core/session_refs.dart';
 import '../../core/stores/plugin_contribution_store.dart';
 import '../../l10n/l10n.dart';
-import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../../widgets/h/hermes_markdown.dart';
 import '../../widgets/h/hermes_states.dart';
+import '../../widgets/h/hermes_glass.dart';
 import '../../widgets/message_preview_attachments.dart';
 import '../../widgets/web_preview.dart' show openChatLink;
 import '../content/embed_registry.dart';
@@ -322,7 +323,7 @@ class _RenderNode extends StatelessWidget {
         InlineAlertNode(:final body) => body,
         InlineMathNode(:final tex) => tex,
         _ => node.toString(),
-      }, style: HermesType.messageBody);
+      }, style: HermesLiquidTypography.messageBody(context));
     }
   }
 }
@@ -351,7 +352,9 @@ class _PluginDirectiveCard extends StatelessWidget {
         .toList(growable: false);
     if (matches.isEmpty) return SelectableText(source);
     final contribution = matches.first;
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
+      radius: 16,
       child: ListTile(
         leading: const Icon(Icons.extension_outlined),
         title: Text(contribution.title),
@@ -423,7 +426,7 @@ class _TextNodeState extends State<_TextNode> {
   Widget _markdown(BuildContext context, String data) => MarkdownBody(
     data: prettifyBareLinks(upgradeImageLinks(data)),
     selectable: widget.selectable,
-    styleSheet: hermesMarkdownStyle(context, compact: true),
+    styleSheet: hermesMarkdownStyle(context, compact: true, conversation: true),
     extensionSet: md.ExtensionSet.gitHubFlavored,
     builders: {'table': ResizableMarkdownTableBuilder()},
     sizedImageBuilder: hermesMarkdownImageBuilder,
@@ -460,7 +463,11 @@ class _TextNodeState extends State<_TextNode> {
             data: prettifyBareLinks(upgradeImageLinks(text)),
             selectable: widget.selectable,
             padding: EdgeInsets.zero,
-            styleSheet: hermesMarkdownStyle(context, compact: true),
+            styleSheet: hermesMarkdownStyle(
+              context,
+              compact: true,
+              conversation: true,
+            ),
             extensionSet: md.ExtensionSet.gitHubFlavored,
             builders: {'table': ResizableMarkdownTableBuilder()},
             sizedImageBuilder: hermesMarkdownImageBuilder,

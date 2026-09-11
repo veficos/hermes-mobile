@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
@@ -18,6 +20,53 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('Liquid appearance uses a pinned scroll-owned header', (
+    tester,
+  ) async {
+    await _pumpSettings(tester, locale: const Locale('en'), liquid: true);
+    await tester.tap(find.text('Appearance'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SliverAppBar), findsOneWidget);
+    expect(
+      tester.widget<SliverAppBar>(find.byType(SliverAppBar)).pinned,
+      isTrue,
+    );
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(find.text('Appearance').hitTestable(), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Personalization'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('theme previews expose selection and respect reduced motion', (
+    tester,
+  ) async {
+    await _pumpSettings(
+      tester,
+      locale: const Locale('en'),
+      liquid: true,
+      reducedMotion: true,
+    );
+    await tester.tap(find.text('Appearance'));
+    await tester.pumpAndSettle();
+    final card = find.byKey(const ValueKey('theme-preview-indigo'));
+    await tester.ensureVisible(card);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Semantics>(card).properties.selected, isFalse);
+    expect(tester.widget<Semantics>(card).properties.button, isTrue);
+    final animated = find.descendant(
+      of: card,
+      matching: find.byType(AnimatedContainer),
+    );
+    expect(tester.widget<AnimatedContainer>(animated).duration, Duration.zero);
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Semantics>(card).properties.selected, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('settings hub renders localized English navigation', (
     tester,
@@ -46,6 +95,80 @@ void main() {
     expect(find.text('المظهر'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final locale in [const Locale('en'), const Locale('ar')]) {
+    for (final width in [320.0, 390.0, 430.0, 768.0, 1280.0]) {
+      for (final scale in [1.0, 2.0]) {
+        for (final brightness in Brightness.values) {
+          testWidgets(
+            'Liquid appearance and language width=$width scale=$scale $locale $brightness',
+            (tester) async {
+              final localeStore = await _pumpSettings(
+                tester,
+                locale: locale,
+                brightness: brightness,
+                liquid: true,
+                width: width,
+                textScaler: TextScaler.linear(scale),
+              );
+              final l10n = AppLocalizations.of(
+                tester.element(find.byType(SettingsHubScreen)),
+              );
+              await tester.tap(find.text(l10n.appearanceTitle));
+              await tester.pumpAndSettle();
+              final themeCard = find.byKey(
+                const ValueKey('theme-preview-indigo'),
+              );
+              await Scrollable.ensureVisible(
+                tester.element(themeCard),
+                alignment: .5,
+              );
+              await tester.pumpAndSettle();
+              expect(themeCard.hitTestable(), findsOneWidget);
+              await tester.tap(themeCard);
+              await tester.pumpAndSettle();
+              expect(
+                tester.widget<Semantics>(themeCard).properties.selected,
+                isTrue,
+              );
+              final picker = find.byKey(
+                const ValueKey('appearance-language-picker'),
+              );
+              await Scrollable.ensureVisible(
+                tester.element(picker),
+                alignment: .5,
+              );
+              await tester.pumpAndSettle();
+              await tester.tap(picker);
+              await tester.pumpAndSettle();
+              final option = find.byKey(
+                const ValueKey('language-option-zh_Hant'),
+              );
+              await tester.ensureVisible(option);
+              await tester.pumpAndSettle();
+              expect(
+                MediaQuery.textScalerOf(tester.element(option)).scale(14),
+                14 * scale,
+              );
+              final labels = tester.widgetList<Text>(
+                find.descendant(of: option, matching: find.byType(Text)),
+              );
+              expect(
+                labels.where(
+                  (label) => label.overflow == TextOverflow.ellipsis,
+                ),
+                isEmpty,
+              );
+              await tester.tap(option);
+              await tester.pumpAndSettle();
+              expect(localeStore.tag, 'zh_Hant');
+              expect(tester.takeException(), isNull);
+            },
+          );
+        }
+      }
+    }
+  }
 
   testWidgets('language picker uses a mobile sheet and updates selection', (
     tester,
@@ -207,9 +330,13 @@ Future<void> _pumpLocalizedScreen(
 Future<LocaleStore> _pumpSettings(
   WidgetTester tester, {
   required Locale locale,
+  bool liquid = false,
   TextScaler textScaler = TextScaler.noScaling,
+  double width = 390,
+  bool reducedMotion = false,
+  Brightness brightness = Brightness.light,
 }) async {
-  tester.view.physicalSize = const Size(390, 844);
+  tester.view.physicalSize = Size(width, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -223,6 +350,18 @@ Future<LocaleStore> _pumpSettings(
         ChangeNotifierProvider.value(value: localeStore),
       ],
       child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: textScaler, disableAnimations: reducedMotion),
+          child: child!,
+        ),
+        theme: liquid
+            ? buildHermesTheme(
+                brightness: brightness,
+                visualStyle: HermesVisualStyle.liquid,
+              )
+            : null,
         locale: locale,
         localizationsDelegates: const [
           AppLocalizations.delegate,
@@ -231,10 +370,7 @@ Future<LocaleStore> _pumpSettings(
           GlobalWidgetsLocalizations.delegate,
         ],
         supportedLocales: AppLocalizations.supportedLocales,
-        home: MediaQuery(
-          data: MediaQueryData(textScaler: textScaler),
-          child: const SettingsHubScreen(),
-        ),
+        home: const SettingsHubScreen(),
       ),
     ),
   );

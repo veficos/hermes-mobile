@@ -295,6 +295,13 @@ void main() {
       tester.getTopLeft(find.text('常用工具')).dy,
       lessThan(tester.getTopLeft(find.text('当前工作')).dy),
     );
+    final tools = find.byKey(const ValueKey('home-quick-tools'));
+    expect(tester.widget<GridView>(tools).padding, EdgeInsets.zero);
+    expect(tester.widget<GridView>(tools).primary, isFalse);
+    expect(
+      tester.getTopLeft(find.text('当前工作')).dy - tester.getBottomLeft(tools).dy,
+      lessThan(40),
+    );
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('quick-tool-git'))).dx,
       lessThan(

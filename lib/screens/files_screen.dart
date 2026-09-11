@@ -21,6 +21,7 @@ import '../core/stores/preview_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
+import '../widgets/glass/glass_alert_dialog.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_adaptive_menu.dart';
@@ -177,9 +178,7 @@ class _FilesScreenState extends State<FilesScreen>
         repositoryRoot: _store.root.isEmpty ? _store.cwd : _store.root,
         byteSize: entry.size,
       );
-      if (!mounted ||
-          !identical(connection.api, api) ||
-          widget.workspaceMode) {
+      if (!mounted || !identical(connection.api, api) || widget.workspaceMode) {
         return;
       }
       await openWorkspaceScreen(Navigator.of(context));
@@ -589,7 +588,7 @@ class _FilesScreenState extends State<FilesScreen>
     final ctrl = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         title: Text(context.l10n.filesNewFile),
         content: TextField(
           controller: ctrl,
@@ -661,12 +660,12 @@ class _FilesScreenState extends State<FilesScreen>
   }
 
   void _showCreateMenu() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    showMobileSheet<void>(
+      context,
+      (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
           children: [
             ListTile(
               leading: const Icon(Icons.note_add_outlined),
@@ -694,7 +693,7 @@ class _FilesScreenState extends State<FilesScreen>
     final ctrl = TextEditingController(text: entry.name);
     final newName = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         title: Text(context.l10n.filesRename),
         content: TextField(
           controller: ctrl,
@@ -767,7 +766,7 @@ class _FilesScreenState extends State<FilesScreen>
     final ctrl = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         title: Text(context.l10n.filesNewFolder),
         content: TextField(
           controller: ctrl,

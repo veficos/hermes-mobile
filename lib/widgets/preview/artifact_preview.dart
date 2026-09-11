@@ -14,6 +14,7 @@ import '../../core/stores/connection_store.dart';
 import '../../core/stores/session_store.dart';
 import '../../screens/artifacts_screen.dart' show resolveArtifactFile;
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../h/hermes_glass.dart';
 import '../h/hermes_states.dart';
 import '../h/hermes_toast.dart';
@@ -197,13 +198,20 @@ class _ArtifactListViewState extends State<ArtifactListView>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final filtered = _filtered;
+    final liquid = HermesGlassTheme.of(context).enabled;
 
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: SizedBox(
-            height: 34,
+            height: liquid
+                ? 44 +
+                      (MediaQuery.textScalerOf(context).scale(12) - 12).clamp(
+                        0,
+                        double.infinity,
+                      )
+                : 34,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: _kinds.length,
@@ -214,6 +222,31 @@ class _ArtifactListViewState extends State<ArtifactListView>
                 final label = k == 'all'
                     ? context.l10n.commonAll
                     : k.toUpperCase();
+                if (liquid) {
+                  return Semantics(
+                    selected: selected,
+                    child: TextButton(
+                      key: ValueKey('artifact-filter-$k'),
+                      onPressed: () => setState(() => _filter = k),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(44, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        backgroundColor: selected
+                            ? theme.colorScheme.primaryContainer
+                            : Colors.transparent,
+                        foregroundColor: selected
+                            ? theme.colorScheme.onPrimaryContainer
+                            : theme.colorScheme.onSurfaceVariant,
+                        shape: const StadiumBorder(),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: Text(label),
+                    ),
+                  );
+                }
                 return GestureDetector(
                   onTap: () => setState(() => _filter = k),
                   child: Container(

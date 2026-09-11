@@ -2,7 +2,6 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -16,6 +15,7 @@ import '../core/stores/bot_store.dart';
 import '../l10n/l10n.dart';
 import '../widgets/bot_avatar.dart';
 import '../widgets/h/hermes_toast.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 
 Uint8List? _decodeDataUrl(String? dataUrl) {
@@ -48,6 +48,42 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
   bool _saving = false;
   bool _uploading = false;
   bool _generating = false;
+  bool _confirmingExit = false;
+  bool _allowExit = false;
+  bool get _busy => _saving || _uploading || _generating || _confirmingExit;
+  bool get _dirty {
+    final initial = botAppearance(widget.bot.profile, widget.bot.metadata);
+    return _shape != initial.shape ||
+        _color != initial.color ||
+        _imageDataUrl != _originalImageDataUrl;
+  }
+
+  Future<void> _requestExit() async {
+    if (_busy) return;
+    _confirmingExit = true;
+    bool discard;
+    try {
+      discard = await showHermesConfirmDialog(
+        context: context,
+        title: context.l10n.fileEditorDiscardQuestion,
+        message: context.l10n.fileEditorDiscardDescription,
+        confirmLabel: context.l10n.fileEditorDiscard,
+        cancelLabel: context.l10n.fileEditorKeepEditing,
+        destructive: true,
+      );
+    } finally {
+      _confirmingExit = false;
+    }
+    if (mounted && discard) _exit();
+  }
+
+  void _exit() {
+    setState(() => _allowExit = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
   bool? _imagenAvailable;
   final _picker = ImagePicker();
   final _generateController = TextEditingController();
@@ -77,6 +113,7 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
   }
 
   Future<void> _generateImage() async {
+    if (_busy) return;
     setState(() => _generating = true);
     try {
       final store = context.read<BotStore>();
@@ -102,6 +139,7 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
   }
 
   Future<void> _choosePet() async {
+    if (_busy) return;
     final store = context.read<BotStore>();
     final dataUrl = await showMobileSheet<String>(
       context,
@@ -116,6 +154,7 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
   }
 
   void _randomize() {
+    if (_busy) return;
     final random = math.Random();
     setState(() {
       _shape = kAvatarShapes[random.nextInt(kAvatarShapes.length)];
@@ -128,27 +167,27 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
   /// desktop's `AvatarPicker` (a direct write here would get clobbered by
   /// Save's own image state).
   Future<void> _pickAndUploadImage() async {
-    final picked = await _picker.pickImage(source: ImageSource.gallery);
-    if (picked == null || !mounted) return;
-    final size = await File(picked.path).length();
-    if (size > _maxAvatarUploadBytes) {
-      if (mounted) {
+    if (_busy) return;
+    setState(() => _uploading = true);
+    try {
+      final picked = await _picker.pickImage(source: ImageSource.gallery);
+      if (picked == null || !mounted) return;
+      final size = await picked.length();
+      if (!mounted) return;
+      if (size > _maxAvatarUploadBytes) {
         showHermesToast(
           context,
           message: context.l10n.avatarEditorImageTooLarge,
           kind: HermesToastKind.error,
         );
+        return;
       }
-      return;
-    }
-    setState(() => _uploading = true);
-    try {
       final raw = await picked.readAsBytes();
       final normalized = await normalizeAvatarImage(raw);
       if (!mounted) return;
       setState(
-        () => _imageDataUrl =
-            'data:image/png;base64,${base64Encode(normalized)}',
+        () =>
+            _imageDataUrl = 'data:image/png;base64,${base64Encode(normalized)}',
       );
     } catch (error) {
       if (mounted) {
@@ -164,10 +203,12 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
   }
 
   void _removeImage() {
+    if (_busy) return;
     setState(() => _imageDataUrl = null);
   }
 
   Future<void> _save() async {
+    if (_busy) return;
     setState(() => _saving = true);
     try {
       final store = context.read<BotStore>();
@@ -184,7 +225,7 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
       }
       if (!mounted) return;
       showHermesToast(context, message: context.l10n.avatarEditorSaved);
-      Navigator.of(context).pop();
+      _exit();
     } catch (error) {
       if (!mounted) return;
       showHermesToast(
@@ -203,109 +244,20 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
       ...widget.bot.metadata,
       'custom': true,
       'shape': _shape,
+      'color': _hexOf(_color),
       'image': _imageDataUrl,
     };
-    final busy = _saving || _uploading || _generating;
-    return MobilePageScaffold(
-      title: context.l10n.agentEditAvatarMenuItem,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.shuffle),
-          tooltip: context.l10n.avatarEditorRandomize,
-          onPressed: busy ? null : _randomize,
-        ),
-      ],
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Center(
-            child: BotAvatar(name: widget.bot.profile, metadata: metadata, size: 96),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextButton.icon(
-                onPressed: busy ? null : _pickAndUploadImage,
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: Text(context.l10n.avatarEditorUploadPhoto),
-              ),
-              TextButton.icon(
-                onPressed: busy ? null : _choosePet,
-                icon: const Icon(Icons.pets_outlined),
-                label: Text(context.l10n.avatarEditorChoosePet),
-              ),
-              if (_imageDataUrl != null)
-                TextButton.icon(
-                  onPressed: busy ? null : _removeImage,
-                  icon: const Icon(Icons.delete_outline),
-                  label: Text(context.l10n.avatarEditorRemovePhoto),
-                ),
-            ],
-          ),
-          if (_imagenAvailable == true) ...[
-            const SizedBox(height: 12),
-            TextField(
-              controller: _generateController,
-              enabled: !busy,
-              decoration: InputDecoration(
-                hintText: context.l10n.avatarEditorGenerateHint,
-                border: const OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: busy ? null : _generateImage,
-              icon: _generating
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.auto_awesome_outlined),
-              label: Text(context.l10n.avatarEditorGenerate),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Text(
-            context.l10n.avatarEditorShapeLabel,
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: kAvatarShapes.map((shape) {
-              final selected = shape == _shape;
-              return _ShapeSwatch(
-                shape: shape,
-                color: _color,
-                selected: selected,
-                onTap: () => setState(() => _shape = shape),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 28),
-          Text(
-            context.l10n.avatarEditorColorLabel,
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: kAvatarColors.map((color) {
-              final selected = color.toARGB32() == _color.toARGB32();
-              return _ColorSwatch(
-                color: color,
-                selected: selected,
-                onTap: () => setState(() => _color = color),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 32),
-          FilledButton(
+    final busy = _busy;
+    return PopScope(
+      canPop: _allowExit || (!_busy && !_dirty),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_requestExit());
+      },
+      child: HermesPageScaffold(
+        title: context.l10n.agentEditAvatarMenuItem,
+        bottomAction: SizedBox(
+          width: double.infinity,
+          child: FilledButton(
             onPressed: busy ? null : _save,
             child: _saving
                 ? const SizedBox(
@@ -315,7 +267,111 @@ class _BotAvatarEditorScreenState extends State<BotAvatarEditorScreen> {
                   )
                 : Text(context.l10n.commonSave),
           ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.shuffle),
+            tooltip: context.l10n.avatarEditorRandomize,
+            onPressed: busy ? null : _randomize,
+          ),
         ],
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Center(
+              child: BotAvatar(
+                name: widget.bot.profile,
+                metadata: metadata,
+                size: 96,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: busy ? null : _pickAndUploadImage,
+                  icon: const Icon(Icons.photo_camera_outlined),
+                  label: Text(context.l10n.avatarEditorUploadPhoto),
+                ),
+                TextButton.icon(
+                  onPressed: busy ? null : _choosePet,
+                  icon: const Icon(Icons.pets_outlined),
+                  label: Text(context.l10n.avatarEditorChoosePet),
+                ),
+                if (_imageDataUrl != null)
+                  TextButton.icon(
+                    onPressed: busy ? null : _removeImage,
+                    icon: const Icon(Icons.delete_outline),
+                    label: Text(context.l10n.avatarEditorRemovePhoto),
+                  ),
+              ],
+            ),
+            if (_imagenAvailable == true) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _generateController,
+                enabled: !busy,
+                decoration: InputDecoration(
+                  hintText: context.l10n.avatarEditorGenerateHint,
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: busy ? null : _generateImage,
+                icon: _generating
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.auto_awesome_outlined),
+                label: Text(context.l10n.avatarEditorGenerate),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Text(
+              context.l10n.avatarEditorShapeLabel,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: kAvatarShapes.map((shape) {
+                final selected = shape == _shape;
+                return _ShapeSwatch(
+                  shape: shape,
+                  color: _color,
+                  selected: selected,
+                  onTap: busy ? null : () => setState(() => _shape = shape),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              context.l10n.avatarEditorColorLabel,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: kAvatarColors.map((color) {
+                final selected = color.toARGB32() == _color.toARGB32();
+                return _ColorSwatch(
+                  color: color,
+                  selected: selected,
+                  onTap: busy ? null : () => setState(() => _color = color),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -325,7 +381,7 @@ class _ShapeSwatch extends StatelessWidget {
   final String shape;
   final Color color;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _ShapeSwatch({
     required this.shape,
@@ -336,26 +392,43 @@ class _ShapeSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 56,
-        height: 56,
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected
-                ? Theme.of(context).colorScheme.primary
-                : Colors.transparent,
-            width: 2,
+    return Semantics(
+      selected: selected,
+      label:
+          '${context.l10n.avatarEditorShapeLabel} ${kAvatarShapes.indexOf(shape) + 1}',
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.zero,
+          minimumSize: const Size(56, 56),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
-        child: BotAvatar(
-          name: 'shape-preview',
-          metadata: {'custom': true, 'shape': shape, 'color': _hexOf(color)},
-          size: 44,
+        child: Container(
+          width: 56,
+          height: 56,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: ExcludeSemantics(
+            child: BotAvatar(
+              name: 'shape-preview',
+              metadata: {
+                'custom': true,
+                'shape': shape,
+                'color': _hexOf(color),
+              },
+              size: 44,
+            ),
+          ),
         ),
       ),
     );
@@ -365,7 +438,7 @@ class _ShapeSwatch extends StatelessWidget {
 class _ColorSwatch extends StatelessWidget {
   final Color color;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _ColorSwatch({
     required this.color,
@@ -375,29 +448,37 @@ class _ColorSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color,
-          border: Border.all(
-            color: selected
-                ? Theme.of(context).colorScheme.primary
-                : Colors.transparent,
-            width: 3,
-          ),
+    return Semantics(
+      selected: selected,
+      label: '${context.l10n.avatarEditorColorLabel} ${_hexOf(color)}',
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.all(4),
+          minimumSize: const Size(48, 48),
+          shape: const CircleBorder(),
         ),
-        child: selected
-            ? Icon(
-                Icons.check,
-                color: isDarkColor(color) ? Colors.white : Colors.black87,
-                size: 20,
-              )
-            : null,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
+              width: 3,
+            ),
+          ),
+          child: selected
+              ? Icon(
+                  Icons.check,
+                  color: isDarkColor(color) ? Colors.white : Colors.black87,
+                  size: 20,
+                )
+              : null,
+        ),
       ),
     );
   }

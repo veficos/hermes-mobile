@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/hermes_tokens.dart';
+import '../../l10n/l10n.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../h/hermes_progress.dart';
 import 'mobile_page_scaffold.dart';
 
@@ -97,19 +99,22 @@ class HermesGroupedList extends StatelessWidget {
         boxShadow: hermesShadow(context),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var index = 0; index < children.length; index++) ...[
-            children[index],
-            if (index != children.length - 1)
-              Divider(
-                height: 1,
-                indent: 58,
-                color: palette.border.withValues(alpha: .82),
-              ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index < children.length; index++) ...[
+              children[index],
+              if (index != children.length - 1)
+                Divider(
+                  height: 1,
+                  indent: 58,
+                  color: palette.border.withValues(alpha: .82),
+                ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -130,6 +135,7 @@ class HermesListRow extends StatelessWidget {
     this.onLongPress,
     this.destructive = false,
     this.showDisclosure = true,
+    this.alignLeadingToTop = false,
   });
 
   final String title;
@@ -144,6 +150,7 @@ class HermesListRow extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool destructive;
   final bool showDisclosure;
+  final bool alignLeadingToTop;
 
   @override
   Widget build(BuildContext context) {
@@ -151,6 +158,9 @@ class HermesListRow extends StatelessWidget {
     final foreground = destructive
         ? Theme.of(context).colorScheme.error
         : palette.text;
+    final expandedText = MediaQuery.textScalerOf(context).scale(14) > 18;
+    final phoneTypography = HermesLiquidTypography.usesPhoneRows(context);
+    final wrapTitle = expandedText || phoneTypography;
     final resolvedTone =
         tone ??
         (destructive ? Theme.of(context).colorScheme.error : palette.accent);
@@ -179,6 +189,9 @@ class HermesListRow extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(14, 10, 12, 10),
             child: Row(
+              crossAxisAlignment: alignLeadingToTop
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.center,
               children: [
                 if (leadingWidget != null) ...[
                   leadingWidget,
@@ -194,12 +207,19 @@ class HermesListRow extends StatelessWidget {
                           Flexible(
                             child: Text(
                               title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              maxLines: wrapTitle ? null : 1,
+                              overflow: wrapTitle
+                                  ? TextOverflow.clip
+                                  : TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodyLarge
                                   ?.copyWith(
                                     color: foreground,
-                                    height: 1.25,
+                                    fontSize: phoneTypography
+                                        ? HermesLiquidTypography.listTitleSize
+                                        : null,
+                                    height: phoneTypography
+                                        ? HermesLiquidTypography.listTitleHeight
+                                        : 1.25,
                                     fontWeight: FontWeight.w600,
                                   ),
                             ),
@@ -216,10 +236,22 @@ class HermesListRow extends StatelessWidget {
                         subtitleWidget ??
                             Text(
                               subtitle!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                              maxLines: expandedText ? null : 2,
+                              overflow: expandedText
+                                  ? TextOverflow.clip
+                                  : TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: palette.text3, height: 1.3),
+                                  ?.copyWith(
+                                    color: palette.text3,
+                                    fontSize: phoneTypography
+                                        ? HermesLiquidTypography
+                                              .listSubtitleSize
+                                        : null,
+                                    height: phoneTypography
+                                        ? HermesLiquidTypography
+                                              .listSubtitleHeight
+                                        : 1.3,
+                                  ),
                             ),
                       ],
                     ],
@@ -747,7 +779,8 @@ class _HermesFormPageState extends State<HermesFormPage> {
   bool _saving = false;
 
   Future<bool> _confirmDiscard() async {
-    if (!widget.dirty || _saving) return true;
+    if (_saving) return false;
+    if (!widget.dirty) return true;
     final discard = await showHermesActionSheet<bool>(
       context,
       title: widget.title,
@@ -770,10 +803,21 @@ class _HermesFormPageState extends State<HermesFormPage> {
     if (_saving || !widget.canSave) return;
     setState(() => _saving = true);
     final navigator = Navigator.of(context);
-    final saved = await widget.onSave();
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (saved) navigator.pop(true);
+    try {
+      final saved = await widget.onSave();
+      if (!mounted) return;
+      if (saved) navigator.pop(true);
+    } catch (_) {
+      // Callers may handle expected errors by returning false. Unexpected
+      // failures must also unlock the draft, without exposing raw exceptions.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.commonOperationFailed)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override

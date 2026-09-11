@@ -57,9 +57,13 @@ ThemeData buildHermesTheme({
       ).copyWith(
         // 手工计算 onPrimary 系——fromSeed 对深色模式下的浅 accent 会误判。
         onPrimary: onAccentColor,
-        onPrimaryContainer: onAccentColor,
+        onPrimaryContainer: visualStyle == HermesVisualStyle.liquid
+            ? null
+            : onAccentColor,
         onSecondary: onAccentColor,
-        onSecondaryContainer: onAccentColor,
+        onSecondaryContainer: visualStyle == HermesVisualStyle.liquid
+            ? null
+            : onAccentColor,
         onSurface: textPrimary,
         onSurfaceVariant: textSecondary,
         onPrimaryFixed: onAccentColor,
@@ -121,16 +125,14 @@ ThemeData buildHermesTheme({
       height: liquid ? 72 : 68,
       elevation: 0,
       backgroundColor: palette.surface,
-      indicatorColor: liquid
-          ? palette.accent.withValues(alpha: highContrast ? .24 : .16)
-          : palette.accentBg,
+      indicatorColor: liquid ? scheme.primaryContainer : palette.accentBg,
       indicatorShape: const StadiumBorder(),
       iconTheme: WidgetStateProperty.resolveWith(
         (states) => IconThemeData(
           size: 22,
           color: states.contains(WidgetState.selected)
-              ? palette.accent
-              : palette.text3,
+              ? (liquid ? scheme.onPrimaryContainer : palette.accent)
+              : (highContrast ? textSecondary : palette.text3),
         ),
       ),
       labelTextStyle: WidgetStateProperty.resolveWith(
@@ -140,8 +142,8 @@ ThemeData buildHermesTheme({
               ? FontWeight.w700
               : FontWeight.w500,
           color: states.contains(WidgetState.selected)
-              ? palette.text
-              : palette.text3,
+              ? textPrimary
+              : (highContrast ? textSecondary : palette.text3),
         ),
       ),
     ),
@@ -172,13 +174,61 @@ ThemeData buildHermesTheme({
       ),
       focusColor: accentColor,
     ),
+    segmentedButtonTheme: liquid
+        ? SegmentedButtonThemeData(
+            style: ButtonStyle(
+              minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
+              side: const WidgetStatePropertyAll(BorderSide.none),
+              shape: const WidgetStatePropertyAll(StadiumBorder()),
+              overlayColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return Colors.transparent;
+                }
+                final ink = states.contains(WidgetState.selected)
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurface;
+                if (states.contains(WidgetState.pressed)) {
+                  return ink.withValues(alpha: .14);
+                }
+                if (states.contains(WidgetState.focused)) {
+                  return ink.withValues(alpha: .12);
+                }
+                if (states.contains(WidgetState.hovered)) {
+                  return ink.withValues(alpha: .06);
+                }
+                return Colors.transparent;
+              }),
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return palette.codeBg;
+                }
+                return states.contains(WidgetState.selected)
+                    ? scheme.primaryContainer
+                    : Colors.transparent;
+              }),
+              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) return palette.text3;
+                return states.contains(WidgetState.selected)
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurface;
+              }),
+            ),
+          )
+        : null,
     dialogTheme: DialogThemeData(
+      // Unadapted routes have no backdrop filter. Glass-aware routes opt
+      // into transparent Material and own their sampled surface explicitly.
       backgroundColor: palette.elevated,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(liquid ? 28 : HermesRadius.dialog),
-        side: BorderSide(color: border, width: borderWidth),
-      ),
+      shape: liquid
+          ? RoundedSuperellipseBorder(
+              borderRadius: BorderRadius.circular(28),
+              side: BorderSide(color: border, width: borderWidth),
+            )
+          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(HermesRadius.dialog),
+              side: BorderSide(color: border, width: borderWidth),
+            ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: palette.elevated,
@@ -187,12 +237,19 @@ ThemeData buildHermesTheme({
       modalBarrierColor: Colors.black.withValues(alpha: .38),
       elevation: 0,
       modalElevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(liquid ? 30 : HermesRadius.sheet),
-        ),
-        side: BorderSide(color: border, width: borderWidth),
-      ),
+      shape: liquid
+          ? RoundedSuperellipseBorder(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(30),
+              ),
+              side: BorderSide(color: border, width: borderWidth),
+            )
+          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(HermesRadius.sheet),
+              ),
+              side: BorderSide(color: border, width: borderWidth),
+            ),
       showDragHandle: liquid,
     ),
     // 弹出菜单（PopupMenuButton/showMenu）：默认 Material3 会用一套跟随
@@ -200,6 +257,8 @@ ThemeData buildHermesTheme({
     // 背景不是同一套色，边角也偏小（4dp）——在四套主题下都会显得脱节。
     // 统一成跟 dialogTheme 一样的 elevated 底 + 1px border + r-xl 圆角。
     popupMenuTheme: PopupMenuThemeData(
+      // Default menu routes do not own a backdrop filter. Glass-aware
+      // menus opt into transparency through their own sampled surface.
       color: palette.elevated,
       surfaceTintColor: Colors.transparent,
       elevation: liquid && (isDark || highContrast || reduceTransparency)
@@ -224,11 +283,7 @@ ThemeData buildHermesTheme({
     ),
     menuTheme: MenuThemeData(
       style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(
-          liquid && !reduceTransparency && !highContrast
-              ? palette.surface.withValues(alpha: .92)
-              : palette.elevated,
-        ),
+        backgroundColor: WidgetStatePropertyAll(palette.elevated),
         surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
         elevation: WidgetStatePropertyAll(
           liquid && (isDark || reduceTransparency || highContrast) ? 0 : 8,
@@ -251,10 +306,14 @@ ThemeData buildHermesTheme({
       menuStyle: MenuStyle(
         backgroundColor: WidgetStatePropertyAll(palette.elevated),
         surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
-        elevation: const WidgetStatePropertyAll(8),
+        elevation: WidgetStatePropertyAll(
+          liquid && (isDark || reduceTransparency || highContrast) ? 0 : 8,
+        ),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(HermesRadius.dialog),
+            borderRadius: BorderRadius.circular(
+              liquid ? HermesGlassTokens.controlRadius : HermesRadius.dialog,
+            ),
             side: BorderSide(color: border, width: borderWidth),
           ),
         ),
@@ -262,14 +321,22 @@ ThemeData buildHermesTheme({
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: isDark ? palette.elevated : const Color(0xFF16181D),
+      backgroundColor: liquid && !reduceTransparency && !highContrast
+          ? (isDark ? palette.elevated : const Color(0xFF16181D)).withValues(
+              alpha: .92,
+            )
+          : isDark
+          ? palette.elevated
+          : const Color(0xFF16181D),
       // Snackbar 底恒为深色，前景用 Graphite 深色主题一级文字色。
       contentTextStyle: const TextStyle(
         color: HermesText.darkPrimary,
         fontSize: 13,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(HermesRadius.card),
+        borderRadius: BorderRadius.circular(
+          liquid ? HermesGlassTokens.controlRadius : HermesRadius.card,
+        ),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -278,7 +345,9 @@ ThemeData buildHermesTheme({
         foregroundColor: scheme.onPrimary,
         textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
         minimumSize: const Size(44, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: liquid
+            ? const StadiumBorder()
+            : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       ),
     ),
@@ -287,14 +356,18 @@ ThemeData buildHermesTheme({
         foregroundColor: textPrimary,
         side: BorderSide(color: border, width: borderWidth),
         minimumSize: const Size(44, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: liquid
+            ? const StadiumBorder()
+            : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: accentColor,
         minimumSize: const Size(44, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: liquid
+            ? const StadiumBorder()
+            : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     iconButtonTheme: IconButtonThemeData(
@@ -321,6 +394,8 @@ ThemeData buildHermesTheme({
     progressIndicatorTheme: ProgressIndicatorThemeData(color: accentColor),
     dividerTheme: DividerThemeData(color: border, thickness: borderWidth),
     switchTheme: SwitchThemeData(
+      materialTapTargetSize: MaterialTapTargetSize.padded,
+      splashRadius: 24,
       thumbColor: WidgetStateProperty.resolveWith(
         (states) =>
             states.contains(WidgetState.selected) ? accentColor : palette.text3,

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 
 /// Solid card: card surface + 1px border + shadow tier (design system).
 /// Used by Composer, FAB, Toolbar, Overlay, Context Panel and Pickers.
@@ -21,6 +22,7 @@ class HermesGlassCard extends StatelessWidget {
   final VoidCallback? onLongPress;
   final EdgeInsetsGeometry margin;
   final HermesShadowTier shadow;
+  final Clip clipBehavior;
 
   const HermesGlassCard({
     super.key,
@@ -33,6 +35,7 @@ class HermesGlassCard extends StatelessWidget {
     this.onLongPress,
     this.margin = EdgeInsets.zero,
     this.shadow = HermesShadowTier.sm,
+    this.clipBehavior = Clip.none,
   });
 
   @override
@@ -44,17 +47,30 @@ class HermesGlassCard extends StatelessWidget {
       shadow: shadow,
     );
     final content = Padding(padding: padding, child: child);
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final continuous = RoundedSuperellipseBorder(
+      borderRadius: BorderRadius.circular(radius),
+    );
     return Container(
       margin: margin,
-      decoration: decoration,
+      decoration: liquid
+          ? ShapeDecoration(
+              color: decoration.color,
+              shape: continuous.copyWith(side: decoration.border!.top),
+              shadows: decoration.boxShadow,
+            )
+          : decoration,
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(radius),
+        clipBehavior: clipBehavior,
+        shape: liquid ? continuous : null,
+        borderRadius: liquid ? null : BorderRadius.circular(radius),
         child: onTap == null
             ? content
             : InkWell(
                 onTap: onTap,
                 onLongPress: onLongPress,
+                customBorder: liquid ? continuous : null,
                 borderRadius: BorderRadius.circular(radius),
                 child: content,
               ),

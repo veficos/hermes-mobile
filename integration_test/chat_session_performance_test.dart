@@ -6,6 +6,7 @@ import 'package:hermes_mobile/core/chat_message.dart';
 import 'package:hermes_mobile/core/performance_metrics.dart';
 import 'package:hermes_mobile/core/stores/chat_store.dart';
 import 'package:integration_test/integration_test.dart';
+import '../test/support/performance_evidence.dart';
 
 /// Profile-mode micro/macro guard for the transcript hot paths. Run on a
 /// physical device with:
@@ -30,12 +31,7 @@ void main() {
       'http_received': metrics.httpResponseBytes,
       'session_list_received': metrics.sessionResponseBytes,
     };
-    results['frame_budget'] = {
-      'frames': metrics.frames,
-      'slow_frames': metrics.slowFrames,
-      'max_build_micros': metrics.maxBuildMicros,
-      'max_raster_micros': metrics.maxRasterMicros,
-    };
+    results.addAll(performanceEvidence(metrics));
     binding.reportData = results;
   });
 
@@ -101,41 +97,20 @@ void main() {
     expect(ClientPerformanceMetrics.instance.snapshot(), isNotEmpty);
   });
 
-  testWidgets('profile routing does not amplify session-list network bytes', (
-    _,
-  ) async {
+  testWidgets('idle microbenchmark has no session-list traffic', (_) async {
     final metrics = ClientPerformanceMetrics.instance;
     final bytesBefore = metrics.sessionResponseBytes;
     final refreshesBefore = metrics.listRefreshes;
-    // Profile-mode harnesses may inject real navigation before this test.
-    // SessionStore._scheduleListRefresh debounces every trigger (profile
-    // switch, gateway event, reconnect, ...) behind a single 250ms timer and
-    // clientRefreshScheduler coalesces any that land while a fetch is
-    // in-flight, so a healthy app performs at most one real session-list
-    // fetch inside a 250ms window. A regression that fetches once per
-    // trigger instead of coalescing (the exact bug this test guards
-    // against) shows up as multiple refreshes here.
+    // No SessionStore or navigation is mounted in this computation harness.
+    // This only checks isolation. The event-burst test in
+    // session_profile_history_test.dart exercises actual refresh scheduling.
     await Future<void>.delayed(const Duration(milliseconds: 250));
     final refreshesDelta = metrics.listRefreshes - refreshesBefore;
     final bytesDelta = metrics.sessionResponseBytes - bytesBefore;
-    expect(
-      refreshesDelta,
-      lessThanOrEqualTo(1),
-      reason:
-          'session-list refreshList() should be debounced/coalesced by '
-          '_scheduleListRefresh + clientRefreshScheduler, not fire once per '
-          'profile-routing trigger',
-    );
-    // Belt-and-suspenders byte cap derived directly from the refresh count
-    // above rather than a guessed constant: refreshList() is always called
-    // with limit: 100, so each legitimate fetch is a small bounded JSON
-    // page. 2MB per allowed fetch is an order of magnitude of headroom over
-    // a realistic 100-row session-list payload, so this only trips if bytes
-    // are arriving disproportionate to the (already-bounded) refresh count.
-    expect(bytesDelta, lessThanOrEqualTo(refreshesDelta * 2 * 1024 * 1024));
+    expect(refreshesDelta, 0);
+    expect(bytesDelta, 0);
     results['idle_profile_session_list_refreshes_250ms'] = refreshesDelta;
     results['idle_profile_session_list_bytes_250ms'] = bytesDelta;
-    results['profile_mode'] = true;
   });
 
   testWidgets('large diff parsing stays bounded and cacheable', (_) async {

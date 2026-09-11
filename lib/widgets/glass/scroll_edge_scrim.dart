@@ -12,12 +12,11 @@ class ScrollEdgeScrim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!HermesGlassTheme.of(context).enabled) return child;
+    if (!HermesGlassTheme.of(context).allowsTransparency(context)) return child;
     final color = HermesPalette.of(context).surface;
     return Stack(
       fit: StackFit.passthrough,
       children: [
-        child,
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
@@ -25,8 +24,18 @@ class ScrollEdgeScrim extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: top ? Alignment.topCenter : Alignment.bottomCenter,
                   end: top ? Alignment.bottomCenter : Alignment.topCenter,
+                  // Approximate a smoothstep falloff: flatten both ends so
+                  // the content edge does not read as a linear veil boundary.
+                  stops: const [0, .25, .5, .75, 1],
                   colors: [
                     color.withValues(alpha: HermesGlassTokens.edgeAlpha),
+                    color.withValues(
+                      alpha: HermesGlassTokens.edgeAlpha * .84375,
+                    ),
+                    color.withValues(alpha: HermesGlassTokens.edgeAlpha * .5),
+                    color.withValues(
+                      alpha: HermesGlassTokens.edgeAlpha * .15625,
+                    ),
                     color.withValues(alpha: 0),
                   ],
                 ),
@@ -34,6 +43,7 @@ class ScrollEdgeScrim extends StatelessWidget {
             ),
           ),
         ),
+        child,
       ],
     );
   }

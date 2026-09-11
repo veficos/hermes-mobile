@@ -5,15 +5,14 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/chat_message.dart';
 import '../../core/stores/chat_store.dart';
-import '../../core/stores/session_store.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../../widgets/chat_enter_to_send.dart';
 import '../../widgets/chat_content_column.dart';
 import '../../widgets/h/hermes_badge.dart';
@@ -23,6 +22,7 @@ import '../timeline/changed_files_card.dart';
 import '../timeline/chat_timeline.dart';
 import '../timeline/turn_activity_card.dart';
 import 'chat_transcript_panel.dart';
+import 'anchored_history_list.dart';
 
 /// Message list with date separators (Phase 6 Wave 2): a "today / yesterday /
 /// date" chip is inserted whenever the message day changes.
@@ -49,6 +49,9 @@ class ChatMessageList extends StatelessWidget {
   final Widget? editSuggestions;
   final VoidCallback? onEditAttach;
   final int editAttachmentCount;
+  final double topInset;
+  final double bottomInset;
+  final VoidCallback? onLoadOlder;
 
   const ChatMessageList({
     super.key,
@@ -73,6 +76,9 @@ class ChatMessageList extends StatelessWidget {
     this.editSuggestions,
     this.onEditAttach,
     this.editAttachmentCount = 0,
+    this.topInset = 0,
+    this.bottomInset = 0,
+    this.onLoadOlder,
   });
 
   bool _showDateDivider(List<ChatMessage> msgs, int index) {
@@ -266,27 +272,24 @@ class ChatMessageList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final messages = snapshot.messages;
-    final itemCount = 1 + timeline.length + (snapshot.hasNewerWindow ? 1 : 0);
     // Keys must live on the direct sliver children. Descendant GlobalKeys
     // alone cannot relocate an existing row when history shifts its index.
     const historyKey = ValueKey('transcript-history-header');
     const newerKey = ValueKey('transcript-newer-window');
-    final rowIndices = <Key, int>{
-      historyKey: 0,
+    final rowKeys = <Key>[
+      historyKey,
       for (var i = 0; i < timeline.length; i++)
-        ValueKey('transcript-row-${timeline[i].key}'): i + 1,
-      if (snapshot.hasNewerWindow) newerKey: timeline.length + 1,
-    };
+        ValueKey('transcript-row-${timeline[i].key}'),
+      if (snapshot.hasNewerWindow) newerKey,
+    ];
     // Pagination is driven by ChatScreen's near-top listener, which also
     // preserves the visible anchor after prepending. A RefreshIndicator here
     // launched a second, uncompensated request from the same overscroll
     // gesture and left its modal-looking grey drag layer visible on web.
-    return ListView.builder(
+    return AnchoredHistoryList(
       controller: scrollCtrl,
-      scrollCacheExtent: const ScrollCacheExtent.pixels(640),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: itemCount,
-      findChildIndexCallback: (key) => rowIndices[key],
+      padding: EdgeInsets.only(top: 8 + topInset, bottom: 8 + bottomInset),
+      keys: rowKeys,
       itemBuilder: (context, i) {
         if (i == 0) {
           return _wrapRow(
@@ -295,6 +298,7 @@ class ChatMessageList extends StatelessWidget {
               loadingHistory: snapshot.loadingHistory,
               hasMoreHistory: snapshot.hasMoreHistory,
               historyError: snapshot.historyError,
+              onRetry: onLoadOlder,
             ),
             key: historyKey,
           );
@@ -411,13 +415,15 @@ class _TurnMarker extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 7),
-          Text(
-            context.l10n.chatCurrentTurnLabel(label),
-            style: TextStyle(
-              color: palette.text3,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: .2,
+          Flexible(
+            child: Text(
+              context.l10n.chatCurrentTurnLabel(label),
+              style: TextStyle(
+                color: palette.text3,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: .2,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -552,7 +558,8 @@ class InlineMessageEditor extends StatelessWidget {
     final maxWidth = width >= HermesBreakpoints.tablet
         ? HermesLayout.contentNarrow
         : width * 0.9;
-    final onBubble = palette.bubbleUserText;
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final onBubble = liquid ? palette.text : palette.bubbleUserText;
     final hint = touch
         ? context.l10n.chatEditMessageHint
         : context.l10n.chatEditMessageKeyboardHint;
@@ -575,21 +582,30 @@ class InlineMessageEditor extends StatelessWidget {
                 child: suggestions,
               ),
             Container(
+              key: const ValueKey('inline-message-editor'),
               margin: const EdgeInsets.only(top: 6, bottom: 10),
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-              decoration: BoxDecoration(
-                color: palette.bubbleUser,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(HermesRadius.bubble),
-                  topRight: Radius.circular(HermesRadius.bubble),
-                  bottomLeft: Radius.circular(HermesRadius.bubble),
-                  bottomRight: Radius.circular(4),
-                ),
-                border: Border.all(
-                  color: onBubble.withValues(alpha: 0.55),
-                  width: 1.4,
-                ),
-              ),
+              decoration: liquid
+                  ? ShapeDecoration(
+                      color: palette.surface,
+                      shape: RoundedSuperellipseBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        side: BorderSide(color: palette.borderStrong),
+                      ),
+                    )
+                  : BoxDecoration(
+                      color: palette.bubbleUser,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(HermesRadius.bubble),
+                        topRight: Radius.circular(HermesRadius.bubble),
+                        bottomLeft: Radius.circular(HermesRadius.bubble),
+                        bottomRight: Radius.circular(4),
+                      ),
+                      border: Border.all(
+                        color: onBubble.withValues(alpha: 0.55),
+                        width: 1.4,
+                      ),
+                    ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -608,28 +624,46 @@ class InlineMessageEditor extends StatelessWidget {
                         maxLines: 8,
                         cursorColor: onBubble,
                         textInputAction: TextInputAction.newline,
-                        style: HermesType.messageBody.copyWith(
-                          color: onBubble,
-                          height: 1.5,
-                        ),
+                        style: HermesLiquidTypography.messageBody(
+                          context,
+                        ).copyWith(color: onBubble, height: 1.5),
                         decoration: InputDecoration(
+                          filled: false,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                          ),
                           isDense: true,
                           border: InputBorder.none,
                           hintText: hint,
-                          hintStyle: HermesType.messageBody.copyWith(
-                            color: onBubble.withValues(alpha: 0.55),
-                            height: 1.5,
-                          ),
+                          hintStyle: HermesLiquidTypography.messageBody(context)
+                              .copyWith(
+                                color: onBubble.withValues(alpha: 0.55),
+                                height: 1.5,
+                              ),
                         ),
                       ),
                     ),
                   ),
-                  Row(
+                  if (liquid) ...[
+                    const SizedBox(height: 8),
+                    Divider(height: 1, color: palette.border),
+                    const SizedBox(height: 8),
+                  ],
+                  Wrap(
+                    key: const ValueKey('inline-message-edit-toolbar'),
+                    alignment: WrapAlignment.end,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       if (onAttach != null)
                         IconButton(
                           tooltip: context.l10n.chatAddImage,
-                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 44,
+                            minHeight: 44,
+                          ),
+                          visualDensity: VisualDensity.standard,
                           color: onBubble,
                           onPressed: onAttach,
                           icon: Stack(
@@ -647,22 +681,27 @@ class InlineMessageEditor extends StatelessWidget {
                             ],
                           ),
                         ),
-                      const Spacer(),
                       TextButton(
                         onPressed: onCancel,
                         style: TextButton.styleFrom(
                           foregroundColor: onBubble,
-                          visualDensity: VisualDensity.compact,
+                          minimumSize: const Size(44, 44),
+                          visualDensity: VisualDensity.standard,
                         ),
                         child: Text(cancelLabel),
                       ),
-                      const SizedBox(width: 4),
                       FilledButton.tonalIcon(
                         onPressed: onSubmit,
                         style: FilledButton.styleFrom(
-                          backgroundColor: onBubble.withValues(alpha: 0.18),
-                          foregroundColor: onBubble,
-                          visualDensity: VisualDensity.compact,
+                          backgroundColor: liquid
+                              ? palette.bubbleUser
+                              : onBubble.withValues(alpha: 0.18),
+                          foregroundColor: liquid
+                              ? palette.bubbleUserText
+                              : onBubble,
+                          minimumSize: const Size(44, 44),
+                          visualDensity: VisualDensity.standard,
+                          shape: const StadiumBorder(),
                         ),
                         icon: const Icon(Icons.check, size: 16),
                         label: Text(context.l10n.chatSendEdit),
@@ -718,6 +757,7 @@ class DateDivider extends StatelessWidget {
 }
 
 class HistoryHeader extends StatelessWidget {
+  final VoidCallback? onRetry;
   final bool loadingHistory;
   final bool hasMoreHistory;
   final String? historyError;
@@ -727,40 +767,28 @@ class HistoryHeader extends StatelessWidget {
     required this.loadingHistory,
     required this.hasMoreHistory,
     this.historyError,
+    this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
-    if (loadingHistory) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: palette.text3,
-            ),
-          ),
-        ),
-      );
-    }
-    if (historyError != null) {
+    // The fixed overlay owns progress. Keep the header's normal geometry
+    // while fetching so entering loading does not move the reading position.
+    if (historyError != null && !loadingHistory) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Center(
           child: TextButton.icon(
             key: const ValueKey('history-retry'),
-            onPressed: () => context.read<SessionStore>().loadOlderMessages(),
+            onPressed: onRetry,
             icon: const Icon(Icons.refresh, size: 16),
             label: Text(context.l10n.chatOlderMessagesLoadFailed),
           ),
         ),
       );
     }
-    if (hasMoreHistory) {
+    if (hasMoreHistory || loadingHistory) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Center(

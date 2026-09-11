@@ -13,6 +13,10 @@ class TurnActivityCard extends StatelessWidget {
     final duration = activity.duration;
     final liquid = HermesGlassTheme.of(context).enabled;
     final palette = HermesPalette.of(context);
+    final opaque =
+        HermesGlassTheme.of(context).reduceTransparency ||
+        HermesA11y.highContrastOf(context) ||
+        MediaQuery.highContrastOf(context);
     final label = [
       if (activity.toolCount > 0)
         context.l10n.turnActivityTools(activity.toolCount),
@@ -25,9 +29,15 @@ class TurnActivityCard extends StatelessWidget {
         margin: const EdgeInsets.only(top: 2, bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: palette.surface.withValues(alpha: .78),
+          color: opaque
+              ? palette.surface
+              : palette.surface.withValues(alpha: .78),
           borderRadius: BorderRadius.circular(HermesRadius.capsule),
-          border: Border.all(color: palette.border.withValues(alpha: .72)),
+          border: Border.all(
+            color: opaque
+                ? palette.borderStrong
+                : palette.border.withValues(alpha: .72),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -38,7 +48,9 @@ class TurnActivityCard extends StatelessWidget {
               color: activity.running ? palette.accent : palette.text3,
             ),
             const SizedBox(width: 5),
-            Text(label, style: Theme.of(context).textTheme.labelSmall),
+            Flexible(
+              child: Text(label, style: Theme.of(context).textTheme.labelSmall),
+            ),
           ],
         ),
       );

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/mcp_import.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
 
 /// Full-screen JSON editor for one MCP server or the complete mcp.json file.
@@ -49,6 +50,54 @@ class _McpServerEditorScreenState extends State<McpServerEditorScreen> {
   String _transport = 'url';
   String _auth = 'none';
   String? _error;
+  bool _confirmingExit = false;
+  bool _allowExit = false;
+
+  bool get _dirty =>
+      _name.text.isNotEmpty ||
+      _endpoint.text.isNotEmpty ||
+      _args.text.isNotEmpty ||
+      _env.text != '{}' ||
+      _bearer.text.isNotEmpty ||
+      _import.text.isNotEmpty ||
+      _transport != 'url' ||
+      _auth != 'none';
+
+  @override
+  void initState() {
+    super.initState();
+    for (final controller in [
+      _name,
+      _endpoint,
+      _args,
+      _env,
+      _bearer,
+      _import,
+    ]) {
+      controller.addListener(_changed);
+    }
+  }
+
+  void _changed() => setState(() {});
+
+  Future<void> _requestExit() async {
+    if (_confirmingExit) return;
+    _confirmingExit = true;
+    final discard = await showHermesConfirmDialog(
+      context: context,
+      title: context.l10n.fileEditorDiscardQuestion,
+      message: context.l10n.fileEditorDiscardDescription,
+      confirmLabel: context.l10n.fileEditorDiscard,
+      cancelLabel: context.l10n.fileEditorKeepEditing,
+      destructive: true,
+    );
+    _confirmingExit = false;
+    if (!mounted || !discard) return;
+    setState(() => _allowExit = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
 
   @override
   void dispose() {
@@ -62,6 +111,7 @@ class _McpServerEditorScreenState extends State<McpServerEditorScreen> {
   }
 
   void _parseImport() {
+    if (_confirmingExit) return;
     final entries = parseMcpImport(_import.text);
     if (entries == null || entries.isEmpty) {
       setState(() => _error = context.l10n.mcpImportUnrecognized);
@@ -101,6 +151,7 @@ class _McpServerEditorScreenState extends State<McpServerEditorScreen> {
   }
 
   void _save() {
+    if (_confirmingExit) return;
     final name = _name.text.trim();
     final target = _endpoint.text.trim();
     if (name.isEmpty || target.isEmpty) {
@@ -143,125 +194,131 @@ class _McpServerEditorScreenState extends State<McpServerEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return MobilePageScaffold(
-      title: context.l10n.mcpAddServer,
-      actions: [
-        TextButton(
-          key: const ValueKey('mcp-server-save'),
-          onPressed: _save,
-          child: Text(context.l10n.commonAdd),
-        ),
-        const SizedBox(width: 4),
-      ],
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-          children: [
-            TextField(
-              controller: _import,
-              minLines: 2,
-              maxLines: 6,
-              decoration: InputDecoration(
-                labelText: context.l10n.mcpPasteImport,
-                errorText: _error,
-                suffixIcon: IconButton(
-                  tooltip: context.l10n.mcpParse,
-                  onPressed: _parseImport,
-                  icon: const Icon(Icons.auto_fix_high),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              key: const ValueKey('mcp-server-name'),
-              controller: _name,
-              autofocus: true,
-              decoration: InputDecoration(labelText: context.l10n.commonName),
-            ),
-            const SizedBox(height: 16),
-            SegmentedButton<String>(
-              segments: [
-                ButtonSegment(
-                  value: 'url',
-                  label: Text(context.l10n.mcpRemoteUrl),
-                ),
-                ButtonSegment(
-                  value: 'stdio',
-                  label: Text(context.l10n.mcpLocalStdio),
-                ),
-              ],
-              selected: {_transport},
-              onSelectionChanged: (value) =>
-                  setState(() => _transport = value.first),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const ValueKey('mcp-server-endpoint'),
-              controller: _endpoint,
-              decoration: InputDecoration(
-                labelText: _transport == 'url'
-                    ? context.l10n.mcpServerUrl
-                    : context.l10n.mcpCommand,
-              ),
-            ),
-            if (_transport == 'stdio') ...[
-              const SizedBox(height: 16),
+    return PopScope(
+      canPop: _allowExit || !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _requestExit();
+      },
+      child: MobilePageScaffold(
+        title: context.l10n.mcpAddServer,
+        actions: [
+          TextButton(
+            key: const ValueKey('mcp-server-save'),
+            onPressed: _save,
+            child: Text(context.l10n.commonAdd),
+          ),
+          const SizedBox(width: 4),
+        ],
+        body: SafeArea(
+          top: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            children: [
               TextField(
-                controller: _args,
-                minLines: 3,
-                maxLines: 8,
+                controller: _import,
+                minLines: 2,
+                maxLines: 6,
                 decoration: InputDecoration(
-                  labelText: context.l10n.mcpArgumentsOnePerLine,
+                  labelText: context.l10n.mcpPasteImport,
+                  errorText: _error,
+                  suffixIcon: IconButton(
+                    tooltip: context.l10n.mcpParse,
+                    onPressed: _parseImport,
+                    icon: const Icon(Icons.auto_fix_high),
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               TextField(
-                controller: _env,
-                minLines: 4,
-                maxLines: 10,
-                style: HermesType.code,
-                decoration: InputDecoration(
-                  labelText: context.l10n.mcpEnvironmentJson,
-                ),
+                key: const ValueKey('mcp-server-name'),
+                controller: _name,
+                autofocus: true,
+                decoration: InputDecoration(labelText: context.l10n.commonName),
               ),
-            ] else ...[
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                dropdownColor: hermesDropdownColor(context),
-                borderRadius: hermesDropdownBorderRadius,
-                initialValue: _auth,
-                decoration: InputDecoration(
-                  labelText: context.l10n.mcpAuthentication,
-                ),
-                items: [
-                  DropdownMenuItem(
-                    value: 'none',
-                    child: Text(context.l10n.mcpNoAuthentication),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(
+                    value: 'url',
+                    label: Text(context.l10n.mcpRemoteUrl),
                   ),
-                  DropdownMenuItem(
-                    value: 'oauth',
-                    child: Text(context.l10n.mcpAuthOauth),
-                  ),
-                  DropdownMenuItem(
-                    value: 'header',
-                    child: Text(context.l10n.mcpAuthBearerToken),
+                  ButtonSegment(
+                    value: 'stdio',
+                    label: Text(context.l10n.mcpLocalStdio),
                   ),
                 ],
-                onChanged: (value) => setState(() => _auth = value ?? 'none'),
+                selected: {_transport},
+                onSelectionChanged: (value) =>
+                    setState(() => _transport = value.first),
               ),
-              if (_auth == 'header') ...[
+              const SizedBox(height: 16),
+              TextField(
+                key: const ValueKey('mcp-server-endpoint'),
+                controller: _endpoint,
+                decoration: InputDecoration(
+                  labelText: _transport == 'url'
+                      ? context.l10n.mcpServerUrl
+                      : context.l10n.mcpCommand,
+                ),
+              ),
+              if (_transport == 'stdio') ...[
                 const SizedBox(height: 16),
                 TextField(
-                  controller: _bearer,
-                  obscureText: true,
+                  controller: _args,
+                  minLines: 3,
+                  maxLines: 8,
                   decoration: InputDecoration(
-                    labelText: context.l10n.mcpAuthBearerToken,
+                    labelText: context.l10n.mcpArgumentsOnePerLine,
                   ),
                 ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _env,
+                  minLines: 4,
+                  maxLines: 10,
+                  style: HermesType.code,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.mcpEnvironmentJson,
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  dropdownColor: hermesDropdownColor(context),
+                  borderRadius: hermesDropdownBorderRadius,
+                  initialValue: _auth,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.mcpAuthentication,
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: 'none',
+                      child: Text(context.l10n.mcpNoAuthentication),
+                    ),
+                    DropdownMenuItem(
+                      value: 'oauth',
+                      child: Text(context.l10n.mcpAuthOauth),
+                    ),
+                    DropdownMenuItem(
+                      value: 'header',
+                      child: Text(context.l10n.mcpAuthBearerToken),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => _auth = value ?? 'none'),
+                ),
+                if (_auth == 'header') ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _bearer,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: context.l10n.mcpAuthBearerToken,
+                    ),
+                  ),
+                ],
               ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -271,11 +328,41 @@ class _McpServerEditorScreenState extends State<McpServerEditorScreen> {
 class _McpConfigEditorScreenState extends State<McpConfigEditorScreen> {
   late final TextEditingController _controller;
   String? _error;
+  bool _confirmingExit = false;
+  bool _allowExit = false;
+
+  bool get _dirty => _controller.text != widget.initialValue;
+
+  void _changed() => setState(() {});
+
+  Future<void> _requestExit() async {
+    if (_confirmingExit) return;
+    if (!_dirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+    _confirmingExit = true;
+    final discard = await showHermesConfirmDialog(
+      context: context,
+      title: context.l10n.fileEditorDiscardQuestion,
+      message: context.l10n.fileEditorDiscardDescription,
+      confirmLabel: context.l10n.fileEditorDiscard,
+      cancelLabel: context.l10n.fileEditorKeepEditing,
+      destructive: true,
+    );
+    _confirmingExit = false;
+    if (!mounted || !discard) return;
+    setState(() => _allowExit = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue);
+    _controller.addListener(_changed);
   }
 
   @override
@@ -296,6 +383,7 @@ class _McpConfigEditorScreenState extends State<McpConfigEditorScreen> {
   }
 
   void _save() {
+    if (_confirmingExit) return;
     _validate();
     if (_error == null) Navigator.of(context).pop(_controller.text);
   }
@@ -303,70 +391,76 @@ class _McpConfigEditorScreenState extends State<McpConfigEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        leading: TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(context.l10n.commonCancel),
-        ),
-        leadingWidth: 76,
-        title: Text(widget.title),
-        actions: [
-          TextButton(
-            key: const ValueKey('mcp-config-save'),
-            onPressed: _save,
-            child: Text(context.l10n.commonSave),
+    return PopScope(
+      canPop: _allowExit || !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _requestExit();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: TextButton(
+            onPressed: _requestExit,
+            child: Text(context.l10n.commonCancel),
           ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 960),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                    child: Text(
-                      widget.documentEditor
-                          ? 'mcp.json'
-                          : context.l10n.mcpEditConfiguration,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: palette.text3),
-                    ),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      key: widget.documentEditor
-                          ? const ValueKey('mcp-document-editor')
-                          : const ValueKey('mcp-server-config-editor'),
-                      controller: _controller,
-                      expands: true,
-                      minLines: null,
-                      maxLines: null,
-                      textAlignVertical: TextAlignVertical.top,
-                      keyboardType: TextInputType.multiline,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      style: HermesType.code,
-                      onChanged: (_) {
-                        if (_error != null) _validate();
-                      },
-                      decoration: InputDecoration(
-                        errorText: _error,
-                        errorMaxLines: 2,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.all(14),
+          leadingWidth: 76,
+          title: Text(widget.title),
+          actions: [
+            TextButton(
+              key: const ValueKey('mcp-config-save'),
+              onPressed: _save,
+              child: Text(context.l10n.commonSave),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+        body: SafeArea(
+          top: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 960),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                      child: Text(
+                        widget.documentEditor
+                            ? 'mcp.json'
+                            : context.l10n.mcpEditConfiguration,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: palette.text3),
                       ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: TextField(
+                        key: widget.documentEditor
+                            ? const ValueKey('mcp-document-editor')
+                            : const ValueKey('mcp-server-config-editor'),
+                        controller: _controller,
+                        expands: true,
+                        minLines: null,
+                        maxLines: null,
+                        textAlignVertical: TextAlignVertical.top,
+                        keyboardType: TextInputType.multiline,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        style: HermesType.code,
+                        onChanged: (_) {
+                          if (_error != null) _validate();
+                        },
+                        decoration: InputDecoration(
+                          errorText: _error,
+                          errorMaxLines: 2,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.all(14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -12,6 +12,8 @@ import '../core/connections/connection_registry.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
+import '../widgets/glass/glass_button.dart';
 import '../widgets/h/hermes_badge.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
@@ -163,20 +165,35 @@ class NotificationScreen extends StatelessWidget {
         : width >= 600
         ? 720.0
         : double.infinity;
-    return MobilePageScaffold(
+    return HermesPageScaffold(
       title: context.l10n.notificationTitle,
+      scrollBodyBehindHeader: items.isNotEmpty,
       actions: [
         if (items.isNotEmpty)
-          TextButton(
-            onPressed: store.markAllRead,
-            child: Text(context.l10n.notificationMarkAllRead),
-          ),
+          if (HermesGlassTheme.of(context).enabled)
+            GlassButton(
+              tooltip: context.l10n.notificationMarkAllRead,
+              onPressed: store.unreadCount > 0 ? store.markAllRead : null,
+              child: const Icon(Icons.done_all),
+            )
+          else
+            TextButton(
+              onPressed: store.markAllRead,
+              child: Text(context.l10n.notificationMarkAllRead),
+            ),
         if (items.isNotEmpty)
-          IconButton(
-            tooltip: context.l10n.notificationClear,
-            onPressed: () => _confirmClear(context, store),
-            icon: const Icon(Icons.delete_sweep_outlined),
-          ),
+          if (HermesGlassTheme.of(context).enabled)
+            GlassButton(
+              tooltip: context.l10n.notificationClear,
+              onPressed: () => _confirmClear(context, store),
+              child: const Icon(Icons.delete_sweep_outlined),
+            )
+          else
+            IconButton(
+              tooltip: context.l10n.notificationClear,
+              onPressed: () => _confirmClear(context, store),
+              icon: const Icon(Icons.delete_sweep_outlined),
+            ),
       ],
       body: Center(
         child: ConstrainedBox(

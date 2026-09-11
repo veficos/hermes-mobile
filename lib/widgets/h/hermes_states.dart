@@ -5,6 +5,7 @@
 /// 重试 Secondary。
 library;
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/haptics.dart';
@@ -36,10 +37,39 @@ void showHermesErrorSnackBar(
   VoidCallback? onRetry,
 }) {
   HermesHaptics.fire(HermesHapticIntent.error);
+  final largeText = MediaQuery.textScalerOf(context).scale(14) > 21;
+  final message = hermesErrorMessage(context, error, fallback: fallback);
+  var retryInvoked = false;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text(hermesErrorMessage(context, error, fallback: fallback)),
-      action: onRetry == null
+      content: largeText && onRetry != null
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(message),
+                const SizedBox(height: 8),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor:
+                        Theme.of(
+                          context,
+                        ).snackBarTheme.contentTextStyle?.color ??
+                        Theme.of(context).colorScheme.onInverseSurface,
+                    minimumSize: const Size(44, 44),
+                  ),
+                  onPressed: () {
+                    if (retryInvoked) return;
+                    retryInvoked = true;
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    onRetry();
+                  },
+                  child: Text(context.l10n.commonRetry),
+                ),
+              ],
+            )
+          : Text(message),
+      action: onRetry == null || largeText
           ? null
           : SnackBarAction(label: context.l10n.commonRetry, onPressed: onRetry),
     ),
@@ -214,10 +244,10 @@ class HermesLoadingState extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = HermesPalette.of(context);
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(HermesSpacing.lg),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             if (showDots)
               const HermesTypingDots()
@@ -289,7 +319,21 @@ class _HermesSkeletonBlockState extends State<HermesSkeletonBlock>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
-  )..repeat(reverse: true);
+  );
+  bool _reduceMotion = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion =
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
+    if (_reduceMotion) {
+      _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -306,11 +350,10 @@ class _HermesSkeletonBlockState extends State<HermesSkeletonBlock>
     // 提升（§3.7），边框升级 borderStrong + 1.5px 与主题边框一致。
     final overlay = isDark ? Colors.white : Colors.black;
     final baseAlpha = hermesTintAlpha(context, 0.06);
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        final t = reduceMotion ? 1.0 : (0.55 + 0.45 * _controller.value);
+        final t = _reduceMotion ? 1.0 : (0.55 + 0.45 * _controller.value);
         return Container(
           width: widget.width,
           height: widget.height,
@@ -418,18 +461,35 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
-  )..repeat(reverse: true);
+  );
+  Timer? _startTimer;
+  bool _reduceMotion = false;
+  late final Animation<double> _scale = _controller
+      .drive(CurveTween(curve: Curves.easeInOut))
+      .drive(Tween(begin: 0.5, end: 1.0));
 
   @override
-  void initState() {
-    super.initState();
-    Future.delayed(Duration(milliseconds: widget.delay), () {
-      if (mounted) _controller.forward();
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion =
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
+    if (_reduceMotion) {
+      _startTimer?.cancel();
+      _startTimer = null;
+      _controller.stop();
+      _controller.value = 0;
+    } else if (!_controller.isAnimating && _startTimer == null) {
+      _startTimer = Timer(Duration(milliseconds: widget.delay), () {
+        _startTimer = null;
+        if (mounted && !_reduceMotion) _controller.repeat(reverse: true);
+      });
+    }
   }
 
   @override
   void dispose() {
+    _startTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -437,7 +497,7 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     // Reduce Motion (spec §162): static dots when the OS disables animations.
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (_reduceMotion) {
       return Container(
         width: 6,
         height: 6,
@@ -445,10 +505,7 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
       );
     }
     return ScaleTransition(
-      scale: Tween(
-        begin: 0.5,
-        end: 1.0,
-      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      scale: _scale,
       child: Container(
         width: 6,
         height: 6,

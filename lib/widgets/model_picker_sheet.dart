@@ -4,6 +4,9 @@ import '../core/api_client.dart';
 import '../core/model_catalog.dart';
 import '../core/models.dart';
 import '../l10n/l10n.dart';
+import '../theme/hermes_glass_theme.dart';
+import 'glass/glass_button.dart';
+import 'glass/glass_selection_row.dart';
 import 'h/hermes_toast.dart';
 import 'mobile/mobile_page_scaffold.dart';
 
@@ -109,6 +112,13 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final projection = _catalog.project(visibleModelKeys: _visibleKeys);
+    Widget action({
+      required String tooltip,
+      required VoidCallback? onPressed,
+      required Widget child,
+    }) => HermesGlassTheme.of(context).enabled
+        ? GlassButton(tooltip: tooltip, onPressed: onPressed, child: child)
+        : IconButton(tooltip: tooltip, onPressed: onPressed, icon: child);
     return SafeArea(
       child: SizedBox(
         height: MediaQuery.sizeOf(context).height * .75,
@@ -149,7 +159,10 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                     ),
                     for (final provider in projection.moaProviders)
                       for (final model in provider.models)
-                        ListTile(
+                        _ModelChoice(
+                          selected:
+                              provider.slug == _catalog.currentProvider &&
+                              model == _catalog.currentModel,
                           title: Text(context.l10n.modelPickerMoaModel(model)),
                           trailing:
                               provider.slug == _catalog.currentProvider &&
@@ -167,20 +180,20 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                IconButton(
+                action(
                   tooltip: context.l10n.modelPickerRefresh,
                   onPressed: _refreshing ? null : _refresh,
-                  icon: _refreshing
+                  child: _refreshing
                       ? const SizedBox.square(
                           dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.refresh),
                 ),
-                IconButton(
+                action(
                   tooltip: context.l10n.modelPickerEdit,
                   onPressed: _refreshing ? null : _editVisibility,
-                  icon: const Icon(Icons.edit_outlined),
+                  child: const Icon(Icons.edit_outlined),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -211,9 +224,14 @@ class _ProviderModels extends StatelessWidget {
       initiallyExpanded: provider.slug == currentProvider,
       children: [
         for (final model in provider.models)
-          ListTile(
+          _ModelChoice(
+            selected: provider.slug == currentProvider && model == currentModel,
             title: Text(model),
-            subtitle: _ModelPriceLabel(price: provider.pricing[model]),
+            subtitle: _ModelPriceLabel(
+              price: provider.pricing[model],
+              selected:
+                  provider.slug == currentProvider && model == currentModel,
+            ),
             trailing: provider.slug == currentProvider && model == currentModel
                 ? const Icon(Icons.check)
                 : provider.pricing[model]?.free == true
@@ -226,9 +244,43 @@ class _ProviderModels extends StatelessWidget {
   }
 }
 
+/// A local selection fill on the sheet's shared material, never another blur.
+class _ModelChoice extends StatelessWidget {
+  const _ModelChoice({
+    required this.selected,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.trailing,
+  });
+  final bool selected;
+  final Widget title;
+  final Widget? subtitle;
+  final Widget? trailing;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final colors = Theme.of(context).colorScheme;
+    final tile = ListTile(
+      title: title,
+      subtitle: subtitle,
+      trailing: trailing,
+      onTap: onTap,
+      selected: liquid && selected,
+      selectedColor: liquid ? colors.onPrimaryContainer : null,
+      minTileHeight: liquid ? 56 : null,
+      visualDensity: liquid ? VisualDensity.standard : null,
+    );
+    return GlassSelectionRow(selected: selected, child: tile);
+  }
+}
+
 class _ModelPriceLabel extends StatelessWidget {
   final ModelPricing? price;
-  const _ModelPriceLabel({required this.price});
+  final bool selected;
+  const _ModelPriceLabel({required this.price, required this.selected});
 
   @override
   Widget build(BuildContext context) {
@@ -239,7 +291,11 @@ class _ModelPriceLabel extends StatelessWidget {
         value.discountPercent == null
             ? context.l10n.modelPickerFree
             : context.l10n.modelPickerFreeDiscount(value.discountPercent!),
-        style: TextStyle(color: Theme.of(context).colorScheme.tertiary),
+        style: TextStyle(
+          color: selected && HermesGlassTheme.of(context).enabled
+              ? Theme.of(context).colorScheme.onPrimaryContainer
+              : Theme.of(context).colorScheme.tertiary,
+        ),
       );
     }
     if (value.input.isEmpty && value.output.isEmpty) {

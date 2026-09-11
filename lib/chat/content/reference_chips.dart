@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/stores/connection_store.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../../widgets/web_preview.dart' show openChatLink;
 import 'rich_link_embed.dart';
 import 'zoomable_markdown_image.dart';
@@ -205,11 +206,21 @@ class _FileAttachmentTile extends StatelessWidget {
           width: 118,
           height: 118,
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: palette.codeBg,
-            border: Border.all(color: palette.border),
-            borderRadius: BorderRadius.circular(12),
-          ),
+          decoration: HermesGlassTheme.of(context).enabled
+              ? ShapeDecoration(
+                  color: HermesGlassTheme.of(context).allowsTransparency(context)
+                      ? palette.codeBg.withValues(alpha: .78)
+                      : palette.codeBg,
+                  shape: RoundedSuperellipseBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: palette.border),
+                  ),
+                )
+              : BoxDecoration(
+                  color: palette.codeBg,
+                  border: Border.all(color: palette.border),
+                  borderRadius: BorderRadius.circular(12),
+                ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

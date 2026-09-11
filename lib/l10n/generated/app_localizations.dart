@@ -103,6 +103,90 @@ abstract class AppLocalizations {
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
   ];
 
+  /// No description provided for @requestExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Request expired'**
+  String get requestExpired;
+
+  /// No description provided for @clientPerformanceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Client performance'**
+  String get clientPerformanceTitle;
+
+  /// No description provided for @clientPerformanceSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'View and copy metrics from this app run'**
+  String get clientPerformanceSubtitle;
+
+  /// No description provided for @fileEditorEditFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit file'**
+  String get fileEditorEditFile;
+
+  /// No description provided for @fileEditorShowChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Show changes'**
+  String get fileEditorShowChanges;
+
+  /// No description provided for @taskPreviousColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous column'**
+  String get taskPreviousColumn;
+
+  /// No description provided for @taskNextColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'Next column'**
+  String get taskNextColumn;
+
+  /// No description provided for @taskVisibleColumns.
+  ///
+  /// In en, this message translates to:
+  /// **'Columns {first}–{last} of {total}'**
+  String taskVisibleColumns(int first, int last, int total);
+
+  /// No description provided for @appearancePreviewNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview only — no messages are sent'**
+  String get appearancePreviewNotice;
+
+  /// No description provided for @appearancePreviewContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Your content stays readable beneath floating controls.'**
+  String get appearancePreviewContent;
+
+  /// No description provided for @appearancePreviewComposer.
+  ///
+  /// In en, this message translates to:
+  /// **'Message preview'**
+  String get appearancePreviewComposer;
+
+  /// No description provided for @agentDiagnostics.
+  ///
+  /// In en, this message translates to:
+  /// **'Service status & diagnostics'**
+  String get agentDiagnostics;
+
+  /// No description provided for @agentBackendRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'Backend running'**
+  String get agentBackendRunning;
+
+  /// No description provided for @agentBackendStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Backend stopped'**
+  String get agentBackendStopped;
+
   /// No description provided for @appearanceVisualStyle.
   ///
   /// In en, this message translates to:

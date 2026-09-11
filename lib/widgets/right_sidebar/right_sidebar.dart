@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/stores/preview_store.dart';
 import '../../l10n/l10n.dart';
+import '../../theme/hermes_glass_theme.dart';
+import '../glass/glass_surface.dart';
 import '../../screens/mcp_logs_screen.dart';
 import '../preview/artifact_preview.dart';
 import '../web_preview.dart';
@@ -216,7 +218,8 @@ class _RightSidebarState extends State<RightSidebar>
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final sidebar = SafeArea(
       left: false,
       right: false,
       bottom: false,
@@ -232,7 +235,15 @@ class _RightSidebarState extends State<RightSidebar>
               child: Column(
                 children: [
                   _buildTabBar(context),
-                  const Divider(height: 1, thickness: 1),
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: HermesGlassTheme.of(context).enabled
+                        ? Theme.of(
+                            context,
+                          ).colorScheme.outline.withValues(alpha: .28)
+                        : null,
+                  ),
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
@@ -247,9 +258,22 @@ class _RightSidebarState extends State<RightSidebar>
               ),
             ),
     );
+    // The desktop three-pane host does not provide a material ancestor (the
+    // phone/tablet drawer does), so the dock must own its sampled surface too.
+    // This keeps the tab rail and its content on one continuous glass plane.
+    return liquid
+        ? GlassSurface(
+            key: const ValueKey('right-sidebar-glass'),
+            radius: 28,
+            role: HermesGlassRole.navigation,
+            child: sidebar,
+          )
+        : sidebar;
   }
 
   Widget _buildTabBar(BuildContext context) {
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       child: Row(
@@ -265,15 +289,55 @@ class _RightSidebarState extends State<RightSidebar>
               ),
               unselectedLabelStyle: const TextStyle(fontSize: 12),
               labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-              indicatorSize: TabBarIndicatorSize.label,
-              indicatorWeight: 2,
+              labelColor: liquid ? colors.onPrimaryContainer : null,
+              unselectedLabelColor: liquid ? colors.onSurfaceVariant : null,
+              dividerColor: liquid ? Colors.transparent : null,
+              indicatorSize: liquid
+                  ? TabBarIndicatorSize.tab
+                  : TabBarIndicatorSize.label,
+              indicatorWeight: HermesGlassTheme.of(context).enabled ? 1.5 : 2,
+              indicatorPadding: HermesGlassTheme.of(context).enabled
+                  ? const EdgeInsets.symmetric(horizontal: 2, vertical: 4)
+                  : EdgeInsets.zero,
+              indicator: HermesGlassTheme.of(context).enabled
+                  ? ShapeDecoration(
+                      color: colors.primaryContainer,
+                      shape: const StadiumBorder(),
+                    )
+                  : null,
               tabs: _tabs
                   .map(
-                    (t) => Tab(
-                      icon: Icon(t.icon, size: 16),
-                      text: _tabLabel(context, t.tab),
-                      height: 40,
-                    ),
+                    (t) => liquid
+                        ? Tab(
+                            height:
+                                48 +
+                                (MediaQuery.textScalerOf(context).scale(12) -
+                                        12)
+                                    .clamp(0, double.infinity),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _tabs[_tabController.index].tab == t.tab
+                                        ? t.activeIcon
+                                        : t.icon,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(_tabLabel(context, t.tab)),
+                                ],
+                              ),
+                            ),
+                          )
+                        : Tab(
+                            icon: Icon(t.icon, size: 16),
+                            text: _tabLabel(context, t.tab),
+                            height: 40,
+                          ),
                   )
                   .toList(),
             ),
@@ -284,7 +348,9 @@ class _RightSidebarState extends State<RightSidebar>
               icon: const Icon(Icons.chevron_right, size: 18),
               onPressed: _toggleCollapse,
               padding: const EdgeInsets.all(4),
-              constraints: const BoxConstraints(),
+              constraints: liquid
+                  ? const BoxConstraints(minWidth: 44, minHeight: 44)
+                  : const BoxConstraints(),
             ),
         ],
       ),
@@ -292,40 +358,68 @@ class _RightSidebarState extends State<RightSidebar>
   }
 
   Widget _buildCollapsedRail(BuildContext context) {
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final colors = Theme.of(context).colorScheme;
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: liquid
+          ? Colors.transparent
+          : Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Column(
         children: [
           const SizedBox(height: 8),
-          ..._tabs.asMap().entries.map((e) {
-            final idx = e.key;
-            final tab = e.value;
-            final isSelected = _tabController.index == idx;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: IconButton(
-                tooltip: _tabLabel(context, tab.tab),
-                icon: Icon(
-                  isSelected ? tab.activeIcon : tab.icon,
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                  size: 22,
-                ),
-                onPressed: () {
-                  setState(() => _collapsed = false);
-                  widget.onCollapsedChanged?.call(false);
-                  SharedPreferences.getInstance().then(
-                    (prefs) => prefs.setBool(_kCollapsedKey, false),
-                  );
-                  _tabController.animateTo(idx);
-                },
-              ),
-            );
-          }),
-          const Spacer(),
+          Expanded(
+            child: ListView(
+              key: const ValueKey('right-sidebar-rail-scroll'),
+              padding: EdgeInsets.zero,
+              children: _tabs.asMap().entries.map((e) {
+                final idx = e.key;
+                final tab = e.value;
+                final isSelected = _tabController.index == idx;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  child: Semantics(
+                    selected: isSelected,
+                    child: IconButton(
+                      key: ValueKey('right-sidebar-rail-${tab.tab.name}'),
+                      style: liquid
+                          ? IconButton.styleFrom(
+                              minimumSize: const Size(44, 44),
+                              backgroundColor: isSelected
+                                  ? colors.primaryContainer
+                                  : Colors.transparent,
+                              shape: const StadiumBorder(),
+                            )
+                          : null,
+                      tooltip: _tabLabel(context, tab.tab),
+                      icon: Icon(
+                        isSelected ? tab.activeIcon : tab.icon,
+                        color: isSelected
+                            ? (liquid
+                                  ? colors.onPrimaryContainer
+                                  : colors.primary)
+                            : colors.onSurfaceVariant,
+                        size: 22,
+                      ),
+                      onPressed: () {
+                        setState(() => _collapsed = false);
+                        widget.onCollapsedChanged?.call(false);
+                        SharedPreferences.getInstance().then(
+                          (prefs) => prefs.setBool(_kCollapsedKey, false),
+                        );
+                        _tabController.animateTo(idx);
+                      },
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
           IconButton(
             tooltip: context.l10n.commonExpand,
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             icon: const Icon(Icons.chevron_left, size: 22),
             onPressed: _toggleCollapse,
           ),

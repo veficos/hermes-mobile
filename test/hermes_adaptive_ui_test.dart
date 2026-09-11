@@ -5,6 +5,48 @@ import 'package:hermes_mobile/widgets/mobile/hermes_adaptive_ui.dart';
 import 'package:hermes_mobile/widgets/mobile/mobile_page_scaffold.dart';
 
 void main() {
+  for (final direction in TextDirection.values) {
+    testWidgets('large-text grouped row wraps $direction', (tester) async {
+      var taps = 0;
+      const title = 'A long settings title that must remain fully readable';
+      const subtitle =
+          'A detailed explanation of the setting, its scope, and what changes when enabled.';
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildHermesTheme(brightness: Brightness.light),
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: Directionality(
+              textDirection: direction,
+              child: Scaffold(
+                body: SingleChildScrollView(
+                  child: SizedBox(
+                    width: 320,
+                    child: HermesGroupedList(
+                      children: [
+                        HermesListRow(
+                          icon: Icons.settings,
+                          title: title,
+                          subtitle: subtitle,
+                          onTap: () => taps++,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.widget<Text>(find.text(title)).maxLines, isNull);
+      expect(tester.widget<Text>(find.text(subtitle)).maxLines, isNull);
+      expect(tester.getSize(find.text(title)).height, greaterThan(40));
+      await tester.tap(find.text(title));
+      expect(taps, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
   Widget app(Widget child) => MaterialApp(
     theme: buildHermesTheme(brightness: Brightness.light),
     home: child,

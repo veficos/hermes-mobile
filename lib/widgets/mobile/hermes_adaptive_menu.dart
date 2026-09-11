@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import '../../theme/hermes_tokens.dart';
 import '../../theme/hermes_glass_theme.dart';
 import '../glass/glass_surface.dart';
+import '../glass/glass_menu_entry.dart';
+import '../glass/glass_selection_row.dart';
+import '../glass/glass_button.dart';
 
 /// A project-wide menu button that uses a thumb-friendly action sheet on
 /// phones and an anchored popup menu on larger displays.
@@ -46,6 +49,9 @@ class HermesAdaptiveMenuButton<T> extends StatelessWidget {
   final double? iconSize;
   final Color? iconColor;
   final bool enabled;
+
+  /// Anchored popup constraints, matching PopupMenuButton. The phone sheet
+  /// uses its own viewport bounds; these never size the trigger button.
   final BoxConstraints? constraints;
   final Offset offset;
   final PopupMenuPosition? position;
@@ -55,12 +61,16 @@ class HermesAdaptiveMenuButton<T> extends StatelessWidget {
     if (!enabled) return;
     onOpened?.call();
     final entries = itemBuilder(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
     final selected = await showModalBottomSheet<T>(
       context: context,
       useRootNavigator: useRootNavigator,
       useSafeArea: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      showDragHandle: false, // The content owns its single drag handle.
+      shape: liquid ? const RoundedRectangleBorder() : null,
+      elevation: liquid ? 0 : null,
       barrierColor: Colors.black.withValues(alpha: .38),
       builder: (sheetContext) => _HermesPhoneMenuSheet<T>(
         entries: entries,
@@ -79,23 +89,56 @@ class HermesAdaptiveMenuButton<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final isPhone = MediaQuery.sizeOf(context).width < HermesBreakpoints.phone;
     if (!isPhone) {
+      final liquid = HermesGlassTheme.of(context).enabled;
+      final menuTheme = PopupMenuTheme.of(context);
+      final configuredPosition = position ?? menuTheme.position;
       return PopupMenuButton<T>(
-        initialValue: initialValue,
+        // Liquid menus attach to the trigger, not the centre of the selected
+        // row. Selection belongs inside the single glass panel.
+        initialValue: liquid ? null : initialValue,
         onOpened: onOpened,
         onSelected: onSelected,
         onCanceled: onCanceled,
         tooltip: tooltip,
         padding: padding,
-        menuPadding: menuPadding,
+        menuPadding: liquid ? EdgeInsets.zero : menuPadding,
+        color: liquid ? Colors.transparent : null,
+        surfaceTintColor: liquid ? Colors.transparent : null,
+        elevation: liquid ? 0 : null,
+        shape: liquid ? const RoundedRectangleBorder() : null,
         icon: icon,
         iconSize: iconSize,
         iconColor: iconColor,
         enabled: enabled,
         constraints: constraints,
-        offset: offset,
-        position: position,
+        // PopupMenuButton subtracts icon padding for `under`; restore it so
+        // the floating outline clears the full hit target by four pixels.
+        offset: liquid && configuredPosition == null
+            ? offset + Offset(0, 4 + (child == null ? padding.vertical / 2 : 0))
+            : offset,
+        position:
+            configuredPosition ?? (liquid ? PopupMenuPosition.under : null),
         useRootNavigator: useRootNavigator,
-        itemBuilder: itemBuilder,
+        itemBuilder: liquid
+            ? (context) {
+                final entries = itemBuilder(context);
+                return entries.isEmpty
+                    ? <PopupMenuEntry<T>>[]
+                    : [
+                        GlassMenuEntry<T>(
+                          entries: entries,
+                          maxHeight: GlassMenuEntry.availableHeight(
+                            context,
+                          ).clamp(0, constraints?.maxHeight ?? double.infinity),
+                          initialValue: initialValue,
+                          padding:
+                              menuPadding ??
+                              menuTheme.menuPadding ??
+                              const EdgeInsets.all(6),
+                        ),
+                      ];
+              }
+            : itemBuilder,
         child: child,
       );
     }
@@ -113,7 +156,6 @@ class HermesAdaptiveMenuButton<T> extends StatelessWidget {
       tooltip: tooltip,
       onPressed: enabled ? () => _openPhoneMenu(context) : null,
       padding: padding,
-      constraints: constraints,
       iconSize: iconSize,
       color: iconColor,
       icon: icon ?? const Icon(Icons.more_vert),
@@ -135,9 +177,10 @@ class _HermesPhoneMenuSheet<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
     final palette = HermesPalette.of(context);
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-    return Align(
+    final sheet = Align(
       alignment: Alignment.bottomCenter,
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -146,20 +189,25 @@ class _HermesPhoneMenuSheet<T> extends StatelessWidget {
         ),
         child: GlassSurface(
           radius: 28,
-          thick: true,
+          role: HermesGlassRole.overlay,
           child: Material(
             color: HermesGlassTheme.of(context).enabled
                 ? Colors.transparent
                 : palette.elevated,
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
-              ),
-              side: BorderSide(color: palette.border),
-            ),
+            // Liquid's outer material owns the continuous-corner clip.
+            clipBehavior: liquid ? Clip.none : Clip.antiAlias,
+            shape: liquid
+                ? null
+                : RoundedRectangleBorder(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    side: liquid
+                        ? BorderSide.none
+                        : BorderSide(color: palette.border),
+                  ),
             child: Padding(
-              padding: EdgeInsets.only(bottom: keyboard),
+              padding: EdgeInsets.only(bottom: liquid ? 0 : keyboard),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -187,13 +235,22 @@ class _HermesPhoneMenuSheet<T> extends StatelessWidget {
                               ),
                             ),
                           ),
-                          IconButton(
-                            tooltip: MaterialLocalizations.of(
-                              context,
-                            ).closeButtonTooltip,
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close, size: 20),
-                          ),
+                          if (liquid)
+                            GlassButton(
+                              tooltip: MaterialLocalizations.of(
+                                context,
+                              ).closeButtonTooltip,
+                              onPressed: () => Navigator.pop(context),
+                              child: const Icon(Icons.close, size: 20),
+                            )
+                          else
+                            IconButton(
+                              tooltip: MaterialLocalizations.of(
+                                context,
+                              ).closeButtonTooltip,
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.close, size: 20),
+                            ),
                         ],
                       ),
                     )
@@ -222,6 +279,20 @@ class _HermesPhoneMenuSheet<T> extends StatelessWidget {
         ),
       ),
     );
+    // Keyboard avoidance belongs outside the sampled material. Otherwise the
+    // menu grows a blank glass panel behind the keyboard and its lower rounded
+    // edge disappears. Keep the Classic layout unchanged.
+    return liquid
+        ? Padding(
+            padding: EdgeInsets.fromLTRB(
+              12,
+              12,
+              12,
+              keyboard + 12 + MediaQuery.paddingOf(context).bottom,
+            ),
+            child: sheet,
+          )
+        : sheet;
   }
 
   Widget _phoneEntry(BuildContext context, PopupMenuEntry<T> entry) {
@@ -236,6 +307,43 @@ class _HermesPhoneMenuSheet<T> extends StatelessWidget {
     final destructive =
         value is String &&
         const {'delete', 'disconnect', 'remove'}.contains(value.toLowerCase());
+    if (HermesGlassTheme.of(context).enabled) {
+      return GlassSelectionRow(
+        selected: selected,
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        child: destructive
+            ? IconTheme.merge(
+                data: IconThemeData(color: Theme.of(context).colorScheme.error),
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  child: Builder(
+                    builder: (context) {
+                      final popup = PopupMenuTheme.of(context);
+                      final error = Theme.of(context).colorScheme.error;
+                      return PopupMenuTheme(
+                        data: popup.copyWith(
+                          labelTextStyle: WidgetStateProperty.resolveWith((
+                            states,
+                          ) {
+                            final base = popup.labelTextStyle?.resolve(states);
+                            if (states.contains(WidgetState.disabled)) {
+                              return base;
+                            }
+                            return (base ??
+                                    popup.textStyle ??
+                                    Theme.of(context).textTheme.labelLarge!)
+                                .copyWith(color: error);
+                          }),
+                        ),
+                        child: entry,
+                      );
+                    },
+                  ),
+                ),
+              )
+            : entry,
+      );
+    }
     final foreground = destructive
         ? Theme.of(context).colorScheme.error
         : selected

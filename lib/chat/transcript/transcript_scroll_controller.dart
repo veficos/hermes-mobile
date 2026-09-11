@@ -4,6 +4,10 @@ import 'package:flutter/widgets.dart';
 class TranscriptScrollController extends ScrollController {
   bool _correctingContent = false;
   bool get correctingContent => _correctingContent;
+
+  /// Motion from drag/ballistic updates, excluding layout and anchor corrections.
+  double get motionPixels =>
+      hasClients ? (position as _TranscriptScrollPosition).motionPixels : 0;
   @override
   ScrollPosition createScrollPosition(
     ScrollPhysics physics,
@@ -29,6 +33,16 @@ class TranscriptScrollController extends ScrollController {
 }
 
 class _TranscriptScrollPosition extends ScrollPositionWithSingleContext {
+  double motionPixels = 0;
+
+  @override
+  double setPixels(double newPixels) {
+    final before = pixels;
+    final overscroll = super.setPixels(newPixels);
+    motionPixels += pixels - before;
+    return overscroll;
+  }
+
   _TranscriptScrollPosition({
     required super.physics,
     required super.context,

@@ -200,19 +200,22 @@ class _McpLogsScreenState extends State<McpLogsScreen>
     if (widget.embedded) {
       return Column(
         children: [
-          SizedBox(
-            height: 48,
-            child: Row(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    widget.title ??
-                        widget.serverName ??
-                        context.l10n.mcpLogsAllServers,
-                  ),
+                Text(
+                  widget.title ??
+                      widget.serverName ??
+                      context.l10n.mcpLogsAllServers,
                 ),
-                sourcePicker,
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: sourcePicker,
+                ),
               ],
             ),
           ),

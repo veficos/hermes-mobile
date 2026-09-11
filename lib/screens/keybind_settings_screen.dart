@@ -13,6 +13,8 @@ import '../core/stores/keybind_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
+import '../widgets/glass/glass_alert_dialog.dart';
 
 class KeybindSettingsScreen extends StatelessWidget {
   final bool embedded;
@@ -36,7 +38,11 @@ class KeybindSettingsScreen extends StatelessWidget {
     };
   }
 
-  Future<void> _capture(BuildContext context, KeybindStore store, String actionId) async {
+  Future<void> _capture(
+    BuildContext context,
+    KeybindStore store,
+    String actionId,
+  ) async {
     final activator = await showDialog<SingleActivator>(
       context: context,
       builder: (_) => _CaptureDialog(store: store, actionId: actionId),
@@ -50,66 +56,74 @@ class KeybindSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.watch<KeybindStore>();
     final l10n = context.l10n;
-    final content = ListView(
-      padding: const EdgeInsets.all(HermesSpacing.md),
-      children: [
-        Text(
-          l10n.settingsKeybindsDesc,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: HermesPalette.of(context).text2,
-          ),
+    final children = <Widget>[
+      Text(
+        l10n.settingsKeybindsDesc,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: HermesPalette.of(context).text2,
         ),
-        const SizedBox(height: HermesSpacing.sm),
-        Text(
-          l10n.keybindNoHardwareKeyboardHint,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: HermesPalette.of(context).text3,
-          ),
-        ),
-        const SizedBox(height: HermesSpacing.md),
-        HermesMobileGroup(
-          children: [
-            for (final action in KeybindStore.actions)
-              HermesMobileRow(
-                icon: _actionIcon(action.id),
-                title: _actionLabel(context, action.id),
-                subtitle: _describeActivators(store.bindingsFor(action.id)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (store.isCustomized(action.id))
-                      IconButton(
-                        tooltip: l10n.keybindReset,
-                        icon: const Icon(Icons.restart_alt_outlined),
-                        onPressed: () => store.resetBinding(action.id),
-                      ),
-                    TextButton(
-                      onPressed: () => _capture(context, store, action.id),
-                      child: Text(l10n.keybindChange),
+      ),
+      const SizedBox(height: HermesSpacing.sm),
+      Text(
+        l10n.keybindNoHardwareKeyboardHint,
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: HermesPalette.of(context).text3),
+      ),
+      const SizedBox(height: HermesSpacing.md),
+      HermesMobileGroup(
+        children: [
+          for (final action in KeybindStore.actions)
+            HermesMobileRow(
+              icon: _actionIcon(action.id),
+              title: _actionLabel(context, action.id),
+              subtitle: _describeActivators(store.bindingsFor(action.id)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (store.isCustomized(action.id))
+                    IconButton(
+                      tooltip: l10n.keybindReset,
+                      icon: const Icon(Icons.restart_alt_outlined),
+                      onPressed: () => store.resetBinding(action.id),
                     ),
-                  ],
-                ),
+                  TextButton(
+                    onPressed: () => _capture(context, store, action.id),
+                    child: Text(l10n.keybindChange),
+                  ),
+                ],
               ),
-          ],
+            ),
+        ],
+      ),
+      const SizedBox(height: HermesSpacing.md),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: KeybindStore.actions.any((a) => store.isCustomized(a.id))
+              ? () => store.resetAll()
+              : null,
+          icon: const Icon(Icons.settings_backup_restore_outlined),
+          label: Text(l10n.keybindResetAll),
         ),
-        const SizedBox(height: HermesSpacing.md),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: KeybindStore.actions.any((a) => store.isCustomized(a.id))
-                ? () => store.resetAll()
-                : null,
-            icon: const Icon(Icons.settings_backup_restore_outlined),
-            label: Text(l10n.keybindResetAll),
-          ),
-        ),
-      ],
-    );
+      ),
+    ];
 
-    if (embedded) return content;
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.keybindsTitle)),
-      body: content,
+    if (embedded) {
+      return ListView(
+        padding: const EdgeInsets.all(HermesSpacing.md),
+        children: children,
+      );
+    }
+    return HermesPageScaffold(
+      title: l10n.keybindsTitle,
+      scrollable: true,
+      maxContentWidth: 760,
+      bodyPadding: const EdgeInsets.all(HermesSpacing.md),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
     );
   }
 }
@@ -168,13 +182,17 @@ class _CaptureDialogState extends State<_CaptureDialog> {
     if (modifierKeys.contains(key)) return KeyEventResult.handled;
 
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
-    final control = pressed.contains(LogicalKeyboardKey.controlLeft) ||
+    final control =
+        pressed.contains(LogicalKeyboardKey.controlLeft) ||
         pressed.contains(LogicalKeyboardKey.controlRight);
-    final meta = pressed.contains(LogicalKeyboardKey.metaLeft) ||
+    final meta =
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
         pressed.contains(LogicalKeyboardKey.metaRight);
-    final alt = pressed.contains(LogicalKeyboardKey.altLeft) ||
+    final alt =
+        pressed.contains(LogicalKeyboardKey.altLeft) ||
         pressed.contains(LogicalKeyboardKey.altRight);
-    final shift = pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+    final shift =
+        pressed.contains(LogicalKeyboardKey.shiftLeft) ||
         pressed.contains(LogicalKeyboardKey.shiftRight);
 
     if (!control && !meta && !alt && !shift) {
@@ -206,7 +224,7 @@ class _CaptureDialogState extends State<_CaptureDialog> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final palette = HermesPalette.of(context);
-    return AlertDialog(
+    return GlassAlertDialog(
       title: Text(l10n.keybindChange),
       content: Focus(
         focusNode: _focusNode,
@@ -250,7 +268,9 @@ class _CaptureDialogState extends State<_CaptureDialog> {
               if (_conflictAction != null) ...[
                 const SizedBox(height: HermesSpacing.sm),
                 Text(
-                  l10n.keybindConflictWith(_actionLabelFor(_conflictAction!, l10n)),
+                  l10n.keybindConflictWith(
+                    _actionLabelFor(_conflictAction!, l10n),
+                  ),
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: HermesSemantic.orange),

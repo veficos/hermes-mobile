@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/settings_store.dart';
 import 'package:hermes_mobile/core/stores/connection_store.dart';
@@ -22,6 +24,58 @@ class _MemorySecrets implements ConnectionSecretStore {
 }
 
 void main() {
+  testWidgets('Liquid connection form scrolls beneath header with keyboard', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final connection = ConnectionStore(
+      store: SettingsStore(secrets: _MemorySecrets()),
+    );
+    addTearDown(connection.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: connection,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: buildHermesTheme(
+            brightness: Brightness.light,
+            visualStyle: HermesVisualStyle.liquid,
+          ),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(viewInsets: const EdgeInsets.only(bottom: 300)),
+            child: child!,
+          ),
+          home: const ConnectScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(SliverAppBar), findsOneWidget);
+    expect(find.byType(NestedScrollView), findsOneWidget);
+    final connect = find.text('Connect');
+    await Scrollable.ensureVisible(tester.element(connect), alignment: .5);
+    await tester.pumpAndSettle();
+    expect(connect.hitTestable(), findsOneWidget);
+    final submit = find.byKey(const ValueKey('connect-submit'));
+    expect(tester.getSize(submit).height, greaterThanOrEqualTo(52));
+    expect(
+      tester.widget<FilledButton>(submit).style!.visualDensity,
+      VisualDensity.standard,
+    );
+    expect(
+      tester.widget<FilledButton>(submit).style!.shape!.resolve({}),
+      isA<StadiumBorder>(),
+    );
+    expect(tester.getBottomRight(connect).dy, lessThan(544));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('direct gateway OAuth cannot connect before native login', (

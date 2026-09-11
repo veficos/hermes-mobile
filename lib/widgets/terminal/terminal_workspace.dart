@@ -20,6 +20,7 @@ import '../../core/terminal_interactions.dart';
 import '../../core/stores/terminal_store.dart';
 import '../../screens/chat_screen.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../h/hermes_confirm_dialog.dart';
 import '../h/hermes_states.dart';
 import '../h/hermes_toast.dart';
@@ -577,7 +578,9 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
       height: height,
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: HermesTerminalVisuals.surface(brightness),
+        color: HermesGlassTheme.of(context).enabled
+            ? Colors.transparent
+            : HermesTerminalVisuals.surface(brightness),
         border: Border(
           bottom: BorderSide(color: HermesTerminalVisuals.border(brightness)),
         ),
@@ -715,7 +718,9 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     final theme = Theme.of(context);
     final brightness = theme.brightness;
     return Material(
-      color: HermesTerminalVisuals.surface(brightness),
+      color: HermesGlassTheme.of(context).enabled
+          ? Colors.transparent
+          : HermesTerminalVisuals.surface(brightness),
       child: InkWell(
         onTap: () => store.refreshCwd(session.id),
         child: Padding(
@@ -861,11 +866,14 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
         }
       },
     );
+    final liquid = HermesGlassTheme.of(context).enabled;
     return ColoredBox(
-      color: HermesTerminalVisuals.background(
-        brightness,
-        store.terminalColorPreset,
-      ),
+      color: liquid
+          ? Colors.transparent
+          : HermesTerminalVisuals.background(
+              brightness,
+              store.terminalColorPreset,
+            ),
       child: Padding(
         padding: EdgeInsets.all(widget.compact ? 0 : 10),
         child: DropTarget(
@@ -878,6 +886,9 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
           },
           child: DecoratedBox(
             decoration: BoxDecoration(
+              // Terminal output is a stable reading surface, not navigation
+              // glass. Keep its backing consistent with backgroundOpacity=1
+              // above, including accessibility modes.
               color: terminalTheme.background,
               border: Border.all(
                 color: _draggingPaths
@@ -886,7 +897,7 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
                 width: _draggingPaths ? 2 : 1,
               ),
               borderRadius: BorderRadius.circular(widget.compact ? 0 : 12),
-              boxShadow: widget.compact
+              boxShadow: widget.compact || liquid
                   ? null
                   : [
                       BoxShadow(
@@ -920,7 +931,9 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     return Container(
       height: 48,
       decoration: BoxDecoration(
-        color: HermesTerminalVisuals.surface(brightness),
+        color: HermesGlassTheme.of(context).enabled
+            ? Colors.transparent
+            : HermesTerminalVisuals.surface(brightness),
         border: Border(
           top: BorderSide(color: HermesTerminalVisuals.border(brightness)),
         ),
@@ -1245,7 +1258,9 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     return SafeArea(
       top: false,
       child: Material(
-        color: HermesTerminalVisuals.surface(brightness),
+        color: HermesGlassTheme.of(context).enabled
+            ? Colors.transparent
+            : HermesTerminalVisuals.surface(brightness),
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             widget.compact ? 8 : 12,
@@ -1405,7 +1420,9 @@ class _TerminalWorkspaceState extends State<TerminalWorkspace> {
     return SafeArea(
       top: false,
       child: Material(
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: HermesGlassTheme.of(context).enabled
+            ? Colors.transparent
+            : theme.colorScheme.surfaceContainerHighest,
         child: SizedBox(
           height: 48,
           child: Row(

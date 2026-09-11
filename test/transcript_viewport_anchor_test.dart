@@ -1,8 +1,66 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/chat/transcript/viewport_anchor.dart';
+import 'package:hermes_mobile/chat/transcript/transcript_scroll_controller.dart';
 
 void main() {
+  testWidgets('layout correction is not counted as reading motion', (
+    tester,
+  ) async {
+    final controller = TranscriptScrollController();
+    addTearDown(controller.dispose);
+    final key = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            controller: controller,
+            child: Column(
+              children: [
+                const SizedBox(height: 100),
+                SizedBox(key: key, height: 300),
+                const SizedBox(height: 2000),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.jumpTo(120);
+    await tester.pump();
+    final anchor = TranscriptViewportAnchor.capture([
+      key,
+    ], controller.position)!;
+    final motion = controller.motionPixels;
+    // Simulate the framework changing coordinates during a sliver relayout.
+    controller.position.correctBy(180);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            controller: controller,
+            child: Column(
+              children: [
+                const SizedBox(height: 300),
+                SizedBox(key: key, height: 300),
+                const SizedBox(height: 2000),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(controller.motionPixels, motion);
+    final target = anchor.restoredOffset(
+      controller.position,
+      userScrollDelta: controller.motionPixels - motion,
+    );
+    expect(target, closeTo(320, .01));
+    controller.correctContentOffset(target!);
+    await tester.pump();
+    expect(tester.getTopLeft(find.byKey(key)).dy, closeTo(-20, .01));
+    expect(controller.motionPixels, motion);
+  });
   testWidgets('lazy keyed rows retain a visible anchor after a prepend', (
     tester,
   ) async {

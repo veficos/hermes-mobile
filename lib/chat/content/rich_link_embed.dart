@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../../core/stores/embed_consent_store.dart';
 import '../../core/stores/embed_runtime_store.dart';
 import '../../l10n/l10n.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../../widgets/h/hermes_toast.dart';
+import '../../widgets/h/hermes_glass.dart';
 import '../../widgets/web_preview.dart'
     show WebPreviewPane, openChatLink, webViewSupported;
 
@@ -452,7 +454,9 @@ class _RichLinkEmbedState extends State<RichLinkEmbed>
 
   Widget _unmanagedConsentCard(BuildContext context) {
     final meta = _meta(context);
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       key: ValueKey('rich-link-consent-${info.kind.name}'),
       child: ListTile(
         leading: const Icon(Icons.privacy_tip_outlined),
@@ -471,7 +475,9 @@ class _RichLinkEmbedState extends State<RichLinkEmbed>
 
   Widget _plainLink(BuildContext context) {
     final meta = _meta(context);
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       key: ValueKey('rich-link-disabled-${info.kind.name}'),
       child: ListTile(
         leading: Icon(meta.icon, color: meta.color),
@@ -485,7 +491,9 @@ class _RichLinkEmbedState extends State<RichLinkEmbed>
 
   Widget _consentCard(BuildContext context, EmbedConsentStore consent) {
     final meta = _meta(context);
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       key: ValueKey('rich-link-consent-${info.kind.name}'),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -542,16 +550,16 @@ class _RichLinkEmbedState extends State<RichLinkEmbed>
   Widget _loadedCard(BuildContext context) {
     final meta = _meta(context);
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      key: ValueKey('rich-link-${info.kind.name}'),
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.symmetric(vertical: 6),
-      child: InkWell(
-        onTap: () => openChatLink(context, info.url),
-        child: Column(
+      onTap: () => openChatLink(context, info.url),
+      key: ValueKey('rich-link-${info.kind.name}'),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
-          children: [
+        children: [
             if (_activated && info.embedUrl != null && webViewSupported)
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: info.maxWidth),
@@ -582,7 +590,11 @@ class _RichLinkEmbedState extends State<RichLinkEmbed>
                   'https://img.youtube.com/vi/${info.youtubeId}/hqdefault.jpg',
                   fit: BoxFit.cover,
                   errorBuilder: (_, _, _) =>
-                      ColoredBox(color: scheme.surfaceContainerHighest),
+                      ColoredBox(
+                        color: scheme.surfaceContainerHighest.withValues(
+                          alpha: HermesGlassTheme.of(context).enabled ? .45 : 1,
+                        ),
+                      ),
                 ),
               ),
             Padding(
@@ -621,7 +633,6 @@ class _RichLinkEmbedState extends State<RichLinkEmbed>
                 ),
               ),
           ],
-        ),
       ),
     );
   }

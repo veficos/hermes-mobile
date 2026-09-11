@@ -7,7 +7,9 @@ import '../../core/stores/chat_store.dart';
 import '../../core/clipboard.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../../widgets/web_preview.dart';
+import '../../widgets/h/hermes_glass.dart';
 import 'code_highlighter.dart';
 import 'text_chunks.dart';
 import 'mermaid_view.dart';
@@ -116,7 +118,9 @@ class HermesArtifactCard extends StatelessWidget {
         total: total,
       );
     }
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
+      radius: 16,
       child: ListTile(
         leading: Icon(_isWeb ? Icons.widgets_outlined : Icons.code),
         title: Row(
@@ -178,7 +182,8 @@ class _MermaidArtifactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = HermesPalette.of(context);
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.of(context).push(
@@ -232,7 +237,9 @@ class _MermaidArtifactCard extends StatelessWidget {
               width: double.infinity,
               constraints: const BoxConstraints(minHeight: 140, maxHeight: 360),
               decoration: BoxDecoration(
-                color: palette.codeBg,
+                color: HermesGlassTheme.of(context).allowsTransparency(context)
+                    ? palette.codeBg.withValues(alpha: .88)
+                    : palette.codeBg,
                 borderRadius: BorderRadius.circular(HermesRadius.smallCard),
                 border: Border.all(color: palette.border),
               ),
@@ -373,7 +380,9 @@ class _HermesCodeBlockState extends State<HermesCodeBlock> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-        color: palette.codeBg,
+        color: HermesGlassTheme.of(context).allowsTransparency(context)
+            ? palette.codeBg.withValues(alpha: .88)
+            : palette.codeBg,
         borderRadius: BorderRadius.circular(HermesRadius.smallCard),
         border: Border.all(color: palette.border),
       ),

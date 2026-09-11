@@ -23,6 +23,8 @@ import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../theme/hermes_glass_theme.dart';
 import 'h/hermes_logo.dart';
+import 'h/hermes_markdown.dart';
+import 'h/hermes_glass.dart';
 import 'h/hermes_plan.dart';
 import 'h/hermes_states.dart';
 import 'h/hermes_subagent.dart';
@@ -272,9 +274,16 @@ class MessageRenderBoundary extends StatelessWidget {
           context: ErrorDescription('while rendering message $messageId'),
         ),
       );
-      return Card(
+      final liquid = HermesGlassTheme.of(context).enabled;
+      return HermesGlassCard(
+        padding: EdgeInsets.zero,
+        radius: 16,
         key: ValueKey('message-render-error-$messageId'),
-        color: Theme.of(context).colorScheme.errorContainer,
+        tint: liquid
+            ? Theme.of(
+                context,
+              ).colorScheme.errorContainer.withValues(alpha: .72)
+            : Theme.of(context).colorScheme.errorContainer,
         child: ListTile(
           leading: const Icon(Icons.error_outline),
           title: Text(context.l10n.messageRenderFailed),
@@ -331,7 +340,6 @@ class _MessageBubbleBody extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context, double availableWidth) {
-    final theme = Theme.of(context);
     final palette = HermesPalette.of(context);
     final isUser = message.role == 'user';
     final isInterim = message.interim;
@@ -441,9 +449,7 @@ class _MessageBubbleBody extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
               constraints: BoxConstraints(maxWidth: maxWidth),
               decoration: BoxDecoration(
-                color: HermesGlassTheme.of(context).enabled
-                    ? palette.bubbleUser.withValues(alpha: .94)
-                    : palette.bubbleUser,
+                color: palette.bubbleUser,
                 border: HermesGlassTheme.of(context).enabled
                     ? Border.all(color: Colors.white.withValues(alpha: .14))
                     : null,
@@ -477,21 +483,7 @@ class _MessageBubbleBody extends StatelessWidget {
                           openChatLink(context, href);
                         }
                       },
-                      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                        p: HermesType.messageBody.copyWith(
-                          color: palette.bubbleUserText,
-                        ),
-                        strong: TextStyle(
-                          color: palette.bubbleUserText,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        code: HermesType.code.copyWith(
-                          color: palette.bubbleUserText,
-                        ),
-                        listBullet: TextStyle(
-                          color: palette.bubbleUserText.withValues(alpha: 0.7),
-                        ),
-                      ),
+                      styleSheet: hermesUserMarkdownStyle(context),
                     ),
                   if (showFooter && !isInterim)
                     _BottomMetaRow(message: message, isUser: true),
@@ -545,9 +537,7 @@ class _MessageBubbleBody extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: HermesGlassTheme.of(context).enabled
-                    ? palette.surface.withValues(alpha: .96)
-                    : palette.surface,
+                color: palette.surface,
                 border: Border.all(
                   color: HermesGlassTheme.of(context).enabled
                       ? palette.border.withValues(alpha: .82)
@@ -1503,7 +1493,9 @@ class _AgentDeliveryCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: palette.accentBg.withValues(alpha: .32),
+        color: HermesGlassTheme.of(context).enabled
+            ? palette.accentBg.withValues(alpha: .22)
+            : palette.accentBg.withValues(alpha: .32),
         border: Border.all(color: palette.accent.withValues(alpha: .28)),
         borderRadius: BorderRadius.circular(10),
       ),
@@ -1629,7 +1621,9 @@ class _SystemMessageCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: palette.text3.withValues(alpha: .06),
+        color: HermesGlassTheme.of(context).enabled
+            ? palette.text3.withValues(alpha: .035)
+            : palette.text3.withValues(alpha: .06),
         border: Border.all(color: palette.text3.withValues(alpha: .18)),
         borderRadius: BorderRadius.circular(8),
       ),

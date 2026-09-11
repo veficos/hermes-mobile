@@ -72,10 +72,26 @@ class HermesFeatureEntry {
     this.showInHome = false,
     this.showInMore = true,
     this.showInXlNav = false,
+    this.searchAliases = const [],
   });
+
   /// Stable identifier, also used by the persisted Home quick-tool order
   /// (`hm_home_quick_tool_order`) and widget keys (`quick-tool-<id>`).
   final String id;
+
+  /// Explicit alternate names, never used as labels or route identifiers.
+  final List<String> searchAliases;
+
+  bool matchesSearch(String query, AppLocalizations l10n) {
+    final terms = query.trim().toLowerCase().split(RegExp(r'\s+'));
+    final fields = [
+      id,
+      title(l10n),
+      subtitle(l10n),
+      ...searchAliases,
+    ].map((value) => value.toLowerCase()).toList();
+    return terms.every((term) => fields.any((field) => field.contains(term)));
+  }
 
   /// Canonical icon shared by every surface.
   final IconData icon;
@@ -117,6 +133,7 @@ final List<HermesFeatureEntry> hermesFeatureEntries = [
   // Workspace
   HermesFeatureEntry(
     id: 'agent',
+    searchAliases: ['bot', '机器人', '機器人'],
     icon: Icons.smart_toy_outlined,
     title: (l10n) => l10n.featureAgent,
     subtitle: (l10n) => l10n.featureAgentDesc,
@@ -127,6 +144,7 @@ final List<HermesFeatureEntry> hermesFeatureEntries = [
   ),
   HermesFeatureEntry(
     id: 'workspace',
+    searchAliases: ['工作区', '工作區', '多窗格', 'panes'],
     icon: Icons.view_quilt_outlined,
     title: (l10n) => l10n.workspaceTitle,
     subtitle: (l10n) => l10n.workspaceDescription,
@@ -135,6 +153,7 @@ final List<HermesFeatureEntry> hermesFeatureEntries = [
   ),
   HermesFeatureEntry(
     id: 'files',
+    searchAliases: ['file', '文件', '檔案'],
     icon: Icons.folder_outlined,
     title: (l10n) => l10n.featureFiles,
     subtitle: (l10n) => l10n.featureFilesDesc,
@@ -145,6 +164,7 @@ final List<HermesFeatureEntry> hermesFeatureEntries = [
   ),
   HermesFeatureEntry(
     id: 'terminal',
+    searchAliases: ['shell', '终端', '終端機'],
     icon: Icons.terminal,
     title: (l10n) => l10n.featureTerminal,
     subtitle: (l10n) => l10n.featureTerminalDesc,
@@ -155,6 +175,7 @@ final List<HermesFeatureEntry> hermesFeatureEntries = [
   ),
   HermesFeatureEntry(
     id: 'git',
+    searchAliases: ['版本控制', 'version control'],
     icon: Icons.account_tree_outlined,
     title: (l10n) => l10n.featureGit,
     subtitle: (l10n) => l10n.featureGitDesc,
@@ -174,6 +195,7 @@ final List<HermesFeatureEntry> hermesFeatureEntries = [
   ),
   HermesFeatureEntry(
     id: 'projects',
+    searchAliases: ['项目', '專案'],
     icon: Icons.layers_outlined,
     title: (l10n) => l10n.featureProjects,
     subtitle: (l10n) => l10n.featureProjectsDesc,
@@ -192,6 +214,7 @@ final List<HermesFeatureEntry> hermesFeatureEntries = [
   ),
   HermesFeatureEntry(
     id: 'cron',
+    searchAliases: ['schedule', '定时', '排程'],
     icon: Icons.schedule_outlined,
     title: (l10n) => l10n.featureCron,
     subtitle: (l10n) => l10n.featureCronDesc,
@@ -287,6 +310,7 @@ final List<HermesFeatureEntry> hermesFeatureEntries = [
   ),
   HermesFeatureEntry(
     id: 'settings',
+    searchAliases: ['appearance', 'theme', '外观', '外觀', '设置', '設定'],
     icon: Icons.settings_outlined,
     title: (l10n) => l10n.featureSettings,
     subtitle: (l10n) => l10n.featureSettingsDesc,

@@ -193,6 +193,7 @@ class RequestStore extends ChangeNotifier {
   bool _disposed = false;
   static const _storageKey = 'hm_pending_interactive_requests_v1';
   final List<PendingRequest> _queue = [];
+  final Set<PendingRequest> _activeResponses = {};
   final Map<String, RequestResolution> _resolved = {};
   ({OwnerRoute? route, String? durableId}) Function(String? runtimeId)?
   _scopeResolver;
@@ -297,14 +298,30 @@ class RequestStore extends ChangeNotifier {
     return true;
   }
 
-  Future<void> restore() async {
+  Future<void>? _restoreFlight;
+
+  Future<void> restore() {
+    if (_disposed) return Future.value();
+    return _restoreFlight ??= _restoreSnapshot().whenComplete(() {
+      _restoreFlight = null;
+    });
+  }
+
+  Future<void> _restoreSnapshot() async {
+    if (_disposed) return;
+    var restored = false;
+    _restoring = true;
+    _restoreExclusions.clear();
+    _restoreExpirations.clear();
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (_disposed) return;
       final raw = prefs.getString(_storageKey);
       if (raw == null || raw.isEmpty) return;
       final decoded = jsonDecode(raw);
       final rows = decoded is Map ? decoded['pending'] : decoded;
       if (rows is! List) return;
+      final pending = <PendingRequest>[];
       for (final row in rows.whereType<Map>()) {
         final data = row.cast<String, dynamic>();
         final type = data['event_type']?.toString() ?? '';
@@ -333,7 +350,7 @@ class RequestStore extends ChangeNotifier {
         request = request.withScope(
           durableSessionId: data['durable_session_id']?.toString(),
         );
-        enqueue(request);
+        pending.add(request);
       }
       if (decoded is Map && decoded['resolved'] is List) {
         for (final row in (decoded['resolved'] as List).whereType<Map>()) {
@@ -346,7 +363,7 @@ class RequestStore extends ChangeNotifier {
             (value) => value?.name == kindName,
             orElse: () => null,
           );
-          _resolved[_resolutionKey(id, scopeKey, kind)] = RequestResolution(
+          _resolved[_resolutionKey(id, scopeKey, kind)] ??= RequestResolution(
             requestId: id,
             scopeKey: scopeKey,
             kind: kind,
@@ -359,7 +376,24 @@ class RequestStore extends ChangeNotifier {
           );
         }
       }
-    } catch (_) {}
+      // Load terminal records before enqueue can notify listeners or apply
+      // replay suppression. Conflicting expired rows must never flash active.
+      for (final request in pending) {
+        _enqueue(request, recovery: true);
+      }
+      restored = true;
+    } catch (_) {
+    } finally {
+      _restoring = false;
+      _restoreExclusions.clear();
+      _restoreExpirations.clear();
+      // A live mutation may have deferred its write while recovery awaited
+      // preferences, even when the snapshot is missing or malformed.
+      if (!_disposed && (restored || _persistDirty)) {
+        _persist();
+        notifyListeners();
+      }
+    }
   }
 
   String _eventType(RequestKind kind) => switch (kind) {
@@ -371,8 +405,13 @@ class RequestStore extends ChangeNotifier {
     RequestKind.terminalRead => 'terminal.read.request',
   };
 
+  bool _restoring = false;
+  final List<bool Function(PendingRequest)> _restoreExclusions = [];
+  final List<bool Function(PendingRequest)> _restoreExpirations = [];
+
   void _persist() {
     _persistDirty = true;
+    if (_restoring) return;
     // A single writer snapshots the latest state. Mutations arriving while a
     // platform write is in flight collapse into one trailing write.
     if (!_persistRunning) unawaited(_drainPersist());
@@ -438,7 +477,9 @@ class RequestStore extends ChangeNotifier {
         case 'interactive.expire':
         case 'interactive.expired':
           final requestId = e.payload['request_id']?.toString();
-          if (requestId?.isNotEmpty == true) dismissById(requestId);
+          if (requestId?.isNotEmpty == true) {
+            _expireById(requestId!, sessionId: e.sessionId);
+          }
         default:
           break;
       }
@@ -460,8 +501,8 @@ class RequestStore extends ChangeNotifier {
         case 'interactive.expired':
           final requestId = routed.event.payload['request_id']?.toString();
           if (requestId?.isNotEmpty == true) {
-            dismissById(
-              requestId,
+            _expireById(
+              requestId!,
               ownerRoute: OwnerRoute(
                 connectionId: routed.route.connectionId,
                 profile: routed.event.profile ?? routed.route.profile,
@@ -475,14 +516,52 @@ class RequestStore extends ChangeNotifier {
     });
   }
 
+  /// Preserve the terminal state, including requests with a pending RPC.
+  void _expireById(
+    String requestId, {
+    OwnerRoute? ownerRoute,
+    String? sessionId,
+  }) {
+    if (_restoring) {
+      _restoreExpirations.add(
+        (request) => _matches(
+          request,
+          requestId,
+          ownerRoute: ownerRoute,
+          sessionId: sessionId,
+        ),
+      );
+    }
+    final matches = [..._queue, ..._activeResponses]
+        .where(
+          (request) => _matches(
+            request,
+            requestId,
+            ownerRoute: ownerRoute,
+            sessionId: sessionId,
+          ),
+        )
+        .toSet();
+    if (matches.isEmpty) return;
+    _queue.removeWhere(matches.contains);
+    _activeResponses.removeWhere(matches.contains);
+    for (final request in matches) {
+      _recordResolution(request, const {'status': 'expired'});
+    }
+    notifyListeners();
+  }
+
   /// Enqueue a request. A re-emitted event (e.g. after a WS reconnect-resume)
   /// carries the same request_id — refresh the existing entry instead of
   /// queueing a duplicate that could be answered twice.
-  void enqueue(PendingRequest req) {
+  void enqueue(PendingRequest req) => _enqueue(req);
+
+  void _enqueue(PendingRequest req, {bool recovery = false}) {
     final scope = _scopeResolver?.call(req.sessionId);
     final eventRoute = req.ownerRoute;
     final knownRoute = scope?.route;
-    final resolvedRoute = eventRoute != null &&
+    final resolvedRoute =
+        eventRoute != null &&
             eventRoute.profile == null &&
             knownRoute != null &&
             eventRoute.connectionId == knownRoute.connectionId
@@ -490,10 +569,35 @@ class RequestStore extends ChangeNotifier {
         : eventRoute ?? knownRoute;
     req = req.withScope(
       ownerRoute: resolvedRoute,
-      durableSessionId: req.durableSessionId ??
+      durableSessionId:
+          req.durableSessionId ??
           (resolvedRoute == knownRoute ? scope?.durableId : null),
     );
+    if (recovery && _restoreExclusions.any((excluded) => excluded(req))) return;
+    // Expiry may arrive before the snapshot row exists in the queue. Apply
+    // it after scope resolution and before any actionable-row notification.
+    if (recovery && _restoreExpirations.any((expired) => expired(req))) {
+      _recordResolution(req, const {'status': 'expired'});
+      return;
+    }
     if (req.requestId.isNotEmpty) {
+      // The original request is temporarily outside the queue during send.
+      // Replayed events must not expose a second actionable copy.
+      if (_activeResponses.any(
+        (active) =>
+            active.requestId == req.requestId &&
+            active.kind == req.kind &&
+            _scopeKey(active) == _scopeKey(req),
+      )) {
+        return;
+      }
+      // Reconnection may replay an event after its terminal expiry. Keep
+      // that exact owner/session/kind closed while recovery history exists.
+      if (_resolved[_resolutionKey(req.requestId, _scopeKey(req), req.kind)]
+              ?.status ==
+          'expired') {
+        return;
+      }
       final existing = _queue.indexWhere(
         (r) =>
             r.requestId == req.requestId &&
@@ -501,6 +605,8 @@ class RequestStore extends ChangeNotifier {
             _scopeKey(r) == _scopeKey(req),
       );
       if (existing >= 0) {
+        // Live gateway content takes precedence over a startup snapshot.
+        if (recovery) return;
         _queue[existing] = req;
         _persist();
         notifyListeners();
@@ -513,6 +619,8 @@ class RequestStore extends ChangeNotifier {
   }
 
   void clear() {
+    if (_restoring) _restoreExclusions.add((_) => true);
+    _activeResponses.clear();
     _queue.clear();
     _persist();
     notifyListeners();
@@ -524,19 +632,7 @@ class RequestStore extends ChangeNotifier {
     Future<Map<String, dynamic>> Function(PendingRequest req) send,
   ) async {
     if (_queue.isEmpty) return false;
-    final req = _queue.removeAt(0);
-    _persist();
-    notifyListeners();
-    try {
-      final result = await send(req);
-      _recordResolution(req, result);
-      return true;
-    } catch (_) {
-      _queue.insert(0, req);
-      _persist();
-      if (!_disposed) notifyListeners();
-      rethrow;
-    }
+    return _sendAt(0, send, const {});
   }
 
   Future<bool> respondById(
@@ -550,7 +646,8 @@ class RequestStore extends ChangeNotifier {
     if ((requestId == null || requestId.isEmpty) &&
         ownerRoute == null &&
         sessionId == null) {
-      return respond(send);
+      if (_queue.isEmpty) return false;
+      return _sendAt(0, send, resolution);
     }
     final index = _queue.indexWhere(
       (request) => requestId == null || requestId.isEmpty
@@ -564,19 +661,34 @@ class RequestStore extends ChangeNotifier {
             ),
     );
     if (index < 0) return false;
+    return _sendAt(index, send, resolution);
+  }
+
+  Future<bool> _sendAt(
+    int index,
+    Future<Map<String, dynamic>> Function(PendingRequest req) send,
+    Map<String, dynamic> resolution,
+  ) async {
+    if (_disposed) return false;
     final req = _queue.removeAt(index);
+    _activeResponses.add(req);
     _persist();
     notifyListeners();
     try {
       final rpcResult = await send(req);
+      if (_disposed || !_activeResponses.contains(req)) return false;
       _recordResolution(req, {...rpcResult, ...resolution});
       if (!_disposed) notifyListeners();
       return true;
     } catch (_) {
-      _queue.insert(index.clamp(0, _queue.length), req);
-      _persist();
-      if (!_disposed) notifyListeners();
+      if (!_disposed && _activeResponses.contains(req)) {
+        _queue.insert(index.clamp(0, _queue.length), req);
+        _persist();
+        notifyListeners();
+      }
       rethrow;
+    } finally {
+      _activeResponses.remove(req);
     }
   }
 
@@ -650,6 +762,17 @@ class RequestStore extends ChangeNotifier {
     String? sessionId,
     RequestKind? kind,
   }) {
+    if (requestId != null && requestId.isNotEmpty) {
+      _activeResponses.removeWhere(
+        (request) => _matches(
+          request,
+          requestId,
+          ownerRoute: ownerRoute,
+          sessionId: sessionId,
+          kind: kind,
+        ),
+      );
+    }
     if ((requestId == null || requestId.isEmpty) &&
         ownerRoute == null &&
         sessionId == null) {
@@ -714,6 +837,19 @@ class RequestStore extends ChangeNotifier {
   /// Remove only requests owned by one session. Closing a foreground session
   /// must not discard approvals belonging to background sessions.
   void clearScope({required OwnerRoute ownerRoute, required String sessionId}) {
+    if (_restoring) {
+      _restoreExclusions.add(
+        (request) => _matchesScope(
+          request,
+          ownerRoute: ownerRoute,
+          sessionId: sessionId,
+        ),
+      );
+    }
+    _activeResponses.removeWhere(
+      (request) =>
+          _matchesScope(request, ownerRoute: ownerRoute, sessionId: sessionId),
+    );
     final before = _queue.length;
     _queue.removeWhere(
       (request) =>
@@ -727,6 +863,7 @@ class RequestStore extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _activeResponses.clear();
     _sub?.cancel();
     super.dispose();
   }

@@ -12,10 +12,13 @@ import 'package:hermes_mobile/core/stores/session_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _ProfileApi extends ApiClient {
-  _ProfileApi({this.messageCount = 1})
+  _ProfileApi({this.messageCount = 1, this.fullPages = false})
     : super(baseUrl: 'http://profile.invalid', apiKey: 'test');
 
   final int messageCount;
+  final bool fullPages;
+  Completer<void>? olderGate;
+  bool failOlder = false;
   final List<(String, Map<String, String>?)> calls = [];
 
   @override
@@ -34,17 +37,31 @@ class _ProfileApi extends ApiClient {
     }
     if (path == '/api/v1/sessions/expert-session/messages') {
       final offset = int.parse(query?['offset'] ?? '0');
+      if (offset < messageCount - 50) {
+        await olderGate?.future;
+        if (failOlder) throw StateError('delayed page failure');
+      }
       return {
         'messages': isExperts
-            ? [
-                {
-                  'id': offset + 1,
-                  'role': 'user',
-                  'content': offset == 0 && messageCount > 1
-                      ? 'older expert history'
-                      : 'expert history',
-                },
-              ]
+            ? fullPages
+                  ? List.generate(int.parse(query?['limit'] ?? '50'), (index) {
+                      final ordinal = offset + index;
+                      return {
+                        'id': ordinal + 1,
+                        'role': ordinal.isEven ? 'user' : 'assistant',
+                        'content':
+                            'message-$ordinal ${'variable content ' * (ordinal % 9 + 1)}',
+                      };
+                    })
+                  : [
+                      {
+                        'id': offset + 1,
+                        'role': 'user',
+                        'content': offset == 0 && messageCount > 1
+                            ? 'older expert history'
+                            : 'expert history',
+                      },
+                    ]
             : <dynamic>[],
       };
     }
@@ -289,6 +306,129 @@ class _ProfileConnection extends ConnectionStore {
 }
 
 void main() {
+  testWidgets('session event bursts debounce actual scoped list requests', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final api = _SwitchProfileApi();
+    final connection = _ProfileConnection(
+      apiClient: api,
+      gw: _ProfileGateway(),
+    );
+    final chat = ChatStore();
+    final requests = RequestStore();
+    final store = SessionStore(
+      connection: connection,
+      chat: chat,
+      requests: requests,
+    );
+    addTearDown(() {
+      store.dispose();
+      requests.dispose();
+      chat.dispose();
+      connection.dispose();
+    });
+    await store.loadProfileContext(listLimit: 20);
+    api.sessionProfiles.clear();
+    for (var burst = 0; burst < 2; burst++) {
+      for (var event = 0; event < 30; event++) {
+        connection.eventController.add(
+          GatewayEvent(type: 'sessions.changed', payload: const {}),
+        );
+      }
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 249));
+      expect(api.sessionProfiles.length, burst);
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump();
+      expect(api.sessionProfiles, List.filled(burst + 1, 'experts'));
+      expect(store.sessions!.single.profile, 'experts');
+    }
+  });
+
+  test(
+    'ten complete delayed history pages retain ordered unique messages',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _ProfileApi(messageCount: 550, fullPages: true);
+      final connection = _ProfileConnection(
+        apiClient: api,
+        gw: _ProfileGateway(),
+      );
+      final chat = ChatStore();
+      final requests = RequestStore();
+      final store = SessionStore(
+        connection: connection,
+        chat: chat,
+        requests: requests,
+      );
+      addTearDown(() {
+        store.dispose();
+        requests.dispose();
+        chat.dispose();
+        connection.dispose();
+      });
+      await store.resumeSession('expert-session', profile: 'experts');
+      expect(chat.loadedCount, 50);
+      var captures = 0;
+      for (var page = 1; page <= 10; page++) {
+        final before = chat.messages.map((m) => m.id).toList();
+        if (page == 5) {
+          api.olderGate = Completer<void>();
+          api.failOlder = true;
+          final failed = store.loadOlderMessages(
+            deferTrim: true,
+            beforeApply: () => fail('Failed page must not capture an anchor'),
+          );
+          expect(chat.loadingHistory, isTrue);
+          api.olderGate!.complete();
+          await failed;
+          expect(chat.messages.map((m) => m.id), before);
+          expect(chat.historyError, isNotNull);
+          expect(chat.hasMoreHistory, isTrue);
+          expect(api.calls.last.$2?['offset'], '250');
+          api.failOlder = false;
+        }
+        api.olderGate = Completer<void>();
+        final pending = store.loadOlderMessages(
+          deferTrim: true,
+          beforeApply: () {
+            expect(chat.messages.map((m) => m.id), before);
+            captures++;
+          },
+        );
+        expect(chat.loadingHistory, isTrue);
+        expect(captures, page - 1);
+        final callCount = api.calls.length;
+        await store.loadOlderMessages(deferTrim: true);
+        expect(api.calls.length, callCount);
+        expect(api.calls.last.$2, {
+          'limit': '50',
+          'offset': '${500 - page * 50}',
+          'profile': 'experts',
+        });
+        api.olderGate!.complete();
+        await pending;
+        expect(captures, page);
+        expect(chat.loadingHistory, isFalse);
+        expect(chat.historyError, isNull);
+        expect(chat.loadedCount, (page + 1) * 50);
+        expect(chat.messages.map((m) => m.id).toSet().length, chat.loadedCount);
+        expect(
+          chat.messages.map((m) => m.fullText.split(' ').first),
+          List.generate(
+            (page + 1) * 50,
+            (i) => 'message-${500 - page * 50 + i}',
+          ),
+        );
+        expect(chat.hasMoreHistory, page < 10);
+      }
+      final callCount = api.calls.length;
+      await store.loadOlderMessages(beforeApply: () => captures++);
+      expect(api.calls.length, callCount);
+      expect(captures, 10);
+    },
+  );
   test('resuming a profile session loads its durable transcript', () async {
     SharedPreferences.setMockInitialValues({});
     final api = _ProfileApi();
@@ -1009,10 +1149,12 @@ void main() {
     await store.resumeSession('expert-session', profile: 'experts');
     var captures = 0;
     final before = chat.messages.map((message) => message.id).toList();
-    await store.loadOlderMessages(beforeApply: () {
-      captures++;
-      expect(chat.messages.map((message) => message.id), before);
-    });
+    await store.loadOlderMessages(
+      beforeApply: () {
+        captures++;
+        expect(chat.messages.map((message) => message.id), before);
+      },
+    );
     expect(captures, 1);
 
     expect(api.calls.last.$1, '/api/v1/sessions/expert-session/messages');
@@ -1025,4 +1167,96 @@ void main() {
     await store.loadOlderMessages(beforeApply: () => captures++);
     expect(captures, 1);
   });
+
+  test('late older page cannot apply after opening a new session', () async {
+    SharedPreferences.setMockInitialValues({});
+    final api = _ProfileApi(messageCount: 151);
+    final connection = _ProfileConnection(
+      apiClient: api,
+      gw: _ProfileGateway(),
+    );
+    final chat = ChatStore();
+    final requests = RequestStore();
+    final store = SessionStore(
+      connection: connection,
+      chat: chat,
+      requests: requests,
+    );
+    addTearDown(() {
+      store.dispose();
+      requests.dispose();
+      chat.dispose();
+      connection.dispose();
+    });
+    await store.resumeSession('expert-session', profile: 'experts');
+    api.olderGate = Completer<void>();
+    var captures = 0;
+    final pending = store.loadOlderMessages(beforeApply: () => captures++);
+    await store.newChat();
+    final current = chat.messages.map((m) => m.id).toList();
+    api.olderGate!.complete();
+    await pending;
+    expect(captures, 0);
+    expect(chat.messages.map((m) => m.id), current);
+    expect(chat.loadingHistory, isFalse);
+  });
+
+  test(
+    'delayed older requests are single-flight and retry the same offset',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _ProfileApi(messageCount: 151);
+      final connection = _ProfileConnection(
+        apiClient: api,
+        gw: _ProfileGateway(),
+      );
+      final chat = ChatStore();
+      final requests = RequestStore();
+      final store = SessionStore(
+        connection: connection,
+        chat: chat,
+        requests: requests,
+      );
+      addTearDown(() {
+        store.dispose();
+        requests.dispose();
+        chat.dispose();
+        connection.dispose();
+      });
+      await store.resumeSession('expert-session', profile: 'experts');
+      final before = chat.messages.map((m) => m.id).toList();
+      var captures = 0;
+      api.olderGate = Completer<void>();
+      api.failOlder = true;
+      final failed = store.loadOlderMessages(beforeApply: () => captures++);
+      expect(chat.loadingHistory, isTrue);
+      expect(captures, 0);
+      final requestCount = api.calls.length;
+      await store.loadOlderMessages();
+      expect(api.calls.length, requestCount);
+      expect(chat.messages.map((m) => m.id), before);
+      api.olderGate!.complete();
+      await failed;
+      expect(chat.historyError, isNotNull);
+      expect(chat.hasMoreHistory, isTrue);
+      expect(captures, 0);
+      final failedOffset = api.calls.last.$2?['offset'];
+      api.failOlder = false;
+      api.olderGate = Completer<void>();
+      final retry = store.loadOlderMessages(
+        beforeApply: () {
+          expect(chat.messages.map((m) => m.id), before);
+          captures++;
+        },
+      );
+      expect(captures, 0);
+      api.olderGate!.complete();
+      await retry;
+      expect(api.calls.last.$2?['offset'], failedOffset);
+      expect(captures, 1);
+      expect(chat.loadingHistory, isFalse);
+      expect(chat.historyError, isNull);
+      expect(chat.loadedCount, before.length + 1);
+    },
+  );
 }

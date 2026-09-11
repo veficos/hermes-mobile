@@ -224,14 +224,24 @@ void main() {
       return text.style!.color!;
     }
 
-    testWidgets('white text in normal mode', (tester) async {
-      expect(
-        await badgeTextColor(
-          tester,
-          brightness: Brightness.light,
-          highContrast: false,
+    testWidgets('normal mode badge text meets reading contrast', (tester) async {
+      final foreground = await badgeTextColor(
+        tester,
+        brightness: Brightness.light,
+        highContrast: false,
+      );
+      final container = tester.widget<Container>(
+        find.descendant(
+          of: find.byType(HermesBadge),
+          matching: find.byType(Container),
         ),
-        Colors.white,
+      );
+      final background = (container.decoration! as BoxDecoration).color!;
+      final a = foreground.computeLuminance();
+      final b = background.computeLuminance();
+      expect(
+        ((a > b ? a : b) + .05) / ((a < b ? a : b) + .05),
+        greaterThanOrEqualTo(4.5),
       );
     });
 

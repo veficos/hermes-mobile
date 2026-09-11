@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 
 import '../../theme/hermes_tokens.dart';
+import '../../theme/hermes_glass_theme.dart';
 import 'code_highlighter.dart';
 
 /// Unified-diff renderer with add/remove tint + a 2px gutter accent, optional
@@ -79,7 +80,9 @@ class _FileDiffViewState extends State<FileDiffView> {
     return Container(
       width: double.infinity,
       constraints: BoxConstraints(maxHeight: maxHeight),
-      color: palette.codeBg,
+      color: HermesGlassTheme.of(context).allowsTransparency(context)
+          ? palette.codeBg.withValues(alpha: .88)
+          : palette.codeBg,
       child: ListView.builder(
         primary: false,
         itemCount: lines.length,

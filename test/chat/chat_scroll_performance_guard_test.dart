@@ -5,6 +5,9 @@ import 'package:hermes_mobile/chat/content/diff_view.dart';
 import 'package:hermes_mobile/chat/content/inline_content_renderer.dart';
 import 'package:hermes_mobile/chat/content/mermaid_view.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
+import 'package:hermes_mobile/widgets/glass/glass_surface.dart';
 
 Widget _app(Widget child) => MaterialApp(
   localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -13,6 +16,65 @@ Widget _app(Widget child) => MaterialApp(
 );
 
 void main() {
+  for (final opaque in [false, true]) {
+    testWidgets(
+      'Liquid streaming keeps material count bounded opaque=$opaque',
+      (tester) async {
+        final text = ValueNotifier('First words');
+        addTearDown(text.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildHermesTheme(
+              brightness: Brightness.dark,
+              visualStyle: HermesVisualStyle.liquid,
+              reduceTransparency: opaque,
+            ),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: Stack(
+                children: [
+                  Positioned.fill(
+                    child: SingleChildScrollView(
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: text,
+                        builder: (_, value, _) =>
+                            StreamingInlineContentRenderer(text: value),
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 12,
+                    child: GlassSurface(child: SizedBox(height: 60)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        final expected = opaque ? findsNothing : findsOneWidget;
+        expect(find.byType(BackdropFilter), expected);
+        text.value = '${'word ' * 1000}liquid-final-marker';
+        for (var tick = 0; tick < 14; tick++) {
+          await tester.pump(const Duration(milliseconds: 42));
+          expect(find.byType(BackdropFilter), expected);
+        }
+        expect(
+          tester
+              .widgetList<InlineContentRenderer>(
+                find.byType(InlineContentRenderer),
+              )
+              .map((w) => w.text)
+              .join(),
+          text.value,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
   testWidgets('nested content does not attach to the transcript controller', (
     tester,
   ) async {

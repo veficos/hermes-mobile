@@ -388,7 +388,7 @@ abstract final class HermesAccents {
       accentBg: Color(0xFFEBF0FF),
       accentStrong: Color(0xFFD6E1FF),
       codeBg: Color(0xFFE9EDF5),
-      bubbleUser: Color(0xFF2F6BFF),
+      bubbleUser: Color(0xFF2F6AFE),
       bubbleUserText: Color(0xFFFFFFFF),
     ),
     darkPalette: HermesPalette(
@@ -406,7 +406,7 @@ abstract final class HermesAccents {
       accentBg: Color(0xFF1B2A52),
       accentStrong: Color(0xFF24386B),
       codeBg: Color(0xFF060810),
-      bubbleUser: Color(0xFF2F6BFF),
+      bubbleUser: Color(0xFF2F6AFE),
       bubbleUserText: Color(0xFFFFFFFF),
     ),
   );
@@ -815,4 +815,3 @@ enum HermesToolStatus {
     }
   }
 }
-

@@ -150,6 +150,9 @@ class ChatTranscriptPanel extends StatefulWidget {
   final String? loadError;
   final VoidCallback? onRetryLoad;
   final ValueChanged<String>? onPromptSelected;
+  final double topInset;
+  final double bottomInset;
+  final VoidCallback? onLoadOlder;
 
   const ChatTranscriptPanel({
     super.key,
@@ -176,6 +179,9 @@ class ChatTranscriptPanel extends StatefulWidget {
     this.loadError,
     this.onRetryLoad,
     this.onPromptSelected,
+    this.topInset = 0,
+    this.bottomInset = 0,
+    this.onLoadOlder,
   });
 
   @override
@@ -265,28 +271,79 @@ class _ChatTranscriptPanelState extends State<ChatTranscriptPanel> {
         return Column(
           children: [
             Expanded(
-              child: ChatMessageList(
-                snapshot: snapshot,
-                timeline: _timelineFor(snapshot),
-                scrollCtrl: widget.scrollCtrl,
-                onTranscriptChanged: widget.onTranscriptChanged,
-                onMessageLongPress: widget.onMessageLongPress,
-                onRegenerate: widget.onRegenerate,
-                onBranch: widget.onBranch,
-                onJumpToQuestion: widget.onJumpToQuestion,
-                onQuoteMessage: widget.onQuoteMessage,
-                keyForMessage: widget.keyForMessage,
-                onUserMessageMountChanged: widget.onUserMessageMountChanged,
-                highlightMessageId: widget.highlightMessageId,
-                editingMessageId: widget.editingMessageId,
-                editController: widget.editController,
-                editFocusNode: widget.editFocusNode,
-                onEditSubmit: widget.onEditSubmit,
-                onEditCancel: widget.onEditCancel,
-                onRestoreVersion: widget.onRestoreVersion,
-                editSuggestions: widget.editSuggestions,
-                onEditAttach: widget.onEditAttach,
-                editAttachmentCount: widget.editAttachmentCount,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ChatMessageList(
+                    key: ValueKey(widget.scrollCoordinator.sessionEpoch),
+                    onLoadOlder: widget.onLoadOlder,
+                    topInset: widget.topInset,
+                    bottomInset: widget.bottomInset,
+                    snapshot: snapshot,
+                    timeline: _timelineFor(snapshot),
+                    scrollCtrl: widget.scrollCtrl,
+                    onTranscriptChanged: widget.onTranscriptChanged,
+                    onMessageLongPress: widget.onMessageLongPress,
+                    onRegenerate: widget.onRegenerate,
+                    onBranch: widget.onBranch,
+                    onJumpToQuestion: widget.onJumpToQuestion,
+                    onQuoteMessage: widget.onQuoteMessage,
+                    keyForMessage: widget.keyForMessage,
+                    onUserMessageMountChanged: widget.onUserMessageMountChanged,
+                    highlightMessageId: widget.highlightMessageId,
+                    editingMessageId: widget.editingMessageId,
+                    editController: widget.editController,
+                    editFocusNode: widget.editFocusNode,
+                    onEditSubmit: widget.onEditSubmit,
+                    onEditCancel: widget.onEditCancel,
+                    onRestoreVersion: widget.onRestoreVersion,
+                    editSuggestions: widget.editSuggestions,
+                    onEditAttach: widget.onEditAttach,
+                    editAttachmentCount: widget.editAttachmentCount,
+                  ),
+                  if (snapshot.loadingHistory)
+                    Positioned(
+                      top: widget.topInset + 8,
+                      left: 16,
+                      right: 16,
+                      child: IgnorePointer(
+                        key: const ValueKey('history-loading-overlay'),
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Center(
+                            child: Material(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(24),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Flexible(
+                                      child: Text(context.l10n.commonLoading),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             const BackgroundResumeNotice(),

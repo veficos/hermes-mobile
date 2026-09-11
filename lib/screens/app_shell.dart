@@ -40,6 +40,8 @@ import '../kanban/store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/glass/glass_surface.dart';
+import '../widgets/glass/glass_selection_row.dart';
+import '../widgets/glass/glass_button.dart';
 import '../widgets/glass/scroll_edge_scrim.dart';
 import '../widgets/glass/glass_environment.dart';
 import '../theme/hermes_glass_theme.dart';
@@ -799,22 +801,24 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             child: Stack(
               children: [
                 Scaffold(
+                  backgroundColor: HermesGlassTheme.of(context).enabled
+                      ? Colors.transparent
+                      : null,
                   body: Column(
                     children: [
                       _XlTopBar(title: _tabLabels(context)[_index]),
                       Expanded(
                         child: Row(
                           children: [
-                            GlassSurface(
-                              radius: 0,
-                              thick: true,
+                            _WideNavigationSurface(
                               child: _buildXlSideNav(
                                 context,
                                 connection,
                                 requests,
                               ),
                             ),
-                            const VerticalDivider(width: 1),
+                            if (!HermesGlassTheme.of(context).enabled)
+                              const VerticalDivider(width: 1),
                             Expanded(child: body),
                           ],
                         ),
@@ -834,38 +838,61 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (isTablet) {
       // Tablet: NavigationRail + Main + ContextRail (spec §164).
       // Rail 目的地与手机 Tab 对齐（首页/会话/任务/机器人/更多）。
-      // 选中态与手机档 NavigationBar 对齐：accentBg 胶囊 + accent 图标/label
-      // （hermes_theme.dart 暂无 navigationRailTheme，本地补齐）。
+      // Liquid shares the phone indicator/icon pair; labels sit outside it.
       final palette = HermesPalette.of(context);
+      final liquid = HermesGlassTheme.of(context).enabled;
+      final phoneTheme = Theme.of(context).navigationBarTheme;
       return GlassEnvironment(
         child: MobileTourOverlay(
           child: PetOverlay(
             child: Stack(
               children: [
                 Scaffold(
+                  backgroundColor: HermesGlassTheme.of(context).enabled
+                      ? Colors.transparent
+                      : null,
                   body: Row(
                     children: [
-                      GlassSurface(
-                        radius: 0,
-                        thick: true,
+                      _WideNavigationSurface(
                         child: NavigationRailTheme(
                           data: NavigationRailThemeData(
-                            indicatorColor: palette.accentBg,
+                            indicatorShape: liquid
+                                ? phoneTheme.indicatorShape
+                                : null,
+                            indicatorColor: liquid
+                                ? phoneTheme.indicatorColor
+                                : palette.accentBg,
                             selectedIconTheme: IconThemeData(
-                              color: palette.accent,
+                              color: liquid
+                                  ? phoneTheme.iconTheme!.resolve({
+                                      WidgetState.selected,
+                                    })!.color
+                                  : palette.accent,
                             ),
                             unselectedIconTheme: IconThemeData(
-                              color: palette.text3,
+                              color: liquid
+                                  ? phoneTheme.iconTheme!.resolve({})!.color
+                                  : palette.text3,
                             ),
                             selectedLabelTextStyle: TextStyle(
-                              color: palette.accent,
+                              color: liquid
+                                  ? Theme.of(context).colorScheme.onSurface
+                                  : palette.accent,
                               fontWeight: FontWeight.w700,
                             ),
                             unselectedLabelTextStyle: TextStyle(
-                              color: palette.text3,
+                              color: liquid
+                                  ? phoneTheme.labelTextStyle!
+                                        .resolve({})!
+                                        .color
+                                  : palette.text3,
                             ),
                           ),
                           child: NavigationRail(
+                            scrollable: HermesGlassTheme.of(context).enabled,
+                            trailingAtBottom: HermesGlassTheme.of(
+                              context,
+                            ).enabled,
                             key: const ValueKey('app-shell-tablet-navigation'),
                             selectedIndex: _index,
                             onDestinationSelected: _selectTab,
@@ -874,22 +901,44 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                                 HermesGlassTheme.of(context).enabled
                                 ? Colors.transparent
                                 : Theme.of(context).colorScheme.surface,
-                            leading: FloatingActionButton.small(
-                              heroTag: 'palette_rail',
-                              tooltip: context.l10n.commonSearch,
-                              onPressed: () =>
-                                  context.read<CommandPaletteStore>().open(),
-                              child: const Icon(Icons.search),
-                            ),
-                            trailing: requests.pendingCount > 0
-                                ? IconButton(
-                                    tooltip: context.l10n.approvalRequests,
-                                    onPressed: () => showRequestSheet(context),
-                                    icon: Badge.count(
-                                      count: requests.pendingCount,
-                                      child: const Icon(Icons.rule),
-                                    ),
+                            leading: liquid
+                                ? GlassButton(
+                                    tooltip: context.l10n.commonSearch,
+                                    onPressed: () => context
+                                        .read<CommandPaletteStore>()
+                                        .open(),
+                                    child: const Icon(Icons.search),
                                   )
+                                : FloatingActionButton.small(
+                                    heroTag: 'palette_rail',
+                                    tooltip: context.l10n.commonSearch,
+                                    onPressed: () => context
+                                        .read<CommandPaletteStore>()
+                                        .open(),
+                                    child: const Icon(Icons.search),
+                                  ),
+                            trailing: requests.pendingCount > 0
+                                ? liquid
+                                      ? GlassButton(
+                                          tooltip:
+                                              context.l10n.approvalRequests,
+                                          onPressed: () =>
+                                              showRequestSheet(context),
+                                          child: Badge.count(
+                                            count: requests.pendingCount,
+                                            child: const Icon(Icons.rule),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          tooltip:
+                                              context.l10n.approvalRequests,
+                                          onPressed: () =>
+                                              showRequestSheet(context),
+                                          icon: Badge.count(
+                                            count: requests.pendingCount,
+                                            child: const Icon(Icons.rule),
+                                          ),
+                                        )
                                 : null,
                             destinations: [
                               NavigationRailDestination(
@@ -921,7 +970,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           ),
                         ),
                       ),
-                      const VerticalDivider(width: 1),
+                      if (!HermesGlassTheme.of(context).enabled)
+                        const VerticalDivider(width: 1),
                       Expanded(child: body),
                     ],
                   ),
@@ -943,6 +993,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             children: [
               Scaffold(
                 extendBody: HermesGlassTheme.of(context).enabled,
+                backgroundColor: HermesGlassTheme.of(context).enabled
+                    ? Colors.transparent
+                    : null,
                 body: body,
                 bottomNavigationBar: _PhoneNavigationBar(
                   selectedIndex: _index,
@@ -992,7 +1045,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final expanded = _xlNavExpanded;
     return AnimatedContainer(
       key: const ValueKey('app-shell-xl-navigation'),
-      duration: MediaQuery.disableAnimationsOf(context)
+      duration:
+          MediaQuery.disableAnimationsOf(context) ||
+              MediaQuery.accessibleNavigationOf(context)
           ? Duration.zero
           : const Duration(milliseconds: 200),
       curve: const Cubic(0.3, 0, 0.2, 1),
@@ -1104,27 +1159,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     selected: _index == 4,
                     onTap: () => _selectTab(4),
                   ),
+                  // Low-frequency destinations share the scroll extent so large text
+                  // and a wrapped status bar cannot squeeze them outside the viewport.
+                  Divider(height: 1, color: palette.border),
+                  _xlFeatureNavItem(context, 'settings'),
+                  _xlFeatureNavItem(context, 'about'),
+                  _xlNavItem(
+                    context,
+                    icon: connection.isConnected
+                        ? Icons.cloud_done_outlined
+                        : Icons.cloud_off_outlined,
+                    label: connection.isConnected
+                        ? l10n.commonConnected
+                        : l10n.commonDisconnected,
+                    selected: false,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SettingsHubScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
           ),
-          Divider(height: 1, color: palette.border),
-          _xlFeatureNavItem(context, 'settings'),
-          _xlFeatureNavItem(context, 'about'),
-          _xlNavItem(
-            context,
-            icon: connection.isConnected
-                ? Icons.cloud_done_outlined
-                : Icons.cloud_off_outlined,
-            label: connection.isConnected
-                ? l10n.commonConnected
-                : l10n.commonDisconnected,
-            selected: false,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
-            ),
-          ),
-          const SizedBox(height: 8),
         ],
       ),
     );
@@ -1167,6 +1226,59 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }) {
     final palette = HermesPalette.of(context);
     final expanded = _xlNavExpanded;
+    if (HermesGlassTheme.of(context).enabled) {
+      final colors = Theme.of(context).colorScheme;
+      final foreground = selected
+          ? colors.onPrimaryContainer
+          : colors.onSurfaceVariant;
+      final itemIcon = Icon(icon, size: 22, color: foreground);
+      final item = GlassSelectionRow(
+        selected: selected,
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: expanded ? 12 : 0,
+                vertical: 10,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (badgeCount > 0)
+                    Badge.count(count: badgeCount, child: itemIcon)
+                  else
+                    itemIcon,
+                  if (expanded) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: foreground,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      return Semantics(
+        label: expanded ? null : label,
+        button: true,
+        child: expanded ? item : Tooltip(message: label, child: item),
+      );
+    }
     final iconColor = selected ? palette.accent : palette.text3;
     final iconWidget = badgeCount > 0
         ? Stack(
@@ -1235,10 +1347,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 }
 
-/// 手机档底部导航：Material [NavigationBar]，样式统一来自
-/// `NavigationBarTheme`（hermes_theme.dart：66px、accentBg 胶囊选中态、
-/// 11px label、accent/text3 图标色）。角标/tour 目标键叠加在 destination
-/// icon 上；Semantics（selected/button/"Tab x of 5"）由组件内置。
+/// Wide navigation owns one floating material, outside system safe areas.
+class _WideNavigationSurface extends StatelessWidget {
+  const _WideNavigationSurface({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!HermesGlassTheme.of(context).enabled) return child;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: GlassSurface(
+          key: const ValueKey('app-shell-wide-navigation-glass'),
+          radius: 28,
+          role: HermesGlassRole.navigation,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Phone navigation retains Material destination semantics and tour targets.
 class _PhoneNavigationBar extends StatelessWidget {
   const _PhoneNavigationBar({
     required this.selectedIndex,
@@ -1249,6 +1380,14 @@ class _PhoneNavigationBar extends StatelessWidget {
   final int selectedIndex;
   final int pendingRequests;
   final ValueChanged<int> onSelected;
+
+  static const _selectedIcons = [
+    Icons.home,
+    Icons.chat_bubble,
+    Icons.task_alt,
+    Icons.smart_toy,
+    Icons.more_horiz,
+  ];
 
   static const _targetSelectors = [
     'nav.home',
@@ -1268,6 +1407,13 @@ class _PhoneNavigationBar extends StatelessWidget {
     final liquid = HermesGlassTheme.of(context).enabled;
     final navigation = NavigationBar(
       key: const ValueKey('app-shell-phone-navigation'),
+      animationDuration:
+          MediaQuery.disableAnimationsOf(context) ||
+              MediaQuery.accessibleNavigationOf(context)
+          ? Duration.zero
+          : liquid
+          ? HermesGlassTokens.feedbackDuration
+          : null,
       selectedIndex: selectedIndex,
       onDestinationSelected: onSelected,
       backgroundColor: liquid
@@ -1282,7 +1428,11 @@ class _PhoneNavigationBar extends StatelessWidget {
                   ? Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        Icon(icons[index]),
+                        Icon(
+                          liquid && selectedIndex == index
+                              ? _selectedIcons[index]
+                              : icons[index],
+                        ),
                         Positioned(
                           right: -6,
                           top: -4,
@@ -1290,7 +1440,11 @@ class _PhoneNavigationBar extends StatelessWidget {
                         ),
                       ],
                     )
-                  : Icon(icons[index]),
+                  : Icon(
+                      liquid && selectedIndex == index
+                          ? _selectedIcons[index]
+                          : icons[index],
+                    ),
             ),
             label: labels[index],
           ),
@@ -1311,8 +1465,16 @@ class _PhoneNavigationBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-          child: GlassSurface(radius: 28, thick: true, child: navigation),
+          // Keep the dock visibly detached from the viewport edges, matching
+          // the floating iOS glass dock silhouette while preserving the
+          // platform-provided bottom safe area below it.
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+          child: GlassSurface(
+            key: const ValueKey('app-shell-phone-navigation-glass'),
+            radius: 30,
+            role: HermesGlassRole.navigation,
+            child: navigation,
+          ),
         ),
       ),
     );
@@ -1341,12 +1503,15 @@ class _XlTopBar extends StatelessWidget {
     final palette = HermesPalette.of(context);
     final connection = context.watch<ConnectionStore>();
     final requests = context.watch<RequestStore>();
-    return Container(
-      height: 48,
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final toolbar = Container(
+      height: liquid ? 56 : 48,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: palette.surface,
-        border: Border(bottom: BorderSide(color: palette.border)),
+        color: liquid ? Colors.transparent : palette.surface,
+        border: liquid
+            ? null
+            : Border(bottom: BorderSide(color: palette.border)),
       ),
       child: Row(
         children: [
@@ -1367,14 +1532,14 @@ class _XlTopBar extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(liquid ? 22 : 6),
                 onTap: () => context.read<CommandPaletteStore>().open(),
                 child: Container(
-                  height: 30,
+                  height: liquid ? 44 : 30,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
                     border: Border.all(color: palette.border),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(liquid ? 22 : 6),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1442,6 +1607,19 @@ class _XlTopBar extends StatelessWidget {
         ],
       ),
     );
+    if (!liquid) return toolbar;
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        child: GlassSurface(
+          key: const ValueKey('app-shell-xl-toolbar-glass'),
+          radius: 28,
+          role: HermesGlassRole.navigation,
+          child: toolbar,
+        ),
+      ),
+    );
   }
 }
 
@@ -1457,56 +1635,117 @@ class _XlStatusBar extends StatelessWidget {
     final connection = context.watch<ConnectionStore>();
     final session = context.watch<SessionStore>();
     final info = session.info;
-    final style = TextStyle(fontSize: 11, color: palette.text3);
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final style = TextStyle(
+      fontSize: 11,
+      color: liquid ? palette.text2 : palette.text3,
+    );
     Widget sep() => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Text('·', style: style),
     );
 
     final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
-    return Container(
-      height: 24 * textScale,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        border: Border(top: BorderSide(color: palette.border)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.circle,
-            size: 7,
-            color: connection.isConnected
-                ? HermesSemantic.green
-                : HermesSemantic.red,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            connection.isConnected
-                ? l10n.commonConnected
-                : l10n.commonDisconnected,
-            style: style,
-          ),
-          sep(),
-          Text(l10n.shellModelStatus(info?.model ?? '—'), style: style),
-          sep(),
-          Flexible(
-            child: Text(
-              l10n.shellWorkspaceStatus(info?.cwd ?? '—'),
-              style: style,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    final status = Container(
+      height: liquid ? null : 24 * textScale,
+      constraints: liquid ? const BoxConstraints(minHeight: 24) : null,
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: liquid ? 4 : 0),
+      clipBehavior: liquid ? Clip.antiAlias : Clip.none,
+      decoration: liquid
+          ? BoxDecoration(
+              // The surrounding GlassSurface owns the sampled material.
+              // Keeping this layer transparent avoids a rectangular inner
+              // panel that cuts across the continuous superellipse.
+              color: Colors.transparent,
+            )
+          : BoxDecoration(
+              color: palette.surface,
+              border: Border(top: BorderSide(color: palette.border)),
             ),
-          ),
-          sep(),
-          Text(
-            l10n.shellAgentStatus(
-              info?.running == true ? l10n.commonRunning : l10n.commonIdle,
+      child: liquid
+          ? Wrap(
+              spacing: 16,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      size: 7,
+                      color: connection.isConnected
+                          ? HermesSemantic.green
+                          : HermesSemantic.red,
+                    ),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        connection.isConnected
+                            ? l10n.commonConnected
+                            : l10n.commonDisconnected,
+                        style: style,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(l10n.shellModelStatus(info?.model ?? '—'), style: style),
+                Text(l10n.shellWorkspaceStatus(info?.cwd ?? '—'), style: style),
+                Text(
+                  l10n.shellAgentStatus(
+                    info?.running == true
+                        ? l10n.commonRunning
+                        : l10n.commonIdle,
+                  ),
+                  style: style,
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Icon(
+                  Icons.circle,
+                  size: 7,
+                  color: connection.isConnected
+                      ? HermesSemantic.green
+                      : HermesSemantic.red,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  connection.isConnected
+                      ? l10n.commonConnected
+                      : l10n.commonDisconnected,
+                  style: style,
+                ),
+                sep(),
+                Text(l10n.shellModelStatus(info?.model ?? '—'), style: style),
+                sep(),
+                Flexible(
+                  child: Text(
+                    l10n.shellWorkspaceStatus(info?.cwd ?? '—'),
+                    style: style,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                sep(),
+                Text(
+                  l10n.shellAgentStatus(
+                    info?.running == true
+                        ? l10n.commonRunning
+                        : l10n.commonIdle,
+                  ),
+                  style: style,
+                ),
+              ],
             ),
-            style: style,
-          ),
-        ],
-      ),
+    );
+    if (!liquid) return status;
+    return GlassSurface(
+      key: const ValueKey('app-shell-xl-status-glass'),
+      radius: 18,
+      role: HermesGlassRole.navigation,
+      child: status,
     );
   }
 }

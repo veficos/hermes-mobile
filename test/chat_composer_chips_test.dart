@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:hermes_mobile/chat/transcript/anchored_history_list.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/api_client.dart';
+import 'package:hermes_mobile/core/chat_message.dart';
 import 'package:hermes_mobile/core/model_catalog.dart';
 import 'package:hermes_mobile/core/models.dart';
 import 'package:hermes_mobile/core/stores/chat_store.dart';
@@ -12,6 +14,10 @@ import 'package:hermes_mobile/core/stores/session_tab_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/chat_screen.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
+import 'package:hermes_mobile/widgets/glass/glass_environment.dart';
+import 'package:hermes_mobile/widgets/glass/glass_search_field.dart';
 import 'package:hermes_mobile/widgets/h/hermes_composer.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,6 +67,15 @@ class _FakeChatApi extends ApiClient {
 
   @override
   Future<ModelCatalog> modelCatalog({bool refresh = false}) async => catalog;
+
+  @override
+  Future<List<SavedPrompt>> savedPrompts() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> providerQuota({
+    String? provider,
+    bool refresh = false,
+  }) async => const {};
 
   @override
   Future<Map<String, dynamic>> setModel(String provider, String model) async =>
@@ -179,6 +194,12 @@ Widget _chatApp(
   ConnectionStore connection, {
   SessionStore? session,
   ChatScreen screen = const ChatScreen(),
+  bool liquid = false,
+  double safeTop = 0,
+  bool reduceTransparency = false,
+  bool highContrast = false,
+  double? textScale,
+  double? keyboard,
 }) {
   final chat = session?.chat ?? ChatStore();
   final requests = RequestStore();
@@ -192,11 +213,11 @@ Widget _chatApp(
       ChangeNotifierProvider.value(value: connection),
       ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
         create: (_) => SessionTabStore(),
-        update: (_, connection, tabs) =>
-            (tabs ?? SessionTabStore())..attachRoutedEvents(
-              connection.routedEvents,
-              owners: connection.sessionOwners,
-            ),
+        update: (_, connection, tabs) => (tabs ?? SessionTabStore())
+          ..attachRoutedEvents(
+            connection.routedEvents,
+            owners: connection.sessionOwners,
+          ),
       ),
       ChangeNotifierProvider<SessionStore>.value(value: session),
       ChangeNotifierProvider.value(value: chat),
@@ -204,6 +225,24 @@ Widget _chatApp(
       ChangeNotifierProvider.value(value: CommandStore(connection: connection)),
     ],
     child: MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          padding: EdgeInsets.only(top: safeTop),
+          highContrast: highContrast,
+          textScaler: textScale == null ? null : TextScaler.linear(textScale),
+          viewInsets: keyboard == null
+              ? null
+              : EdgeInsets.only(bottom: keyboard),
+        ),
+        child: child!,
+      ),
+      theme: liquid
+          ? buildHermesTheme(
+              brightness: Brightness.light,
+              visualStyle: HermesVisualStyle.liquid,
+              reduceTransparency: reduceTransparency,
+            )
+          : null,
       locale: const Locale('zh'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -234,6 +273,219 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('Liquid search remains usable with large text and keyboard', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _FakeChatApi();
+    final connection = ConnectionStore()..api = api;
+    addTearDown(connection.dispose);
+    await tester.pumpWidget(
+      _chatApp(
+        api,
+        connection,
+        liquid: true,
+        safeTop: 47,
+        textScale: 2,
+        keyboard: 300,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.search));
+    await tester.pumpAndSettle();
+    final field = find.descendant(
+      of: find.byType(GlassSearchField),
+      matching: find.byType(TextField),
+    );
+    expect(tester.getSize(field).width, greaterThan(350));
+    await tester.enterText(field, 'query');
+    await tester.pumpAndSettle();
+    final next = find.byIcon(Icons.keyboard_arrow_down);
+    expect(next.hitTestable(), findsOneWidget);
+    expect(tester.getBottomLeft(next).dy, lessThan(544));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(GlassSearchField),
+        matching: find.byIcon(Icons.close),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final reduced in [false, true]) {
+    testWidgets(
+      'opaque Liquid chat does not hide content behind header ($reduced)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(390, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final api = _FakeChatApi();
+        final connection = ConnectionStore()..api = api;
+        final chat = ChatStore();
+        final session = SessionStore(
+          connection: connection,
+          chat: chat,
+          requests: RequestStore(),
+        );
+        addTearDown(session.dispose);
+        addTearDown(connection.dispose);
+        chat.loadHistory([
+          ChatMessage(
+            id: 'one',
+            role: 'user',
+            parts: [ChatPart.text('Readable message')],
+          ),
+        ], hasMore: false);
+        await tester.pumpWidget(
+          _chatApp(
+            api,
+            connection,
+            session: session,
+            liquid: true,
+            safeTop: 47,
+            reduceTransparency: reduced,
+            highContrast: !reduced,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<Scaffold>(find.byType(Scaffold).first)
+              .extendBodyBehindAppBar,
+          isFalse,
+        );
+        expect(find.byType(BackdropFilter), findsNothing);
+        expect(
+          tester.getTopLeft(find.text('Readable message')).dy,
+          greaterThanOrEqualTo(tester.getBottomLeft(find.byType(AppBar)).dy),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'Liquid phone transcript stays below header and preserves search position',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _FakeChatApi();
+      final connection = ConnectionStore()..api = api;
+      final chat = ChatStore();
+      final session = SessionStore(
+        connection: connection,
+        chat: chat,
+        requests: RequestStore(),
+      );
+      addTearDown(session.dispose);
+      addTearDown(connection.dispose);
+      chat.loadHistory([
+        for (var i = 0; i < 20; i++)
+          ChatMessage(
+            id: 'u$i',
+            role: 'user',
+            parts: [ChatPart.text('Question $i')],
+          ),
+      ], hasMore: false);
+      await tester.pumpWidget(
+        _chatApp(api, connection, session: session, liquid: true, safeTop: 47),
+      );
+      await tester.pump();
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+      expect(scaffold.extendBodyBehindAppBar, isFalse);
+      final list = tester.widget<AnchoredHistoryList>(
+        find.byType(AnchoredHistoryList),
+      );
+      await tester.pumpAndSettle();
+      // Enter history-reading mode through an actual gesture. jumpTo only
+      // changes geometry and intentionally does not cancel bottom following.
+      final transcript = find.byWidgetPredicate(
+        (widget) =>
+            widget is AnchoredHistoryList &&
+            widget.controller == list.controller,
+      );
+      await tester.drag(transcript, const Offset(0, 200));
+      await tester.pumpAndSettle();
+      list.controller.jumpTo(list.controller.position.minScrollExtent);
+      await tester.pumpAndSettle();
+      final first = find.text('Question 0');
+      final header = tester.getRect(find.byType(AppBar));
+      expect(tester.getRect(transcript).top, greaterThanOrEqualTo(header.bottom));
+      expect(tester.getTopLeft(first).dy, greaterThanOrEqualTo(header.bottom));
+      final firstY = tester.getTopLeft(first).dy;
+      list.controller.jumpTo(
+        list.controller.position.minScrollExtent + firstY - header.bottom + 20,
+      );
+      await tester.pump();
+      expect(tester.getTopLeft(first).dy, lessThan(header.bottom));
+      list.controller.jumpTo(list.controller.position.minScrollExtent);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.search));
+      await tester.pumpAndSettle();
+      final searchRect = tester.getRect(find.byType(GlassSearchField));
+      expect(searchRect.width, greaterThan(350));
+      expect(
+        tester.getTopLeft(find.byIcon(Icons.keyboard_arrow_up)).dy,
+        greaterThan(searchRect.bottom),
+      );
+      expect(
+        tester
+            .widget<Scaffold>(find.byType(Scaffold).first)
+            .extendBodyBehindAppBar,
+        isFalse,
+      );
+      expect(tester.getTopLeft(first).dy, greaterThan(header.bottom));
+      await tester.tap(find.byIcon(Icons.search_off));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(first).dy, closeTo(firstY, 1));
+      list.controller.jumpTo(600);
+      await tester.pumpAndSettle();
+      final middle = find.text('Question 6');
+      final middleY = tester.getTopLeft(middle).dy;
+      final middleOffset = list.controller.offset;
+      await tester.tap(find.byIcon(Icons.search));
+      await tester.pumpAndSettle();
+      expect(list.controller.offset, closeTo(middleOffset, 1));
+      await tester.tap(find.byIcon(Icons.search_off));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(middle).dy, closeTo(middleY, 1));
+      expect(list.controller.offset, closeTo(middleOffset, 1));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
+
+  for (final width in [390.0, 900.0]) {
+    testWidgets(
+      'Liquid chat keeps an environment behind its scaffold at $width',
+      (tester) async {
+        await tester.binding.setSurfaceSize(Size(width, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final api = _FakeChatApi();
+        final connection = ConnectionStore()..api = api;
+        addTearDown(connection.dispose);
+        await tester.pumpWidget(_chatApp(api, connection, liquid: true));
+        await tester.pump();
+        expect(find.byType(GlassEnvironment), findsOneWidget);
+        final scaffold = find
+            .descendant(
+              of: find.byType(GlassEnvironment),
+              matching: find.byType(Scaffold),
+            )
+            .first;
+        expect(
+          tester.widget<Scaffold>(scaffold).backgroundColor,
+          Colors.transparent,
+        );
+        expect(find.byType(HermesComposer), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('file handoff remains visible when server draft save fails', (
     tester,

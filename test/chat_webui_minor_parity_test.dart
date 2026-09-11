@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/testing.dart';
 import 'package:hermes_mobile/core/api_client.dart';
 import 'package:hermes_mobile/core/chat_message.dart';
 import 'package:hermes_mobile/core/gateway.dart';
@@ -27,12 +28,18 @@ import 'package:hermes_mobile/core/stores/request_store.dart';
 import 'package:hermes_mobile/core/stores/session_store.dart';
 import 'package:hermes_mobile/core/stores/session_tab_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
+import 'package:hermes_mobile/chat/tools/tool_dismiss_store.dart';
+import 'package:hermes_mobile/chat/tools/tool_group_card.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/chat_screen.dart';
 import 'package:hermes_mobile/theme/hermes_tokens.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
+import 'package:hermes_mobile/widgets/glass/glass_menu_entry.dart';
 import 'package:hermes_mobile/widgets/h/hermes_composer.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/review_capture.dart';
 
 // ---------------------------------------------------------------- fakes
 
@@ -101,10 +108,50 @@ class _FakeConnection extends ConnectionStore {
 }
 
 class _FakeApi extends ApiClient {
-  _FakeApi() : super(baseUrl: 'http://contract.invalid', apiKey: 'test');
+  _FakeApi()
+    : super(
+        baseUrl: 'http://contract.invalid',
+        apiKey: 'test',
+        client: MockClient((request) async {
+          throw StateError(
+            'Unstubbed chat API: ${request.method} ${request.url.path}',
+          );
+        }),
+      );
 
   final List<(String, bool)> titleRegenCalls = [];
   final List<String> shareCalls = [];
+  bool populatedFiles = false;
+  final List<String> directoryReads = [];
+  static const reviewFile = '液态玻璃聊天界面与历史滚动验收说明-long-file-name.md';
+
+  @override
+  Future<Map<String, dynamic>> fsEntries(String path, {String? root}) async {
+    directoryReads.add(path);
+    return {
+      'entries': populatedFiles
+          ? [
+              if (path == '/workspace')
+                {'name': 'docs', 'path': '/workspace/docs', 'isDirectory': true}
+              else
+                {
+                  'name': reviewFile,
+                  'path': '/workspace/docs/$reviewFile',
+                  'size': 2048,
+                },
+            ]
+          : [],
+    };
+  }
+
+  @override
+  Future<List<SavedPrompt>> savedPrompts() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> providerQuota({
+    String? provider,
+    bool refresh = false,
+  }) async => const {};
 
   @override
   Future<Map<String, dynamic>> getConfig({String? profile}) async => const {};
@@ -117,7 +164,8 @@ class _FakeApi extends ApiClient {
   Future<List<ToolsetInfo>> toolsets({String? profile}) async => const [];
 
   @override
-  Future<String> fsDefaultCwd() async => 'D:/work/repo';
+  Future<String> fsDefaultCwd() async =>
+      populatedFiles ? '/workspace' : 'D:/work/repo';
 
   @override
   Future<List<Map<String, dynamic>>> listProjects() async => const [];
@@ -181,24 +229,44 @@ class _ChatRig {
   late final ChatStore chat;
   late final SessionStore session;
 
-  Widget app() => MultiProvider(
+  Widget app({
+    bool liquid = false,
+    Brightness brightness = Brightness.dark,
+    double textScale = 1,
+    bool opaque = false,
+  }) => MultiProvider(
     providers: [
       ChangeNotifierProvider<ConnectionStore>.value(value: connection),
       ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
         create: (_) => SessionTabStore(),
-        update: (_, connection, tabs) =>
-            (tabs ?? SessionTabStore())..attachRoutedEvents(
-              connection.routedEvents,
-              owners: connection.sessionOwners,
-            ),
+        update: (_, connection, tabs) => (tabs ?? SessionTabStore())
+          ..attachRoutedEvents(
+            connection.routedEvents,
+            owners: connection.sessionOwners,
+          ),
       ),
       ChangeNotifierProvider.value(value: session),
       ChangeNotifierProvider.value(value: chat),
+      ChangeNotifierProvider.value(value: session.requests),
+      ChangeNotifierProvider(create: (_) => ToolDismissStore()),
       ChangeNotifierProvider.value(value: VoiceStore(connection: connection)),
       ChangeNotifierProvider.value(value: CommandStore(connection: connection)),
     ],
     child: MaterialApp(
+      theme: liquid
+          ? buildHermesTheme(
+              brightness: brightness,
+              visualStyle: HermesVisualStyle.liquid,
+              reduceTransparency: opaque,
+            )
+          : null,
       locale: Locale('zh'),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: ChatScreen(),
@@ -278,7 +346,154 @@ Future<void> _pumpBareComposer(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    const capture = String.fromEnvironment('CHAT_REVIEW_DIR');
+    if (capture.isEmpty) return;
+    for (final name in [
+      'xyz.luan/audioplayers.global',
+      'xyz.luan/audioplayers.global/events',
+      'xyz.luan/audioplayers',
+      'com.llfbandit.record/messages',
+    ]) {
+      final channel = MethodChannel(name);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (name == 'xyz.luan/audioplayers' && call.method == 'create') {
+          final events = MethodChannel(
+            'xyz.luan/audioplayers/events/${(call.arguments as Map)['playerId']}',
+          );
+          messenger.setMockMethodCallHandler(events, (_) async => null);
+          addTearDown(() => messenger.setMockMethodCallHandler(events, null));
+        }
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    }
+  });
+
+  for (final (brightness, scale, opaque) in [
+    (Brightness.dark, 1.0, false),
+    (Brightness.light, 1.0, false),
+    (Brightness.light, 2.0, false),
+    (Brightness.dark, 2.0, false),
+    (Brightness.light, 2.0, true),
+  ]) {
+    testWidgets(
+      'Liquid ChatScreen inline approval sends the scoped response $brightness/$scale/$opaque',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final rig = _ChatRig();
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: const ValueKey('chat-review'),
+            child: rig.app(
+              liquid: true,
+              brightness: brightness,
+              textScale: scale,
+              opaque: opaque,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await rig.sendFirstTurn(tester, '请检查工作区');
+        rig.session.requests.enqueue(
+          PendingRequest(
+            kind: RequestKind.approval,
+            requestId: 'chat-approval',
+            sessionId: 'rt-1',
+            command: 'echo approved',
+          ),
+        );
+        rig.chat.loadHistory([
+          ...rig.chat.messages,
+          ChatMessage(
+            id: 'workspace-tool-result',
+            role: 'assistant',
+            parts: [
+              ChatPart.toolCall({
+                'tool_id': 'workspace-inspect',
+                'name': 'terminal',
+                'running': false,
+                'args': {'command': 'pwd'},
+                'result_text': '/workspace/hermes-mobile',
+              }),
+              ChatPart.toolCall({
+                'tool_id': 'workspace-read',
+                'name': 'read_file',
+                'running': false,
+                'args': {'path': 'pubspec.yaml'},
+                'result_text': 'name: hermes_mobile',
+              }),
+            ],
+          ),
+          ChatMessage(
+            id: 'approval-message',
+            role: 'assistant',
+            parts: [
+              ChatPart.text('需要你确认此操作。'),
+              ChatPart.interactiveRequest({'request_id': 'chat-approval'}),
+            ],
+          ),
+        ], hasMore: false);
+        await tester.pumpAndSettle();
+        expect(find.byType(ToolGroupCard), findsWidgets);
+        final approve = find.text('允许一次');
+        await tester.ensureVisible(approve);
+        await tester.pumpAndSettle();
+        expect(approve.hitTestable(), findsOneWidget);
+        expect(find.byType(HermesComposer), findsOneWidget);
+        expect(
+          tester.getRect(approve).bottom,
+          lessThanOrEqualTo(tester.getRect(find.byType(HermesComposer)).top),
+        );
+        if (scale == 1) {
+          // Standard-size review captures must include the independent tool
+          // result above approval, not merely build it outside the viewport.
+          final toolRect = tester.getRect(
+            find.byKey(
+              const ValueKey(
+                'timeline-tool-group-workspace-inspect-workspace-read',
+              ),
+            ),
+          );
+          expect(toolRect.top, greaterThanOrEqualTo(0));
+          expect(
+            toolRect.bottom,
+            lessThanOrEqualTo(tester.getRect(approve).top),
+          );
+        }
+        if (opaque) expect(find.byType(BackdropFilter), findsNothing);
+        const capture = String.fromEnvironment('CHAT_REVIEW_DIR');
+        if (capture.isNotEmpty) {
+          await captureReview(
+            tester,
+            find.byKey(const ValueKey('chat-review')),
+            '$capture/chat-${brightness.name}-$scale-$opaque.png',
+          );
+        }
+        await tester.tap(approve);
+        await tester.pumpAndSettle();
+        final responses = rig.gateway.calls
+            .where((c) => c.$1 == 'approval.respond')
+            .toList();
+        expect(responses, hasLength(1));
+        expect(responses.single.$2['request_id'], 'chat-approval');
+        expect(responses.single.$2['session_id'], 'rt-1');
+        expect(responses.single.$2['choice'], 'once');
+        expect(rig.session.requests.pendingCount, 0);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        rig.session.dispose();
+        rig.session.requests.dispose();
+        rig.chat.dispose();
+        rig.connection.dispose();
+      },
+    );
+  }
 
   group('B4 inline message editing (WebUI .msg-edit-area)', () {
     Finder cancelButton() {
@@ -594,6 +809,29 @@ void main() {
 
   group('context usage toolbar action', () {
     testWidgets(
+      'Liquid context popover displays usage and compresses its session',
+      (tester) async {
+        final rig = _ChatRig();
+        await tester.pumpWidget(rig.app(liquid: true));
+        await tester.pumpAndSettle();
+        await rig.sendFirstTurn(tester, 'context please');
+        await tester.tap(find.byTooltip('上下文使用率'));
+        await tester.pumpAndSettle();
+        expect(find.byType(GlassMenuEntry<String>), findsOneWidget);
+        expect(find.text('68% of 128K'), findsOneWidget);
+        await tester.tap(find.text('压缩'));
+        await tester.pumpAndSettle();
+        final calls = rig.gateway.calls
+            .where((call) => call.$1 == 'session.compress')
+            .toList();
+        expect(calls, hasLength(1));
+        expect(calls.single.$2['session_id'], 'rt-1');
+        expect(find.text('上下文已压缩'), findsOneWidget);
+        expect(find.byType(GlassMenuEntry<String>), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+    testWidgets(
       'shows usage, compresses through the session RPC, and is absent from more',
       (tester) async {
         final rig = _ChatRig();
@@ -655,6 +893,225 @@ void main() {
   });
 
   group('A12 phone workspace file panel entry', () {
+    testWidgets('Liquid list menu is keyboard accessible and restores focus', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({'hm_file_tree_mode': false});
+      final rig = _ChatRig()..api.populatedFiles = true;
+      tester.view.physicalSize = const Size(1280, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(rig.app(liquid: true, textScale: 2));
+      await tester.pumpAndSettle();
+      final folder = find.text('docs');
+      final l10n = AppLocalizations.of(tester.element(folder));
+      final menu = find.byTooltip('${l10n.commonMore} docs');
+      expect(menu, findsOneWidget);
+      expect(tester.getSize(menu).width, greaterThanOrEqualTo(44));
+      expect(tester.getSize(menu).height, greaterThanOrEqualTo(44));
+      bool menuFocused() {
+        final focusContext = FocusManager.instance.primaryFocus?.context;
+        if (focusContext == null) return false;
+        var inside = false;
+        focusContext.visitAncestorElements((ancestor) {
+          if (ancestor.widget is IconButton &&
+              (ancestor.widget as IconButton).tooltip ==
+                  '${l10n.commonMore} docs') {
+            inside = true;
+          }
+          return !inside;
+        });
+        return inside;
+      }
+
+      for (var step = 0; step < 80 && !menuFocused(); step++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+      }
+      expect(menuFocused(), isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.fileTreeAttachToChat), findsOneWidget);
+      expect(rig.api.directoryReads, isNot(contains('/workspace/docs')));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.fileTreeAttachToChat), findsNothing);
+      expect(menuFocused(), isTrue);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      rig.session.dispose();
+      rig.session.requests.dispose();
+      rig.chat.dispose();
+      rig.connection.dispose();
+    });
+    testWidgets('Liquid tree folder controls have accessible hit areas', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({'hm_file_tree_mode': true});
+      final rig = _ChatRig()..api.populatedFiles = true;
+      tester.view.physicalSize = const Size(1280, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(rig.app(liquid: true, textScale: 2));
+      await tester.pumpAndSettle();
+      final sidebar = find.byKey(const ValueKey('chat-workspace-sidebar-slot'));
+      final folder = find.descendant(of: sidebar, matching: find.text('docs'));
+      final row = find
+          .ancestor(of: folder, matching: find.byType(InkWell))
+          .first;
+      final buttons = find.descendant(
+        of: row,
+        matching: find.byType(IconButton),
+      );
+      expect(buttons, findsNWidgets(2));
+      for (final element in buttons.evaluate()) {
+        final size = tester.getSize(find.byWidget(element.widget));
+        expect(size.width, greaterThanOrEqualTo(44));
+        expect(size.height, greaterThanOrEqualTo(44));
+      }
+      await tester.tap(buttons.first);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: sidebar, matching: find.text(_FakeApi.reviewFile)),
+        findsOneWidget,
+      );
+      expect(folder, findsOneWidget);
+      final l10n = AppLocalizations.of(tester.element(folder));
+      expect(find.byTooltip('${l10n.commonCollapse} docs'), findsOneWidget);
+      // Reach the actual expander via keyboard traversal, not requestFocus:
+      // the target must be discoverable among the populated workspace controls.
+      bool expanderFocused() {
+        final focusContext = FocusManager.instance.primaryFocus?.context;
+        if (focusContext == null) return false;
+        final target = tester.element(buttons.first);
+        var inside = identical(focusContext, target);
+        focusContext.visitAncestorElements((ancestor) {
+          if (identical(ancestor, target)) inside = true;
+          return !inside;
+        });
+        return inside;
+      }
+
+      for (var step = 0; step < 80 && !expanderFocused(); step++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+      }
+      expect(
+        expanderFocused(),
+        isTrue,
+        reason: 'Expander is keyboard reachable',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('${l10n.commonExpand} docs'), findsOneWidget);
+      expect(find.text(_FakeApi.reviewFile), findsNothing);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+      expect(find.text(_FakeApi.reviewFile), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      rig.session.dispose();
+      rig.session.requests.dispose();
+      rig.chat.dispose();
+      rig.connection.dispose();
+    });
+    for (final brightness in Brightness.values) {
+      for (final scale in [1.0, 2.0]) {
+        testWidgets('Liquid populated three-pane $brightness $scale', (
+          tester,
+        ) async {
+          final rig = _ChatRig();
+          rig.api.populatedFiles = true;
+          tester.view.physicalSize = const Size(1280, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(
+            RepaintBoundary(
+              key: const ValueKey('three-pane-review'),
+              child: rig.app(
+                liquid: true,
+                brightness: brightness,
+                textScale: scale,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await rig.sendFirstTurn(tester, '检查三栏聊天：侧栏收起后保持正文和输入区可用。');
+          await tester.pumpAndSettle();
+          final sidebar = find.byKey(
+            const ValueKey('chat-workspace-sidebar-slot'),
+          );
+          final rail = find.byType(TabletSessionRail);
+          final composer = find.byType(HermesComposer);
+          expect(rail, findsOneWidget);
+          expect(sidebar, findsOneWidget);
+          expect(composer, findsOneWidget);
+          final folder = find.descendant(
+            of: sidebar,
+            matching: find.text('docs'),
+          );
+          expect(folder, findsOneWidget);
+          final folderAction = find
+              .ancestor(of: folder, matching: find.byType(InkWell))
+              .first;
+          expect(tester.getSize(folderAction).height, greaterThanOrEqualTo(44));
+          await tester.tap(folder);
+          await tester.pumpAndSettle();
+          expect(rig.api.directoryReads, contains('/workspace/docs'));
+          final file = find.descendant(
+            of: sidebar,
+            matching: find.text(_FakeApi.reviewFile),
+          );
+          expect(file, findsOneWidget);
+          final fileAction = find
+              .ancestor(of: file, matching: find.byType(InkWell))
+              .first;
+          expect(tester.getSize(fileAction).height, greaterThanOrEqualTo(44));
+          final fileBounds = tester.getRect(file);
+          expect(
+            fileBounds.left,
+            greaterThanOrEqualTo(tester.getRect(sidebar).left),
+          );
+          expect(
+            fileBounds.right,
+            lessThanOrEqualTo(tester.getRect(sidebar).right),
+          );
+          final expandedWidth = tester.getSize(composer).width;
+          void checkBounds() {
+            final rect = tester.getRect(composer);
+            expect(rect.left, greaterThanOrEqualTo(tester.getRect(rail).right));
+            expect(rect.right, lessThanOrEqualTo(tester.getRect(sidebar).left));
+            expect(rect.bottom, lessThanOrEqualTo(844));
+            expect(tester.takeException(), isNull);
+          }
+
+          checkBounds();
+          const dir = String.fromEnvironment('CHAT_REVIEW_DIR');
+          if (dir.isNotEmpty) {
+            await captureReview(
+              tester,
+              find.byKey(const ValueKey('three-pane-review')),
+              '$dir/chat-three-pane-1280-${brightness.name}-$scale.png',
+            );
+          }
+          await tester.tap(find.byTooltip('收起'));
+          await tester.pumpAndSettle();
+          expect(tester.getSize(sidebar).width, 56);
+          expect(tester.getSize(composer).width, greaterThan(expandedWidth));
+          checkBounds();
+          await tester.tap(find.byTooltip('展开'));
+          await tester.pumpAndSettle();
+          expect(tester.getSize(sidebar).width, 280);
+          checkBounds();
+          expect(rig.session.durableId, 'sid-1');
+          await tester.pumpWidget(const SizedBox());
+          rig.session.dispose();
+          rig.session.requests.dispose();
+          rig.chat.dispose();
+          rig.connection.dispose();
+        });
+      }
+    }
     testWidgets('phone width: folder icon opens the file panel end drawer', (
       tester,
     ) async {

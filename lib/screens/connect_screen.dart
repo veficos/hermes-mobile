@@ -9,9 +9,11 @@ import '../core/settings_store.dart';
 import '../core/stores/connection_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
 import '../widgets/h/hermes_glass.dart';
 import '../widgets/h/hermes_states.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
+import '../widgets/mobile/mobile_page_scaffold.dart';
 import 'cloud_discovery_screen.dart';
 
 /// First-run / re-setup screen: enter the hermes-mobile-server URL + API key.
@@ -534,8 +536,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.connectTitle)),
+    return HermesPageScaffold(
+      title: context.l10n.connectTitle,
+      scrollBodyBehindHeader: true,
       body: Align(
         alignment: Alignment.topCenter,
         child: SingleChildScrollView(
@@ -972,6 +975,15 @@ class _ConnectScreenState extends State<ConnectScreen> {
                           : context.l10n.connectAction,
                     ),
                     style: FilledButton.styleFrom(
+                      visualDensity: HermesGlassTheme.of(context).enabled
+                          ? VisualDensity.standard
+                          : null,
+                      minimumSize: HermesGlassTheme.of(context).enabled
+                          ? const Size(0, 52)
+                          : null,
+                      shape: HermesGlassTheme.of(context).enabled
+                          ? const StadiumBorder()
+                          : null,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),

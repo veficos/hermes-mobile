@@ -27,6 +27,8 @@ import 'package:hermes_mobile/core/stores/session_tab_store.dart';
 import 'package:hermes_mobile/core/stores/voice_store.dart';
 import 'package:hermes_mobile/l10n/generated/app_localizations.dart';
 import 'package:hermes_mobile/screens/chat_screen.dart';
+import 'package:hermes_mobile/theme/hermes_theme.dart';
+import 'package:hermes_mobile/theme/hermes_glass_theme.dart';
 import 'package:hermes_mobile/widgets/h/hermes_composer.dart';
 import 'package:hermes_mobile/widgets/mobile/hermes_adaptive_menu.dart';
 import 'package:provider/provider.dart';
@@ -184,7 +186,11 @@ class _ChatRig {
   late final ChatStore chat;
   late final SessionStore session;
 
-  Widget app() => MultiProvider(
+  Widget app({
+    bool liquid = false,
+    bool opaque = false,
+    double textScale = 1,
+  }) => MultiProvider(
     providers: [
       ChangeNotifierProvider<ConnectionStore>.value(value: connection),
       ChangeNotifierProxyProvider<ConnectionStore, SessionTabStore>(
@@ -201,7 +207,20 @@ class _ChatRig {
       ChangeNotifierProvider.value(value: CommandStore(connection: connection)),
     ],
     child: MaterialApp(
+      theme: liquid
+          ? buildHermesTheme(
+              brightness: Brightness.light,
+              visualStyle: HermesVisualStyle.liquid,
+              reduceTransparency: opaque,
+            )
+          : null,
       locale: Locale('zh'),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: ChatScreen(),
@@ -423,68 +442,96 @@ void main() {
       rig.connection.dispose();
     });
 
-    testWidgets(
-      'steer failure falls back to the queue; strip shows count, expands and '
-      'deletes per item',
-      (tester) async {
-        final rig = _ChatRig()..gateway.steerFails = true;
-        await tester.pumpWidget(rig.app());
-        await tester.pumpAndSettle();
+    for (final mode in ['classic', 'liquid', 'opaque', 'scaled']) {
+      testWidgets(
+        'steer failure falls back to the queue; strip shows count, expands and '
+        'deletes per item $mode',
+        (tester) async {
+          if (mode == 'scaled') {
+            tester.view.physicalSize = const Size(320, 844);
+            tester.view.devicePixelRatio = 1;
+            addTearDown(tester.view.reset);
+          }
+          final rig = _ChatRig()..gateway.steerFails = true;
+          await tester.pumpWidget(
+            rig.app(
+              liquid: mode != 'classic',
+              opaque: mode == 'opaque',
+              textScale: mode == 'scaled' ? 2 : 1,
+            ),
+          );
+          await tester.pumpAndSettle();
 
-        // Turn 1 in flight.
-        await tester.enterText(find.byType(TextField).first, 'turn one');
-        await tester.pump();
-        await tester.tap(find.byIcon(Icons.arrow_upward));
-        await tester.pump();
-        await tester.pump();
-        expect(rig.chat.busy, isTrue);
+          // Turn 1 in flight.
+          await tester.enterText(find.byType(TextField).first, 'turn one');
+          await tester.pump();
+          await tester.tap(find.byIcon(Icons.arrow_upward));
+          await tester.pump();
+          await tester.pump();
+          expect(rig.chat.busy, isTrue);
 
-        // Busy submit #2: steer fails → queued → drained into a second
-        // in-flight submit (gate 2), so nothing lingers in the queue yet.
-        await tester.enterText(find.byType(TextField).first, 'second');
-        await tester.pump();
-        await tester.tap(find.byIcon(Icons.explore_outlined));
-        await tester.pump();
-        await tester.pump();
-        expect(rig.gateway.textsFor('session.steer'), ['second']);
-        expect(rig.gateway.textsFor('prompt.submit'), ['turn one', 'second']);
+          // Busy submit #2: steer fails → queued → drained into a second
+          // in-flight submit (gate 2), so nothing lingers in the queue yet.
+          await tester.enterText(find.byType(TextField).first, 'second');
+          await tester.pump();
+          await tester.tap(find.byIcon(Icons.explore_outlined));
+          await tester.pump();
+          await tester.pump();
+          expect(rig.gateway.textsFor('session.steer'), ['second']);
+          expect(rig.gateway.textsFor('prompt.submit'), ['turn one', 'second']);
 
-        // Busy submit #3: queue drain is busy, so this one stays queued and
-        // the strip above the composer appears.
-        await tester.enterText(find.byType(TextField).first, 'third');
-        await tester.pump();
-        await tester.tap(find.byIcon(Icons.explore_outlined));
-        await tester.pump();
-        await tester.pump();
+          // Busy submit #3: queue drain is busy, so this one stays queued and
+          // the strip above the composer appears.
+          await tester.enterText(find.byType(TextField).first, 'third');
+          await tester.pump();
+          await tester.tap(find.byIcon(Icons.explore_outlined));
+          await tester.pump();
+          await tester.pump();
 
-        expect(
-          find.byKey(const ValueKey('composer-status-bar')),
-          findsOneWidget,
-        );
-        await tester.tap(find.byTooltip('展开详情'));
-        await tester.pump();
-        expect(find.text('队列 1 条 · 点击展开'), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('composer-status-bar')),
+            findsOneWidget,
+          );
+          await tester.tap(find.byTooltip('展开详情'));
+          await tester.pump();
+          expect(find.text('队列 1 条 · 点击展开'), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('chat-queue-glass')),
+            mode == 'classic' ? findsNothing : findsOneWidget,
+          );
+          if (mode == 'opaque') {
+            expect(find.byType(BackdropFilter), findsNothing);
+          }
 
-        // Expand → per-item management.
-        await tester.tap(find.text('队列 1 条 · 点击展开'));
-        await tester.pump();
-        expect(find.text('队列 1 条 · 点击收起'), findsOneWidget);
-        expect(find.text('third'), findsOneWidget);
-        expect(find.text('全部取消'), findsOneWidget);
+          // Expand → per-item management.
+          await tester.tap(find.text('队列 1 条 · 点击展开'));
+          await tester.pump();
+          expect(find.text('队列 1 条 · 点击收起'), findsOneWidget);
+          expect(find.text('third'), findsOneWidget);
+          expect(find.text('全部取消'), findsOneWidget);
 
-        // Delete the single queued item → strip disappears (the snackbar
-        // copy mentions 队列, so assert on the strip-specific label).
-        await tester.tap(find.byIcon(Icons.close));
-        await tester.pump();
-        await tester.pump();
-        expect(find.text('队列 1 条 · 点击展开'), findsNothing);
-        expect(find.text('队列 1 条 · 点击收起'), findsNothing);
-        expect(rig.session.queueCount, 0);
+          // Delete the single queued item → strip disappears (the snackbar
+          // copy mentions 队列, so assert on the strip-specific label).
+          await tester.ensureVisible(find.byIcon(Icons.close));
+          await tester.pump();
+          expect(find.byIcon(Icons.close).hitTestable(), findsOneWidget);
+          if (mode != 'classic') {
+            final cancel = find.widgetWithIcon(IconButton, Icons.close);
+            expect(tester.getSize(cancel).width, greaterThanOrEqualTo(44));
+            expect(tester.getSize(cancel).height, greaterThanOrEqualTo(44));
+          }
+          await tester.tap(find.byIcon(Icons.close));
+          await tester.pump();
+          await tester.pump();
+          expect(find.text('队列 1 条 · 点击展开'), findsNothing);
+          expect(find.text('队列 1 条 · 点击收起'), findsNothing);
+          expect(rig.session.queueCount, 0);
 
-        rig.releasePrompts();
-        rig.connection.dispose();
-      },
-    );
+          rig.releasePrompts();
+          rig.connection.dispose();
+        },
+      );
+    }
   });
 
   group('in-flight composer draft preservation', () {

@@ -13,19 +13,22 @@ Future<T?> showAdaptiveFormDialog<T>({
   required Widget content,
   required List<Widget> actions,
 }) {
+  final liquid = HermesGlassTheme.of(context).enabled;
   if (MediaQuery.sizeOf(context).width < HermesBreakpoints.phone) {
     return showMobileSheet<T>(
       context,
-      // The form keeps its own AnimatedPadding for keyboard avoidance so the
-      // inset animates instead of jumping.
-      avoidViewInsets: false,
+      // Liquid's keyboard gap belongs outside the glass material.
+      // Classic retains the existing animated interior avoidance.
+      avoidViewInsets: liquid,
       (sheetContext) => AnimatedPadding(
         key: const ValueKey('adaptive-phone-form-sheet'),
-        duration: MediaQuery.disableAnimationsOf(sheetContext)
+        duration:
+            MediaQuery.disableAnimationsOf(sheetContext) ||
+                MediaQuery.accessibleNavigationOf(sheetContext)
             ? Duration.zero
             : HermesMotion.fast,
         padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+          bottom: liquid ? 0 : MediaQuery.viewInsetsOf(sheetContext).bottom,
         ),
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -69,9 +72,12 @@ Future<T?> showAdaptiveFormDialog<T>({
       builder: (ctx) => Dialog(
         key: const ValueKey('adaptive-wide-form-dialog'),
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: const RoundedRectangleBorder(),
         child: GlassSurface(
           radius: HermesGlassTokens.sheetRadius,
-          thick: true,
+          role: HermesGlassRole.overlay,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
             child: Padding(

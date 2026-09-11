@@ -16,6 +16,7 @@ import '../../core/external_links.dart';
 import '../../core/stores/pull_request_store.dart';
 import '../../core/stores/session_store.dart';
 import '../../l10n/l10n.dart';
+import '../../theme/hermes_glass_theme.dart';
 import '../../theme/hermes_tokens.dart';
 import '../h/hermes_confirm_dialog.dart';
 import '../h/hermes_states.dart';
@@ -455,7 +456,9 @@ class _GitReviewPanelState extends State<GitReviewPanel>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
+                alpha: HermesGlassTheme.of(context).enabled ? .32 : 1,
+              ),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text('$count', style: const TextStyle(fontSize: 10)),
@@ -526,7 +529,9 @@ class _GitReviewPanelState extends State<GitReviewPanel>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
+              alpha: HermesGlassTheme.of(context).enabled ? .38 : 1,
+            ),
           ),
           child: Row(
             children: [
@@ -614,7 +619,12 @@ class _GitReviewPanelState extends State<GitReviewPanel>
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: Theme.of(context).dividerColor, width: 0.5),
+          top: BorderSide(
+            color: HermesGlassTheme.of(context).enabled
+                ? Theme.of(context).dividerColor.withValues(alpha: .32)
+                : Theme.of(context).dividerColor,
+            width: 0.5,
+          ),
         ),
       ),
       child: Column(

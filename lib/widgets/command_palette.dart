@@ -32,10 +32,38 @@ import '../screens/settings_hub_screen.dart';
 import '../screens/subagents_screen.dart';
 import '../screens/terminal_screen.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
+import 'glass/glass_surface.dart';
+import 'glass/glass_selection_row.dart';
 import 'h/hermes_glass.dart';
 import 'h/hermes_kbd.dart';
 import 'h/hermes_states.dart';
 import 'pet_overlay.dart';
+
+class _PaletteSurface extends StatelessWidget {
+  const _PaletteSurface({required this.desktop, required this.child});
+  final bool desktop;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (HermesGlassTheme.of(context).enabled) {
+      return GlassSurface(
+        key: const ValueKey('command-palette-glass'),
+        radius: 28,
+        role: HermesGlassRole.overlay,
+        child: Material(type: MaterialType.transparency, child: child),
+      );
+    }
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
+      radius: desktop ? HermesRadius.largeCard : 0,
+      tint: HermesPalette.of(context).elevated,
+      shadow: HermesShadowTier.md,
+      child: child,
+    );
+  }
+}
 
 class CommandPalette extends StatelessWidget {
   const CommandPalette({super.key});
@@ -61,6 +89,22 @@ class CommandPaletteOverlay extends StatefulWidget {
 class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
+  final _selectedResult = GlobalKey();
+  final _resultsScroll = ScrollController();
+
+  void _setQuery(String query) {
+    widget.palette.setQuery(query);
+    if (_resultsScroll.hasClients) _resultsScroll.jumpTo(0);
+  }
+
+  void _moveSelection(int delta) {
+    widget.palette.moveSelection(delta);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = _selectedResult.currentContext;
+      if (target != null) Scrollable.ensureVisible(target);
+    });
+  }
 
   @override
   void initState() {
@@ -73,6 +117,7 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
   void dispose() {
     _controller.dispose();
     _focus.dispose();
+    _resultsScroll.dispose();
     super.dispose();
   }
 
@@ -85,6 +130,8 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
     final results = palette.results;
     final size = MediaQuery.sizeOf(context);
     final isDesktop = size.width >= 840;
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
 
     // The palette is not a route: intercept the system back button so the
     // first press closes the palette instead of popping the route below.
@@ -97,11 +144,11 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
         onKeyEvent: (_, event) {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-            palette.moveSelection(1);
+            _moveSelection(1);
             return KeyEventResult.handled;
           }
           if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-            palette.moveSelection(-1);
+            _moveSelection(-1);
             return KeyEventResult.handled;
           }
           if (event.logicalKey == LogicalKeyboardKey.enter) {
@@ -124,7 +171,14 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
                 child: Align(
                   alignment: isDesktop ? Alignment.topCenter : Alignment.center,
                   child: Padding(
-                    padding: isDesktop
+                    padding: liquid
+                        ? EdgeInsets.fromLTRB(
+                            12,
+                            isDesktop ? 24 : 12,
+                            12,
+                            keyboard + (isDesktop ? 24 : 12),
+                          )
+                        : isDesktop
                         ? const EdgeInsets.symmetric(vertical: 24)
                         : EdgeInsets.zero,
                     // §6.12 Popover：elevated 底 + shadow-md。
@@ -137,12 +191,9 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
                       ),
                       child: SizedBox(
                         width: double.infinity,
-                        height: isDesktop ? null : double.infinity,
-                        child: HermesGlassCard(
-                          padding: EdgeInsets.zero,
-                          radius: isDesktop ? HermesRadius.largeCard : 0,
-                          tint: tokens.elevated,
-                          shadow: HermesShadowTier.md,
+                        height: isDesktop || liquid ? null : double.infinity,
+                        child: _PaletteSurface(
+                          desktop: isDesktop,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -154,8 +205,9 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
                                 child: TextField(
                                   controller: _controller,
                                   focusNode: _focus,
-                                  onChanged: palette.setQuery,
+                                  onChanged: _setQuery,
                                   onSubmitted: (_) => _selectCurrent(context),
+                                  textInputAction: TextInputAction.search,
                                   style: HermesType.onSurface(
                                     HermesType.body,
                                     theme,
@@ -173,6 +225,18 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
                                       onPressed: palette.close,
                                     ),
                                     border: InputBorder.none,
+                                    filled: liquid ? false : null,
+                                    enabledBorder: liquid
+                                        ? InputBorder.none
+                                        : null,
+                                    focusedBorder: liquid
+                                        ? UnderlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: theme.colorScheme.primary,
+                                              width: 2,
+                                            ),
+                                          )
+                                        : null,
                                     contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 16,
                                       vertical: 14,
@@ -238,22 +302,32 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
                                           ),
                                         ),
                                       )
-                                    : ListView.builder(
-                                        shrinkWrap: true,
-                                        itemCount: results.length,
-                                        itemBuilder: (ctx, i) {
-                                          final r = results[i];
-                                          final selected =
-                                              i == palette.selectedIndex;
-                                          return _ResultTile(
-                                            result: r,
-                                            selected: selected,
-                                            onTap: () {
-                                              palette.selectedIndex = i;
-                                              _selectCurrent(context);
+                                    : SingleChildScrollView(
+                                        controller: _resultsScroll,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: List.generate(
+                                            results.length,
+                                            (i) {
+                                              final r = results[i];
+                                              final selected =
+                                                  i == palette.selectedIndex;
+                                              return KeyedSubtree(
+                                                key: selected
+                                                    ? _selectedResult
+                                                    : null,
+                                                child: _ResultTile(
+                                                  result: r,
+                                                  selected: selected,
+                                                  onTap: () {
+                                                    palette.selectedIndex = i;
+                                                    _selectCurrent(context);
+                                                  },
+                                                ),
+                                              );
                                             },
-                                          );
-                                        },
+                                          ),
+                                        ),
                                       ),
                               ),
                               if (isDesktop) ...[
@@ -263,37 +337,32 @@ class _CommandPaletteOverlayState extends State<CommandPaletteOverlay> {
                                     horizontal: 12,
                                     vertical: 8,
                                   ),
-                                  child: Row(
+                                  child: Wrap(
+                                    spacing: 16,
+                                    runSpacing: 8,
                                     children: [
-                                      const HermesKbd('↑↓'),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        l10n.paletteHintNavigate,
-                                        style: HermesType.onSurfaceVariant(
-                                          HermesType.caption,
-                                          theme,
+                                      for (final hint in [
+                                        ('↑↓', l10n.paletteHintNavigate),
+                                        ('Enter', l10n.paletteHintOpen),
+                                        ('Esc', l10n.paletteHintClose),
+                                      ])
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            HermesKbd(hint.$1),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                hint.$2,
+                                                style:
+                                                    HermesType.onSurfaceVariant(
+                                                      HermesType.caption,
+                                                      theme,
+                                                    ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      const HermesKbd('Enter'),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        l10n.paletteHintOpen,
-                                        style: HermesType.onSurfaceVariant(
-                                          HermesType.caption,
-                                          theme,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      const HermesKbd('Esc'),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        l10n.paletteHintClose,
-                                        style: HermesType.onSurfaceVariant(
-                                          HermesType.caption,
-                                          theme,
-                                        ),
-                                      ),
                                     ],
                                   ),
                                 ),
@@ -468,17 +537,23 @@ class _ResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = HermesPalette.of(context);
-    return InkWell(
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final tile = InkWell(
       onTap: onTap,
+      borderRadius: liquid ? BorderRadius.circular(18) : null,
       child: Container(
-        color: selected ? tokens.accentBg : Colors.transparent,
+        color: selected && !liquid ? tokens.accentBg : Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
             Icon(
               result.icon ?? Icons.circle,
               size: 20,
-              color: selected ? tokens.accent : tokens.text3,
+              color: liquid && selected
+                  ? theme.colorScheme.onPrimaryContainer
+                  : selected
+                  ? tokens.accent
+                  : tokens.text3,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -487,7 +562,12 @@ class _ResultTile extends StatelessWidget {
                 children: [
                   Text(
                     result.title,
-                    style: HermesType.onSurface(HermesType.callout, theme),
+                    style: HermesType.onSurface(HermesType.callout, theme)
+                        .copyWith(
+                          color: liquid && selected
+                              ? theme.colorScheme.onPrimaryContainer
+                              : null,
+                        ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -495,10 +575,15 @@ class _ResultTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       result.subtitle!,
-                      style: HermesType.onSurfaceVariant(
-                        HermesType.footnote,
-                        theme,
-                      ),
+                      style:
+                          HermesType.onSurfaceVariant(
+                            HermesType.footnote,
+                            theme,
+                          ).copyWith(
+                            color: liquid && selected
+                                ? theme.colorScheme.onPrimaryContainer
+                                : null,
+                          ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -511,6 +596,7 @@ class _ResultTile extends StatelessWidget {
         ),
       ),
     );
+    return liquid ? GlassSelectionRow(selected: selected, child: tile) : tile;
   }
 
   Widget _kindBadge(BuildContext context, PaletteResultKind kind) {

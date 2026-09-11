@@ -15,6 +15,7 @@ import '../core/stores/pull_request_store.dart';
 import '../core/stores/session_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
+import '../theme/hermes_glass_theme.dart';
 import '../widgets/h/hermes_button.dart';
 import '../widgets/h/hermes_confirm_dialog.dart';
 import '../widgets/h/hermes_glass.dart';
@@ -1202,7 +1203,8 @@ class _GitScreenState extends State<GitScreen>
           ),
           const SizedBox(height: 6),
           for (final branch in _branches)
-            Card(
+            HermesGlassCard(
+              padding: EdgeInsets.zero,
               child: ListTile(
                 leading: Icon(
                   branch['checkedOut'] == true
@@ -1317,7 +1319,8 @@ class _GitScreenState extends State<GitScreen>
     final isMain = wt['isMain'] == true;
     final locked = wt['locked'] == true;
     final detached = wt['detached'] == true;
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
       child: ListTile(
         leading: Icon(
           isMain ? Icons.home_outlined : Icons.call_split,
@@ -1785,11 +1788,12 @@ class _GitScreenState extends State<GitScreen>
     final timestamp = commit['timestamp'] ?? commit['date'];
     final parents = (commit['parents'] as List? ?? const []).length;
 
-    return Card(
+    return HermesGlassCard(
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: InkWell(
-        onTap: () => _showCommitDetail(commit),
-        child: Padding(
+      onTap: () => _showCommitDetail(commit),
+      child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1902,7 +1906,6 @@ class _GitScreenState extends State<GitScreen>
             ],
           ),
         ),
-      ),
     );
   }
 
@@ -2072,7 +2075,9 @@ class _GitScreenState extends State<GitScreen>
     return Column(
       children: [
         Material(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: HermesGlassTheme.of(context).allowsTransparency(context)
+              ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: .42)
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(

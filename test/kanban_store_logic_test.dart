@@ -7,6 +7,40 @@ import 'package:hermes_mobile/kanban/models.dart';
 import 'package:hermes_mobile/kanban/store.dart';
 
 void main() {
+  test(
+    'bulk response cannot clear a new selection after board round trip',
+    () async {
+      final api = _PendingBulkApi();
+      final store = KanbanStore(api);
+      addTearDown(store.dispose);
+      store.selectedIds.add('1');
+      final operation = store.bulkPatch({'1'}, {'status': 'done'});
+      final original = api.boardSlug;
+      await store.selectBoard('other');
+      await store.selectBoard(original);
+      store.selectedIds.add('1');
+      api.response.complete({'failed': []});
+      expect(await operation, {'1'});
+      expect(store.selectedIds, {'1'});
+      expect(store.ownerEpoch, 2);
+    },
+  );
+  test('bulk completion preserves selections made after submission', () async {
+    final api = _PendingBulkApi();
+    final store = KanbanStore(api);
+    addTearDown(store.dispose);
+    store.selectedIds.addAll({'1', '2'});
+    final operation = store.bulkPatch(Set.of(store.selectedIds), {
+      'status': 'done',
+    });
+    store.selectedIds.add('3');
+    api.response.complete({
+      'failed': ['2'],
+    });
+    expect(await operation, {'2'});
+    expect(store.selectedIds, {'2', '3'});
+    expect(api.ids, ['1', '2']);
+  });
   test('board filtering matches title, assignee, and tenant', () {
     final board = KanbanBoard.fromJson({
       'columns': [
@@ -269,6 +303,31 @@ void main() {
     await loading;
     expect(store.boardData, isNull);
   });
+}
+
+class _PendingBulkApi extends KanbanApi {
+  _PendingBulkApi() : super(_NoBulkEventsClient());
+  final response = Completer<dynamic>();
+  List<String>? ids;
+  @override
+  Future<dynamic> bulk(List<String> ids, Map<String, dynamic> patch) {
+    this.ids = ids;
+    return response.future;
+  }
+
+  @override
+  Future<KanbanBoard> board({bool archived = false}) async =>
+      KanbanBoard.fromJson({'columns': []});
+  @override
+  Future<({List<KanbanBoardMeta> boards, String current})> boards() async =>
+      (boards: <KanbanBoardMeta>[], current: boardSlug);
+}
+
+class _NoBulkEventsClient extends ApiClient {
+  _NoBulkEventsClient() : super(baseUrl: 'http://invalid', apiKey: 'test');
+  @override
+  Future<Uri> kanbanEventsUri({String? board, int? since}) async =>
+      throw StateError('No event transport in this fixture');
 }
 
 class _PatchFailsAfterRefreshClient extends ApiClient {

@@ -6,13 +6,77 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../theme/hermes_tokens.dart';
 import '../../theme/hermes_glass_theme.dart';
 import '../haptics.dart';
 
-class AppearanceStore extends ChangeNotifier {
+class AppearanceStore extends ChangeNotifier with WidgetsBindingObserver {
+  AppearanceStore() {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      _nativeTransparency = true;
+      WidgetsBinding.instance.addObserver(this);
+      _accessibility.setMethodCallHandler((call) async {
+        if (call.method == 'reduceTransparencyChanged' &&
+            call.arguments is bool) {
+          _systemRevision++;
+          _setSystemTransparency(call.arguments as bool);
+        }
+      });
+      _refreshSystemTransparency();
+    }
+  }
+
+  static const _accessibility = MethodChannel('hermes.accessibility');
+  bool _nativeTransparency = false;
+  bool _disposed = false;
+  bool _systemReduceTransparency = false;
+  int _systemRevision = 0;
+  bool get effectiveReduceTransparency =>
+      _reduceTransparency || _systemReduceTransparency;
+
+  void _setSystemTransparency(bool value) {
+    if (_disposed || value == _systemReduceTransparency) return;
+    _systemReduceTransparency = value;
+    notifyListeners();
+  }
+
+  Future<void> _refreshSystemTransparency() async {
+    final revision = ++_systemRevision;
+    try {
+      final value = await _accessibility.invokeMethod<bool>(
+        'reduceTransparency',
+      );
+      if (value != null && revision == _systemRevision) {
+        _setSystemTransparency(value);
+      }
+    } on MissingPluginException {
+      // Older runners retain the application preference as fallback.
+    } on PlatformException {
+      // Preserve the last known system state if the bridge is unavailable.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _nativeTransparency) {
+      _refreshSystemTransparency();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    if (_nativeTransparency) {
+      WidgetsBinding.instance.removeObserver(this);
+      _accessibility.setMethodCallHandler(null);
+    }
+    super.dispose();
+  }
+
   HermesVisualStyle _visualStyle = HermesVisualStyle.classic;
   bool _reduceTransparency = false;
   HermesVisualStyle get visualStyle => _visualStyle;

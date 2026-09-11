@@ -10,6 +10,7 @@ import '../core/stores/update_store.dart';
 import '../l10n/l10n.dart';
 import '../theme/hermes_tokens.dart';
 import '../widgets/h/hermes_glass.dart';
+import '../widgets/glass/glass_alert_dialog.dart';
 import '../widgets/h/hermes_toast.dart';
 import '../widgets/mobile/hermes_mobile_surfaces.dart';
 import '../widgets/mobile/mobile_page_scaffold.dart';
@@ -22,14 +23,19 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = const _AboutContent();
-    if (embedded) return content;
-    return MobilePageScaffold(title: context.l10n.aboutTitle, body: content);
+    if (embedded) return const _AboutContent();
+    return HermesPageScaffold(
+      title: context.l10n.aboutTitle,
+      scrollable: true,
+      maxContentWidth: 760,
+      body: const _AboutContent(scrollable: false),
+    );
   }
 }
 
 class _AboutContent extends StatelessWidget {
-  const _AboutContent();
+  const _AboutContent({this.scrollable = true});
+  final bool scrollable;
 
   @override
   Widget build(BuildContext context) {
@@ -37,201 +43,205 @@ class _AboutContent extends StatelessWidget {
     final l10n = context.l10n;
     final version = updates?.currentVersion ?? '1.0.0';
     final build = updates?.currentBuild ?? '1';
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 32),
-      children: [
-        HermesMobileCard(
-          child: Column(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: HermesPalette.of(context).accent,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  'H',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onPrimary,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+    final children = <Widget>[
+      HermesMobileCard(
+        child: Column(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: HermesPalette.of(context).accent,
+                borderRadius: BorderRadius.circular(16),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Hermes Mobile',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-              ),
-              Text(
-                l10n.updateVersionBuild(version, build),
+              child: Text(
+                'H',
                 style: TextStyle(
-                  color: HermesPalette.of(context).text3,
-                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                l10n.aboutProductDescription,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Hermes Mobile',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            Text(
+              l10n.updateVersionBuild(version, build),
+              style: TextStyle(
+                color: HermesPalette.of(context).text3,
+                fontSize: 12,
               ),
-            ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              l10n.aboutProductDescription,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      HermesSectionHeader(
+        title: l10n.updateSectionTitle,
+        padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+      ),
+      HermesMobileGroup(
+        children: [
+          if (updates?.requiresUpdate == true)
+            ListTile(
+              leading: const Icon(
+                Icons.warning_amber_outlined,
+                color: HermesSemantic.red,
+              ),
+              title: Text(l10n.updateUnsupportedTitle),
+              subtitle: Text(
+                l10n.updateMinimumVersion(
+                  updates!.manifest!.minimumSupportedVersion,
+                ),
+              ),
+            )
+          else if (updates?.updateAvailable == true)
+            ListTile(
+              leading: const Icon(
+                Icons.system_update_outlined,
+                color: HermesSemantic.green,
+              ),
+              title: Text(
+                l10n.updateAvailableTitle(updates!.manifest!.latestVersion),
+              ),
+              subtitle: Text(
+                updates.manifest?.message ?? l10n.updateNewVersionPublished,
+              ),
+            )
+          else
+            ListTile(
+              leading: const Icon(Icons.verified_outlined),
+              title: Text(l10n.updateAppVersion),
+              subtitle: Text(l10n.updateVersionBuild(version, build)),
+            ),
+          ListTile(
+            leading: updates?.checking == true
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            title: Text(l10n.updateCheck),
+            subtitle: updates?.error == null
+                ? Text(l10n.updateCheckDescription)
+                : Text(l10n.updateCheckUnavailable(updates!.error!)),
+            enabled: updates != null && !updates.checking,
+            onTap: updates == null || updates.checking
+                ? null
+                : () async {
+                    final ok = await updates.check(force: true);
+                    if (!context.mounted) return;
+                    showHermesToast(
+                      context,
+                      message: ok
+                          ? updates.updateAvailable
+                                ? l10n.updateFound(
+                                    updates.manifest!.latestVersion,
+                                  )
+                                : l10n.updateCurrent
+                          : l10n.updateCheckFailed,
+                      kind: ok
+                          ? HermesToastKind.success
+                          : HermesToastKind.error,
+                    );
+                  },
           ),
-        ),
-        HermesSectionHeader(
-          title: l10n.updateSectionTitle,
-          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-        ),
-        HermesMobileGroup(
-          children: [
-            if (updates?.requiresUpdate == true)
-              ListTile(
-                leading: const Icon(
-                  Icons.warning_amber_outlined,
-                  color: HermesSemantic.red,
-                ),
-                title: Text(l10n.updateUnsupportedTitle),
-                subtitle: Text(
-                  l10n.updateMinimumVersion(
-                    updates!.manifest!.minimumSupportedVersion,
-                  ),
-                ),
-              )
-            else if (updates?.updateAvailable == true)
-              ListTile(
-                leading: const Icon(
-                  Icons.system_update_outlined,
-                  color: HermesSemantic.green,
-                ),
-                title: Text(
-                  l10n.updateAvailableTitle(updates!.manifest!.latestVersion),
-                ),
-                subtitle: Text(
-                  updates.manifest?.message ?? l10n.updateNewVersionPublished,
-                ),
-              )
-            else
-              ListTile(
-                leading: const Icon(Icons.verified_outlined),
-                title: Text(l10n.updateAppVersion),
-                subtitle: Text(l10n.updateVersionBuild(version, build)),
-              ),
+          if (updates?.updateAvailable == true ||
+              updates?.requiresUpdate == true)
             ListTile(
-              leading: updates?.checking == true
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh),
-              title: Text(l10n.updateCheck),
-              subtitle: updates?.error == null
-                  ? Text(l10n.updateCheckDescription)
-                  : Text(l10n.updateCheckUnavailable(updates!.error!)),
-              enabled: updates != null && !updates.checking,
-              onTap: updates == null || updates.checking
-                  ? null
-                  : () async {
-                      final ok = await updates.check(force: true);
-                      if (!context.mounted) return;
-                      showHermesToast(
-                        context,
-                        message: ok
-                            ? updates.updateAvailable
-                                  ? l10n.updateFound(
-                                      updates.manifest!.latestVersion,
-                                    )
-                                  : l10n.updateCurrent
-                            : l10n.updateCheckFailed,
-                        kind: ok
-                            ? HermesToastKind.success
-                            : HermesToastKind.error,
-                      );
-                    },
-            ),
-            if (updates?.updateAvailable == true ||
-                updates?.requiresUpdate == true)
-              ListTile(
-                leading: const Icon(Icons.open_in_new),
-                title: Text(l10n.updateGoToUpdate),
-                trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: () =>
-                    launchExternalOrNotify(context, updates!.updateUri),
-              ),
-            ListTile(
-              leading: const Icon(Icons.article_outlined),
-              title: Text(l10n.updateReleaseNotes),
+              leading: const Icon(Icons.open_in_new),
+              title: Text(l10n.updateGoToUpdate),
               trailing: const Icon(Icons.chevron_right, size: 20),
-              onTap: () => launchExternalOrNotify(
-                context,
-                updates?.releaseNotesUri ??
-                    Uri.parse(
-                      'https://github.com/NousResearch/hermes-agent/releases',
-                    ),
-              ),
+              onTap: () => launchExternalOrNotify(context, updates!.updateUri),
             ),
-          ],
-        ),
-        HermesSectionHeader(
-          title: l10n.helpAndFeedbackTitle,
-          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-        ),
-        HermesMobileGroup(
-          children: [
-            HermesMobileRow(
-              icon: Icons.bug_report_outlined,
-              title: l10n.sendDiagnosticsTitle,
-              subtitle: l10n.sendDiagnosticsSubtitle,
-              onTap: () => showSendDiagnosticsDialog(context),
+          ListTile(
+            leading: const Icon(Icons.article_outlined),
+            title: Text(l10n.updateReleaseNotes),
+            trailing: const Icon(Icons.chevron_right, size: 20),
+            onTap: () => launchExternalOrNotify(
+              context,
+              updates?.releaseNotesUri ??
+                  Uri.parse(
+                    'https://github.com/NousResearch/hermes-agent/releases',
+                  ),
             ),
-            HermesMobileRow(
-              icon: Icons.speed_outlined,
-              title: 'Client performance',
-              subtitle: 'View and copy metrics from this app run',
-              onTap: () => _showPerformanceSnapshot(context),
+          ),
+        ],
+      ),
+      HermesSectionHeader(
+        title: l10n.helpAndFeedbackTitle,
+        padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+      ),
+      HermesMobileGroup(
+        children: [
+          HermesMobileRow(
+            icon: Icons.bug_report_outlined,
+            title: l10n.sendDiagnosticsTitle,
+            subtitle: l10n.sendDiagnosticsSubtitle,
+            onTap: () => showSendDiagnosticsDialog(context),
+          ),
+          HermesMobileRow(
+            icon: Icons.speed_outlined,
+            title: l10n.clientPerformanceTitle,
+            subtitle: l10n.clientPerformanceSubtitle,
+            onTap: () => _showPerformanceSnapshot(context),
+          ),
+          HermesMobileRow(
+            icon: Icons.forum_outlined,
+            title: l10n.reportIssueTitle,
+            onTap: () => launchExternalOrNotify(
+              context,
+              Uri.parse('https://github.com/NousResearch/hermes-agent/issues'),
             ),
-            HermesMobileRow(
-              icon: Icons.forum_outlined,
-              title: l10n.reportIssueTitle,
-              onTap: () => launchExternalOrNotify(
-                context,
-                Uri.parse(
-                  'https://github.com/NousResearch/hermes-agent/issues',
-                ),
-              ),
+          ),
+          HermesMobileRow(
+            icon: Icons.chat_bubble_outline,
+            title: l10n.discordCommunityTitle,
+            onTap: () => launchExternalOrNotify(
+              context,
+              Uri.parse('https://discord.gg/NousResearch'),
             ),
-            HermesMobileRow(
-              icon: Icons.chat_bubble_outline,
-              title: l10n.discordCommunityTitle,
-              onTap: () => launchExternalOrNotify(
-                context,
-                Uri.parse('https://discord.gg/NousResearch'),
-              ),
+          ),
+        ],
+      ),
+      HermesSectionHeader(
+        title: l10n.legalTitle,
+        padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+      ),
+      HermesMobileGroup(
+        children: [
+          HermesMobileRow(
+            icon: Icons.code,
+            title: l10n.aboutLicenses,
+            onTap: () => showLicensePage(
+              context: context,
+              applicationName: 'Hermes Mobile',
+              applicationVersion: version,
             ),
-          ],
-        ),
-        HermesSectionHeader(
-          title: l10n.legalTitle,
-          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-        ),
-        HermesMobileGroup(
-          children: [
-            HermesMobileRow(
-              icon: Icons.code,
-              title: l10n.aboutLicenses,
-              onTap: () => showLicensePage(
-                context: context,
-                applicationName: 'Hermes Mobile',
-                applicationVersion: version,
-              ),
+          ),
+        ],
+      ),
+    ];
+    const padding = EdgeInsets.fromLTRB(14, 14, 14, 32);
+    return scrollable
+        ? ListView(padding: padding, children: children)
+        : Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
             ),
-          ],
-        ),
-      ],
-    );
+          );
   }
 
   Future<void> _showPerformanceSnapshot(BuildContext context) async {
@@ -241,8 +251,8 @@ class _AboutContent extends StatelessWidget {
     );
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Client performance'),
+      builder: (dialogContext) => GlassAlertDialog(
+        title: Text(context.l10n.clientPerformanceTitle),
         content: SizedBox(
           width: 560,
           child: SingleChildScrollView(
@@ -253,6 +263,14 @@ class _AboutContent extends StatelessWidget {
           ),
         ),
         actions: [
+          TextButton(
+            key: const ValueKey('performance-reset-frames'),
+            onPressed: () {
+              ClientPerformanceMetrics.instance.resetFrameWindow();
+              Navigator.pop(dialogContext);
+            },
+            child: Text(context.l10n.commonReset),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: Text(context.l10n.commonClose),

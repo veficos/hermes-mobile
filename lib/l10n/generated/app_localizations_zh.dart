@@ -9,6 +9,50 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get requestExpired => '请求已过期';
+
+  @override
+  String get clientPerformanceTitle => '客户端性能';
+
+  @override
+  String get clientPerformanceSubtitle => '查看并复制本次运行的性能指标';
+
+  @override
+  String get fileEditorEditFile => '编辑文件';
+
+  @override
+  String get fileEditorShowChanges => '查看更改';
+
+  @override
+  String get taskPreviousColumn => '上一列';
+
+  @override
+  String get taskNextColumn => '下一列';
+
+  @override
+  String taskVisibleColumns(int first, int last, int total) {
+    return '第 $first–$last 列，共 $total 列';
+  }
+
+  @override
+  String get appearancePreviewNotice => '仅供预览，不会发送消息';
+
+  @override
+  String get appearancePreviewContent => '内容保持清晰，浮动控件位于阅读内容之上。';
+
+  @override
+  String get appearancePreviewComposer => '消息输入预览';
+
+  @override
+  String get agentDiagnostics => '服务状态与诊断';
+
+  @override
+  String get agentBackendRunning => '后台运行中';
+
+  @override
+  String get agentBackendStopped => '后台已停止';
+
+  @override
   String get appearanceVisualStyle => '界面风格';
 
   @override
@@ -6067,7 +6111,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentIndividualBotsSection => '机器人';
 
   @override
-  String get agentManageBots => '管理 / 新建 Bot';
+  String get agentManageBots => '管理Bot';
 
   @override
   String get agentBotRoutinesMenuItem => '机器人任务';
@@ -11365,6 +11409,50 @@ class AppLocalizationsZh extends AppLocalizations {
 /// The translations for Chinese, using the Han script (`zh_Hant`).
 class AppLocalizationsZhHant extends AppLocalizationsZh {
   AppLocalizationsZhHant() : super('zh_Hant');
+
+  @override
+  String get requestExpired => '請求已過期';
+
+  @override
+  String get clientPerformanceTitle => '用戶端效能';
+
+  @override
+  String get clientPerformanceSubtitle => '檢視並複製本次執行的效能指標';
+
+  @override
+  String get fileEditorEditFile => '編輯檔案';
+
+  @override
+  String get fileEditorShowChanges => '查看變更';
+
+  @override
+  String get taskPreviousColumn => '上一欄';
+
+  @override
+  String get taskNextColumn => '下一欄';
+
+  @override
+  String taskVisibleColumns(int first, int last, int total) {
+    return '第 $first–$last 欄，共 $total 欄';
+  }
+
+  @override
+  String get appearancePreviewNotice => '僅供預覽，不會傳送訊息';
+
+  @override
+  String get appearancePreviewContent => '內容保持清晰，浮動控制項位於閱讀內容之上。';
+
+  @override
+  String get appearancePreviewComposer => '訊息輸入預覽';
+
+  @override
+  String get agentDiagnostics => '服務狀態與診斷';
+
+  @override
+  String get agentBackendRunning => '後台執行中';
+
+  @override
+  String get agentBackendStopped => '後台已停止';
 
   @override
   String get appearanceVisualStyle => '介面風格';

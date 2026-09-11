@@ -15,6 +15,14 @@ class GlassEnvironment extends StatelessWidget {
     final glass = HermesGlassTheme.of(context);
     final palette = HermesPalette.of(context);
     if (!glass.enabled) return child;
+    // AppShell is transparent in Liquid mode, so keep an opaque base even
+    // when decorative color fields are disabled for accessibility.
+    if (!glass.allowsTransparency(context)) {
+      return ColoredBox(color: palette.bg, child: child);
+    }
+    if (context.findAncestorWidgetOfExactType<GlassEnvironment>() != null) {
+      return child;
+    }
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(

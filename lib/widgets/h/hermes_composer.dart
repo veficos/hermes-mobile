@@ -498,9 +498,20 @@ class _HermesComposerState extends State<HermesComposer> {
             // edit box at every width — prototype parity: `.pillrow` /
             // `.attachrow` sit above `.composerbox`, never inside it. ──
             GlassActionGroup(
-              child: _buildToolsRow(context, mobilePlatform: mobilePlatform),
+              child: _animateToolsExpansion(
+                context,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildToolsRow(context, mobilePlatform: mobilePlatform),
+                    if (_emojiOpen && HermesGlassTheme.of(context).enabled)
+                      _buildEmojiPanel(context),
+                  ],
+                ),
+              ),
             ),
-            if (_emojiOpen) _buildEmojiPanel(context),
+            if (_emojiOpen && !HermesGlassTheme.of(context).enabled)
+              _buildEmojiPanel(context),
             if (showAttachments)
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
@@ -555,29 +566,52 @@ class _HermesComposerState extends State<HermesComposer> {
             // the text field and its voice / send actions only. ──
             GlassSurface(
               radius: 26,
-              thick: true,
+              role: HermesGlassRole.control,
               child: AnimatedContainer(
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 120),
-                decoration: BoxDecoration(
-                  color: HermesGlassTheme.of(context).enabled
-                      ? Colors.transparent
-                      : palette.codeBg,
-                  borderRadius: BorderRadius.circular(
-                    HermesGlassTheme.of(context).enabled ? 26 : 18,
-                  ),
-                  border: Border.all(
-                    color: _focused
-                        ? accent
-                        : HermesGlassTheme.of(context).enabled
-                        ? Colors.transparent
-                        : borderColor,
-                  ),
-                  boxShadow: _focused && !HermesGlassTheme.of(context).enabled
-                      ? hermesShadow(context, HermesShadowTier.md)
-                      : null,
+                key: const ValueKey('composer-input-surface'),
+                duration: HermesGlassMotion.resolve(
+                  context,
+                  HermesGlassMotion.press,
                 ),
+                // Foreground decoration paints without implicit border padding,
+                // keeping text and actions stationary throughout focus changes.
+                foregroundDecoration: HermesGlassTheme.of(context).enabled
+                    ? ShapeDecoration(
+                        shape: RoundedSuperellipseBorder(
+                          borderRadius: BorderRadius.circular(26),
+                          side: _focused
+                              ? BorderSide(color: accent, width: 1.4)
+                              : BorderSide.none,
+                        ),
+                      )
+                    : null,
+                decoration: HermesGlassTheme.of(context).enabled
+                    ? null
+                    : BoxDecoration(
+                        color: HermesGlassTheme.of(context).enabled
+                            ? Colors.transparent
+                            : palette.codeBg,
+                        borderRadius: BorderRadius.circular(
+                          HermesGlassTheme.of(context).enabled ? 26 : 18,
+                        ),
+                        border: Border.all(
+                          color: _focused
+                              ? accent
+                              : HermesGlassTheme.of(context).enabled
+                              ? (Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white.withValues(alpha: .18)
+                                    : Colors.white.withValues(alpha: .62))
+                              : borderColor,
+                          width:
+                              _focused && HermesGlassTheme.of(context).enabled
+                              ? 1.4
+                              : 1,
+                        ),
+                        boxShadow:
+                            _focused && !HermesGlassTheme.of(context).enabled
+                            ? hermesShadow(context, HermesShadowTier.md)
+                            : null,
+                      ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -751,6 +785,22 @@ class _HermesComposerState extends State<HermesComposer> {
     );
   }
 
+  Widget _animateToolsExpansion(BuildContext context, {required Widget child}) {
+    const key = ValueKey('composer-tools-expansion');
+    if (!HermesGlassTheme.of(context).enabled ||
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context)) {
+      return SizedBox(key: key, child: child);
+    }
+    return AnimatedSize(
+      key: key,
+      duration: HermesGlassMotion.expansion,
+      curve: HermesGlassMotion.curve,
+      alignment: Alignment.topCenter,
+      child: child,
+    );
+  }
+
   List<Widget> _buildPrimarySelectorButtons(BuildContext context) => [
     if (widget.onPersonalityTap != null || widget.personalityLabel != null)
       _SelectorIconButton(
@@ -820,9 +870,18 @@ class _HermesComposerState extends State<HermesComposer> {
   /// per-breakpoint "+"-panel / stacked-row split.
   Widget _buildToolsRow(BuildContext context, {required bool mobilePlatform}) {
     final palette = HermesPalette.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
     final muted = palette.text3;
     final hasLeading = widget.leadingActions.isNotEmpty;
     final primarySelectors = _buildPrimarySelectorButtons(context);
+    final emojiToggle = _SelectorIconButton(
+      icon: _emojiOpen ? Icons.emoji_emotions : Icons.emoji_emotions_outlined,
+      tooltip: _emojiOpen
+          ? context.l10n.composerCloseEmojiPanel
+          : context.l10n.composerEmoji,
+      onTap: () => setState(() => _emojiOpen = !_emojiOpen),
+      selected: _emojiOpen,
+    );
 
     final children = <Widget>[
       ...widget.leadingActions,
@@ -842,17 +901,7 @@ class _HermesComposerState extends State<HermesComposer> {
           label: widget.quotaLabel!,
           onTap: widget.onQuotaTap,
         ),
-      if (!widget.readOnly)
-        _SelectorIconButton(
-          icon: _emojiOpen
-              ? Icons.emoji_emotions
-              : Icons.emoji_emotions_outlined,
-          tooltip: _emojiOpen
-              ? context.l10n.composerCloseEmojiPanel
-              : context.l10n.composerEmoji,
-          onTap: () => setState(() => _emojiOpen = !_emojiOpen),
-          selected: _emojiOpen,
-        ),
+      if (!widget.readOnly && !liquid) emojiToggle,
       if (widget.onUndo != null || widget.onRedo != null)
         HermesAdaptiveMenuButton<String>(
           tooltip: context.l10n.composerEditorActions,
@@ -900,9 +949,11 @@ class _HermesComposerState extends State<HermesComposer> {
         ),
     ];
 
-    if (children.isEmpty) return const SizedBox.shrink();
+    if (children.isEmpty && (!liquid || widget.readOnly)) {
+      return const SizedBox.shrink();
+    }
 
-    return SizedBox(
+    final scrollingTools = SizedBox(
       height: 48,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -912,6 +963,22 @@ class _HermesComposerState extends State<HermesComposer> {
           children: children,
         ),
       ),
+    );
+    if (!liquid || widget.readOnly) return scrollingTools;
+
+    // Keep the frequent insertion action reachable while configuration
+    // controls scroll. Directional Row layout also pins it correctly in RTL.
+    return Row(
+      children: [
+        Expanded(child: scrollingTools),
+        Container(
+          width: 1,
+          height: 16,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          color: palette.border,
+        ),
+        emojiToggle,
+      ],
     );
   }
 
@@ -949,15 +1016,25 @@ class _HermesComposerState extends State<HermesComposer> {
   Widget _buildEmojiPanel(BuildContext context) {
     final palette = HermesPalette.of(context);
     final muted = palette.text3;
+    final liquid = HermesGlassTheme.of(context).enabled;
     return Container(
       height: 168,
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: palette.border)),
-      ),
+      decoration: liquid
+          ? null
+          : BoxDecoration(
+              border: Border(top: BorderSide(color: palette.border)),
+            ),
       child: Column(
         children: [
+          if (liquid)
+            Divider(
+              height: 1,
+              indent: 16,
+              endIndent: 16,
+              color: palette.border,
+            ),
           SizedBox(
-            height: 28,
+            height: liquid ? 48 : 28,
             child: Row(
               children: [
                 const SizedBox(width: 14),
@@ -970,30 +1047,45 @@ class _HermesComposerState extends State<HermesComposer> {
                   ),
                 ),
                 const Spacer(),
-                IconButton(
-                  tooltip: context.l10n.composerCloseEmojiPanel,
-                  visualDensity: VisualDensity.compact,
-                  iconSize: 14,
-                  onPressed: () => setState(() => _emojiOpen = false),
-                  icon: Icon(Icons.close, color: muted),
-                ),
+                if (liquid)
+                  GlassButton(
+                    tooltip: context.l10n.composerCloseEmojiPanel,
+                    onPressed: () => setState(() => _emojiOpen = false),
+                    child: const Icon(Icons.close, size: 18),
+                  )
+                else
+                  IconButton(
+                    tooltip: context.l10n.composerCloseEmojiPanel,
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 14,
+                    onPressed: () => setState(() => _emojiOpen = false),
+                    icon: Icon(Icons.close, color: muted),
+                  ),
               ],
             ),
           ),
           Expanded(
-            child: GridView.count(
-              crossAxisCount: 8,
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              children: [
-                for (final emoji in _commonEmojis)
-                  InkWell(
-                    borderRadius: BorderRadius.circular(6),
-                    onTap: () => _insertEmoji(emoji),
-                    child: Center(
-                      child: Text(emoji, style: const TextStyle(fontSize: 20)),
+            child: LayoutBuilder(
+              builder: (context, constraints) => GridView.count(
+                crossAxisCount: liquid
+                    ? ((constraints.maxWidth - 16) / 44).floor().clamp(1, 8)
+                    : 8,
+                mainAxisExtent: liquid ? 44 : null,
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                children: [
+                  for (final emoji in _commonEmojis)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(liquid ? 14 : 6),
+                      onTap: () => _insertEmoji(emoji),
+                      child: Center(
+                        child: Text(
+                          emoji,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -1262,6 +1354,10 @@ class _SendButtonState extends State<_SendButton> {
     final palette = HermesPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final active = widget.enabled || widget.busy;
+    final liquid = HermesGlassTheme.of(context).enabled;
+    final reduceMotion =
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
     // A compact 32px accent button lines up with the 24px composer text
     // line (9px top content padding centers it against a single line)
     // while retaining a clear circular primary action. Busy + draft →
@@ -1274,28 +1370,36 @@ class _SendButtonState extends State<_SendButton> {
         ? (widget.busyWillSteer ? Icons.explore_outlined : Icons.stop)
         : Icons.arrow_upward;
 
-    return Listener(
-      onPointerDown: active ? (_) => _setPressed(true) : null,
-      onPointerUp: (_) => _setPressed(false),
-      onPointerCancel: (_) => _setPressed(false),
-      child: AnimatedScale(
-        // §6.1：pressed → 缩放 0.97
-        scale: _pressed ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Opacity(
-          opacity: active ? 1 : 0.35,
-          child: Material(
-            color: bg,
-            shape: const CircleBorder(),
-            // §5.3：深色主题不使用投影。
-            elevation: active && !widget.busy && !isDark ? 2 : 0,
-            child: InkWell(
-              onTap: active ? widget.onTap : null,
-              customBorder: const CircleBorder(),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: active ? widget.onTap : null,
+        onHighlightChanged: _setPressed,
+        customBorder: const CircleBorder(),
+        child: AnimatedScale(
+          // §6.1：pressed → 缩放 0.97
+          scale: _pressed && active && !reduceMotion ? (liquid ? .92 : .97) : 1,
+          duration: reduceMotion
+              ? Duration.zero
+              : liquid
+              ? HermesGlassMotion.press
+              : const Duration(milliseconds: 100),
+          curve: liquid ? HermesGlassMotion.curve : Curves.linear,
+          child: Opacity(
+            opacity: active ? 1 : 0.35,
+            child: Material(
+              color: bg,
+              shape: const CircleBorder(),
+              // §5.3：深色主题不使用投影。
+              elevation: active && !widget.busy && !isDark ? 2 : 0,
               child: SizedBox(
-                width: 32,
-                height: 32,
-                child: Icon(icon, size: 16, color: palette.bubbleUserText),
+                width: liquid ? 44 : 32,
+                height: liquid ? 44 : 32,
+                child: Icon(
+                  icon,
+                  size: liquid ? 20 : 16,
+                  color: palette.bubbleUserText,
+                ),
               ),
             ),
           ),
@@ -1326,85 +1430,161 @@ class _AttachmentsRow extends StatelessWidget {
     ComposerAttachment attachment,
   ) async {
     final palette = HermesPalette.of(context);
+    final liquid = HermesGlassTheme.of(context).enabled;
+    Widget previewToolbar(Widget child) => liquid
+        ? Padding(
+            padding: const EdgeInsets.all(12),
+            child: GlassSurface(
+              key: const ValueKey('attachment-preview-toolbar'),
+              radius: 24,
+              role: HermesGlassRole.control,
+              child: child,
+            ),
+          )
+        : child;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog(
-        backgroundColor: palette.surface,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Flexible(
-                child:
-                    attachment.kind == ComposerAttachmentKind.image &&
-                        attachment.bytes != null
-                    ? InteractiveViewer(
-                        minScale: 0.8,
-                        maxScale: 5,
-                        child: Image.memory(
-                          attachment.bytes!,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) =>
-                              _previewFallback(dialogContext, attachment),
-                        ),
-                      )
-                    : _previewFallback(dialogContext, attachment),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        attachment.label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: palette.text,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: MaterialLocalizations.of(
-                        dialogContext,
-                      ).closeButtonTooltip,
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
+        backgroundColor: liquid ? Colors.transparent : palette.surface,
+        elevation: liquid ? 0 : null,
+        surfaceTintColor: liquid ? Colors.transparent : null,
+        clipBehavior: liquid ? Clip.antiAlias : Clip.none,
+        shape: liquid
+            ? RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(28))
+            : null,
+        child: liquid
+            ? GlassSurface(
+                radius: 28,
+                role: HermesGlassRole.control,
+                child: _previewDialogContent(
+                  dialogContext,
+                  attachment,
+                  palette,
+                  previewToolbar,
                 ),
+              )
+            : _previewDialogContent(
+                dialogContext,
+                attachment,
+                palette,
+                previewToolbar,
               ),
-            ],
+      ),
+    );
+  }
+
+  Widget _previewDialogContent(
+    BuildContext dialogContext,
+    ComposerAttachment attachment,
+    HermesPalette palette,
+    Widget Function(Widget) previewToolbar,
+  ) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Flexible(
+          child:
+              attachment.kind == ComposerAttachmentKind.image &&
+                  attachment.bytes != null
+              ? InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 5,
+                  child: Image.memory(
+                    attachment.bytes!,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) =>
+                        _previewFallback(dialogContext, attachment),
+                  ),
+                )
+              : _previewFallback(dialogContext, attachment),
+        ),
+        previewToolbar(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    attachment.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.text,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: MaterialLocalizations.of(
+                    dialogContext,
+                  ).closeButtonTooltip,
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
           ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _previewFallback(BuildContext context, ComposerAttachment attachment) {
+    final palette = HermesPalette.of(context);
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(attachment.icon, size: 56, color: palette.accent),
+            const SizedBox(height: 16),
+            Text(
+              attachment.path ?? attachment.localPath ?? attachment.label,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: palette.text3),
+            ),
+            if (_attachmentSize(attachment) case final size?) ...[
+              const SizedBox(height: 8),
+              Text(_formatBytes(size), style: TextStyle(color: palette.text3)),
+            ],
+          ],
         ),
       ),
     );
   }
 
-  Widget _previewFallback(BuildContext context, ComposerAttachment attachment) {
-    final palette = HermesPalette.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(attachment.icon, size: 56, color: palette.accent),
-          const SizedBox(height: 16),
-          Text(
-            attachment.path ?? attachment.localPath ?? attachment.label,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: palette.text3),
-          ),
-          if (_attachmentSize(attachment) case final size?) ...[
-            const SizedBox(height: 8),
-            Text(_formatBytes(size), style: TextStyle(color: palette.text3)),
-          ],
-        ],
-      ),
+  Widget _uploadIndicator(
+    BuildContext context,
+    ComposerAttachment attachment, {
+    required Color color,
+    required double size,
+  }) {
+    final progress = attachment.uploadTotal > 0
+        ? (attachment.uploadSent / attachment.uploadTotal).clamp(0.0, 1.0)
+        : null;
+    final reduced =
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
+    final label = context.l10n.chatUploadingEllipsis;
+    return SizedBox.square(
+      dimension: size,
+      child: reduced && progress == null
+          ? Icon(
+              Icons.cloud_upload_outlined,
+              size: size,
+              color: color,
+              semanticLabel: label,
+            )
+          : CircularProgressIndicator(
+              value: progress,
+              strokeWidth: size > 20 ? 2 : 1.7,
+              color: color,
+              semanticsLabel: label,
+            ),
     );
   }
 
@@ -1456,14 +1636,31 @@ class _AttachmentsRow extends StatelessWidget {
     final chipBg = palette.codeBg;
     final chipBorder = palette.border;
     final chipText = palette.text3;
-    BoxDecoration chipDecoration({bool card = false}) => BoxDecoration(
-      color: liquid ? chipBg.withValues(alpha: .78) : chipBg,
-      border: Border.all(color: chipBorder),
-      borderRadius: BorderRadius.circular(card ? 14 : 999),
-      boxShadow: liquid || Theme.of(context).brightness == Brightness.dark
-          ? const []
-          : hermesShadow(context),
-    );
+    Decoration chipDecoration({bool card = false}) {
+      if (liquid) {
+        return ShapeDecoration(
+          color: HermesGlassTheme.of(context).allowsTransparency(context)
+              ? chipBg.withValues(alpha: .78)
+              : chipBg,
+          shape: card
+              ? RoundedSuperellipseBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(color: chipBorder),
+                )
+              : StadiumBorder(side: BorderSide(color: chipBorder)),
+        );
+      }
+      return BoxDecoration(
+        color: HermesGlassTheme.of(context).allowsTransparency(context)
+            ? chipBg.withValues(alpha: .78)
+            : chipBg,
+        border: Border.all(color: chipBorder),
+        borderRadius: BorderRadius.circular(card ? 14 : 999),
+        boxShadow: liquid || Theme.of(context).brightness == Brightness.dark
+            ? const []
+            : hermesShadow(context),
+      );
+    }
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -1480,14 +1677,34 @@ class _AttachmentsRow extends StatelessWidget {
             return InkWell(
               key: ValueKey('composer-attachment-${att.occurrenceId ?? index}'),
               onTap: card ? () => _previewAttachment(context, att) : null,
+              customBorder: liquid
+                  ? card
+                        ? RoundedSuperellipseBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          )
+                        : const StadiumBorder()
+                  : null,
               borderRadius: BorderRadius.circular(card ? 14 : 999),
               child: Container(
                 width: isImage
                     ? 104
                     : isFile
-                    ? 222
+                    ? (liquid ? 266 : 222)
                     : null,
-                height: isImage || isFile ? 104 : null,
+                height: isImage || isFile
+                    ? 104 +
+                          (isImage &&
+                                  (att.uploadError != null ||
+                                      (att.uploading && att.uploadTotal > 0))
+                              ? MediaQuery.textScalerOf(context).scale(10) * 2
+                              : 0) +
+                          (liquid
+                              ? (MediaQuery.textScalerOf(context).scale(14) -
+                                            14)
+                                        .clamp(0, double.infinity) *
+                                    4
+                              : 0)
+                    : null,
                 margin: const EdgeInsets.only(right: 8),
                 padding: EdgeInsets.fromLTRB(
                   isImage ? 6 : 10,
@@ -1517,47 +1734,69 @@ class _AttachmentsRow extends StatelessWidget {
                                         child: Icon(att.icon, color: chipText),
                                       ),
                               ),
-                              Positioned(
-                                top: -2,
-                                right: -2,
-                                child: IconButton(
-                                  tooltip: context.l10n
-                                      .composerRemoveAttachment(att.label),
-                                  onPressed: onChanged == null
-                                      ? null
-                                      : () => _removeAttachment(index),
-                                  iconSize: 16,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 28,
-                                    minHeight: 28,
-                                  ),
-                                  padding: EdgeInsets.zero,
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: Colors.black54,
-                                    foregroundColor: Colors.white,
-                                  ),
-                                  icon: const Icon(Icons.close),
-                                ),
-                              ),
                               if (att.uploading)
                                 Positioned.fill(
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: Colors.black38,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Center(
-                                      child: SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
+                                  child: IgnorePointer(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        color: Colors.black38,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Center(
+                                        child: _uploadIndicator(
+                                          context,
+                                          att,
                                           color: Colors.white,
+                                          size: 22,
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
+                              Positioned(
+                                top: liquid ? 0 : -2,
+                                right: liquid ? 0 : -2,
+                                child: liquid
+                                    ? DecoratedBox(
+                                        decoration: ShapeDecoration(
+                                          color: palette.surface,
+                                          shape: const StadiumBorder(),
+                                        ),
+                                        child: GlassButton(
+                                          tooltip: context.l10n
+                                              .composerRemoveAttachment(
+                                                att.label,
+                                              ),
+                                          onPressed: onChanged == null
+                                              ? null
+                                              : () => _removeAttachment(index),
+                                          child: const Icon(
+                                            Icons.close,
+                                            size: 18,
+                                          ),
+                                        ),
+                                      )
+                                    : IconButton(
+                                        tooltip: context.l10n
+                                            .composerRemoveAttachment(
+                                              att.label,
+                                            ),
+                                        onPressed: onChanged == null
+                                            ? null
+                                            : () => _removeAttachment(index),
+                                        iconSize: 16,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 28,
+                                          minHeight: 28,
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: Colors.black54,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        icon: const Icon(Icons.close),
+                                      ),
+                              ),
                               if (isComplete)
                                 const Positioned(
                                   left: 4,
@@ -1589,7 +1828,7 @@ class _AttachmentsRow extends StatelessWidget {
                             ),
                           if (att.uploading && att.uploadTotal > 0)
                             Text(
-                              '${((att.uploadSent / att.uploadTotal) * 100).round()}%',
+                              '${((att.uploadSent / att.uploadTotal).clamp(0.0, 1.0) * 100).round()}%',
                               style: TextStyle(fontSize: 10, color: chipText),
                             ),
                         ],
@@ -1632,88 +1871,106 @@ class _AttachmentsRow extends StatelessWidget {
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      att.label,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: palette.text,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      attachmentSize == null
-                                          ? _extension(att.label)
-                                          : _formatBytes(attachmentSize),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: chipText,
-                                      ),
-                                    ),
-                                    if (att.uploading &&
-                                        att.uploadTotal > 0) ...[
-                                      const SizedBox(height: 6),
-                                      LinearProgressIndicator(
-                                        minHeight: 3,
-                                        value:
-                                            (att.uploadSent / att.uploadTotal)
-                                                .clamp(0.0, 1.0),
-                                      ),
-                                    ],
-                                    if (att.uploadError != null)
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                    right: liquid ? 44 : 0,
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
                                       Text(
-                                        context
-                                            .l10n
-                                            .messageBubbleAttachmentSendFailed,
-                                        maxLines: 1,
+                                        att.label,
+                                        maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: HermesSemantic.red,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: palette.text,
                                         ),
                                       ),
-                                  ],
+                                      const SizedBox(height: 5),
+                                      Text(
+                                        attachmentSize == null
+                                            ? _extension(att.label)
+                                            : _formatBytes(attachmentSize),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: chipText,
+                                        ),
+                                      ),
+                                      if (att.uploading &&
+                                          att.uploadTotal > 0) ...[
+                                        const SizedBox(height: 6),
+                                        LinearProgressIndicator(
+                                          minHeight: 3,
+                                          value:
+                                              (att.uploadSent / att.uploadTotal)
+                                                  .clamp(0.0, 1.0),
+                                        ),
+                                      ],
+                                      if (att.uploadError != null)
+                                        Text(
+                                          context
+                                              .l10n
+                                              .messageBubbleAttachmentSendFailed,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: HermesSemantic.red,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                           Positioned(
-                            top: -7,
-                            right: -7,
-                            child: IconButton.filledTonal(
-                              tooltip: context.l10n.composerRemoveAttachment(
-                                att.label,
-                              ),
-                              onPressed: onChanged == null
-                                  ? null
-                                  : () => _removeAttachment(index),
-                              iconSize: 14,
-                              visualDensity: VisualDensity.compact,
-                              constraints: const BoxConstraints(
-                                minWidth: 32,
-                                minHeight: 32,
-                              ),
-                              padding: EdgeInsets.zero,
-                              icon: const Icon(Icons.close),
-                            ),
+                            top: liquid ? 0 : -7,
+                            right: liquid ? 0 : -7,
+                            child: liquid
+                                ? DecoratedBox(
+                                    decoration: ShapeDecoration(
+                                      color: palette.surface,
+                                      shape: const StadiumBorder(),
+                                    ),
+                                    child: GlassButton(
+                                      tooltip: context.l10n
+                                          .composerRemoveAttachment(att.label),
+                                      onPressed: onChanged == null
+                                          ? null
+                                          : () => _removeAttachment(index),
+                                      child: const Icon(Icons.close, size: 18),
+                                    ),
+                                  )
+                                : IconButton.filledTonal(
+                                    tooltip: context.l10n
+                                        .composerRemoveAttachment(att.label),
+                                    onPressed: onChanged == null
+                                        ? null
+                                        : () => _removeAttachment(index),
+                                    iconSize: 14,
+                                    visualDensity: VisualDensity.compact,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 32,
+                                      minHeight: 32,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.close),
+                                  ),
                           ),
                           if (att.uploading && att.uploadTotal <= 0)
                             Positioned(
                               right: 30,
                               bottom: 4,
-                              child: SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.7,
-                                  color: palette.accent,
-                                ),
+                              child: _uploadIndicator(
+                                context,
+                                att,
+                                color: palette.accent,
+                                size: 14,
                               ),
                             ),
                           if (!att.isUploaded &&

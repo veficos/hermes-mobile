@@ -56,8 +56,8 @@ class HermesStatusChip extends StatelessWidget {
     return Semantics(
       label: context.l10n.statusSemantics(label),
       child: Container(
-        height: 24,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        constraints: const BoxConstraints(minHeight: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           // §3.6 语义色底 10%/18%；高对比经 hermesTintAlpha 提升（§3.7）。
           color: color.withValues(
@@ -80,13 +80,15 @@ class HermesStatusChip extends StatelessWidget {
               ),
             if (label.isNotEmpty) ...[
               const SizedBox(width: 5),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  height: 1.35,
-                  color: color,
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                    color: color,
+                  ),
                 ),
               ),
             ],
@@ -111,7 +113,22 @@ class _PulseDotState extends State<_PulseDot>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
-  )..repeat(reverse: true);
+  );
+  bool _reduceMotion = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion =
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
+    if (_reduceMotion) {
+      _controller.stop();
+      _controller.value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -122,7 +139,7 @@ class _PulseDotState extends State<_PulseDot>
   @override
   Widget build(BuildContext context) {
     // Reduce Motion（design-system.md §9）：系统减弱动态效果时静态圆点。
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (_reduceMotion) {
       return Container(
         width: 6,
         height: 6,

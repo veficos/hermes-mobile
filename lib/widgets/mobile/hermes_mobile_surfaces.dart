@@ -106,6 +106,8 @@ class HermesMobileRow extends StatelessWidget {
     this.tone,
     this.iconWidget,
     this.titleTrailing,
+    this.alignLeadingToTop = false,
+    this.leadingSize = 34,
   });
 
   final IconData icon;
@@ -117,14 +119,20 @@ class HermesMobileRow extends StatelessWidget {
   final Color? tone;
   final Widget? iconWidget;
   final Widget? titleTrailing;
+  final bool alignLeadingToTop;
+  final double leadingSize;
 
   @override
   Widget build(BuildContext context) {
     return HermesListRow(
       icon: icon,
+      alignLeadingToTop: alignLeadingToTop,
       leading: iconWidget == null
           ? null
-          : SizedBox.square(dimension: 34, child: iconWidget),
+          : SizedBox.square(
+              dimension: leadingSize,
+              child: Center(child: iconWidget),
+            ),
       title: title,
       subtitle: subtitle,
       subtitleWidget: subtitleWidget,

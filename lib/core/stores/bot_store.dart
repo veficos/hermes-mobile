@@ -394,7 +394,9 @@ class BotStore extends ChangeNotifier {
   /// (which has a 64KB cap and rides every `profiles.list`) and persisted
   /// separately via `profiles.set_asset`/`get_asset` instead.
   final Map<String, String> _localAvatarImages = {};
-  final Set<String> _avatarFetchInflight = {};
+  final Map<String, ConnectionRuntime?> _avatarCacheOwners = {};
+  final Map<String, int> _avatarRevisions = {};
+  final Set<(String, ConnectionRuntime?)> _avatarFetchInflight = {};
   final Map<
     String,
     ({
@@ -547,6 +549,10 @@ class BotStore extends ChangeNotifier {
                     ?.cast<String, dynamic>() ??
                 const <String, dynamic>{};
             final botKey = '${runtime.id.value}\u0000$profile';
+            if (!identical(_avatarCacheOwners[botKey], runtime)) {
+              _localAvatarImages.remove(botKey);
+              _avatarCacheOwners.remove(botKey);
+            }
             final localImage = _localAvatarImages[botKey];
             if (localImage != null) {
               botMeta = {...botMeta, 'image': localImage};
@@ -864,7 +870,10 @@ class BotStore extends ChangeNotifier {
   /// (`has_avatar` on its `profiles.list` row) but whose image isn't cached
   /// locally yet. Mirrors desktop's `pullServerAvatars`.
   Future<void> _backfillAvatarImage(OwnerRoute route, String botKey) async {
-    if (!_avatarFetchInflight.add(botKey)) return;
+    final runtime = connection.registry.runtime(route.connectionId);
+    final flightKey = (botKey, runtime);
+    if (!_avatarFetchInflight.add(flightKey)) return;
+    final revision = _avatarRevisions[botKey] ?? 0;
     try {
       final result = await connection.requestForOwner(
         route,
@@ -872,11 +881,20 @@ class BotStore extends ChangeNotifier {
         {'name': route.profile, 'asset': 'avatar'},
       );
       final data = result['data']?.toString();
+      if (_disposed ||
+          revision != (_avatarRevisions[botKey] ?? 0) ||
+          !identical(
+            runtime,
+            connection.registry.runtime(route.connectionId),
+          )) {
+        return;
+      }
       if (result['found'] == true &&
           data != null &&
           data.isNotEmpty &&
           !isBackfilledFacePng(data)) {
         _localAvatarImages[botKey] = data;
+        _avatarCacheOwners[botKey] = runtime;
         final index = bots.indexWhere((item) => item.key == botKey);
         if (index != -1) {
           final updated = List<BotIdentity>.of(bots);
@@ -899,7 +917,7 @@ class BotStore extends ChangeNotifier {
         name: 'hermes.bots.avatar',
       );
     } finally {
-      _avatarFetchInflight.remove(botKey);
+      _avatarFetchInflight.remove(flightKey);
     }
   }
 
@@ -909,23 +927,43 @@ class BotStore extends ChangeNotifier {
   /// every `profiles.list`) — only a local cache + the asset store carry it,
   /// same split as desktop's `$botMeta`/`profiles.set_asset`.
   Future<void> uploadBotAvatarImage(BotIdentity bot, Uint8List bytes) async {
+    final runtime = connection.registry.runtime(bot.route.connectionId);
     final dataUrl = 'data:image/png;base64,${base64Encode(bytes)}';
     await connection.requestForOwner(bot.route, 'profiles.set_asset', {
       'name': bot.profile,
       'asset': 'avatar',
       'data': dataUrl,
     });
+    if (_disposed ||
+        !identical(
+          runtime,
+          connection.registry.runtime(bot.route.connectionId),
+        )) {
+      return;
+    }
+    _avatarRevisions.update(bot.key, (value) => value + 1, ifAbsent: () => 1);
     _localAvatarImages[bot.key] = dataUrl;
+    _avatarCacheOwners[bot.key] = runtime;
     _patchLocalMetadata(bot, {'image': dataUrl, 'custom': true});
   }
 
   Future<void> clearBotAvatarImage(BotIdentity bot) async {
+    final runtime = connection.registry.runtime(bot.route.connectionId);
     await connection.requestForOwner(bot.route, 'profiles.set_asset', {
       'name': bot.profile,
       'asset': 'avatar',
       'clear': true,
     });
+    if (_disposed ||
+        !identical(
+          runtime,
+          connection.registry.runtime(bot.route.connectionId),
+        )) {
+      return;
+    }
+    _avatarRevisions.update(bot.key, (value) => value + 1, ifAbsent: () => 1);
     _localAvatarImages.remove(bot.key);
+    _avatarCacheOwners.remove(bot.key);
     final patched = {...bot.metadata}..remove('image');
     _replaceLocalMetadata(bot, patched);
   }
@@ -2428,9 +2466,7 @@ class BotStore extends ChangeNotifier {
       'deliver': draft.deliverToBotChat ? 'bot-chat' : 'local',
       'model': draft.model,
       'provider': draft.provider,
-      'repeat': draft.repeat != null && draft.repeat! > 0
-          ? draft.repeat
-          : null,
+      'repeat': draft.repeat != null && draft.repeat! > 0 ? draft.repeat : null,
       'continuity': draft.continuity,
     });
   }
